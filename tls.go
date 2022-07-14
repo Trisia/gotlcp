@@ -22,6 +22,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/emmansun/gmsm/smx509"
 	"net"
 	"os"
 	"strings"
@@ -88,7 +89,7 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 func Listen(network, laddr string, config *Config) (net.Listener, error) {
 	if config == nil || len(config.Certificates) == 0 &&
 		config.GetCertificate == nil && config.GetConfigForClient == nil {
-		return nil, errors.New("tls: neither Certificates, GetCertificate, nor GetConfigForClient set in Config")
+		return nil, errors.New("tlcp: neither Certificates, GetCertificate, nor GetConfigForClient set in Config")
 	}
 	l, err := net.Listen(network, laddr)
 	if err != nil {
@@ -99,7 +100,7 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 
 type timeoutError struct{}
 
-func (timeoutError) Error() string   { return "tls: DialWithDialer timed out" }
+func (timeoutError) Error() string   { return "tlcp: DialWithDialer timed out" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 
@@ -262,12 +263,12 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 
 	if len(cert.Certificate) == 0 {
 		if len(skippedBlockTypes) == 0 {
-			return fail(errors.New("tls: failed to find any PEM data in certificate input"))
+			return fail(errors.New("tlcp: failed to find any PEM data in certificate input"))
 		}
 		if len(skippedBlockTypes) == 1 && strings.HasSuffix(skippedBlockTypes[0], "PRIVATE KEY") {
-			return fail(errors.New("tls: failed to find certificate PEM data in certificate input, but did find a private key; PEM inputs may have been switched"))
+			return fail(errors.New("tlcp: failed to find certificate PEM data in certificate input, but did find a private key; PEM inputs may have been switched"))
 		}
-		return fail(fmt.Errorf("tls: failed to find \"CERTIFICATE\" PEM block in certificate input after skipping PEM blocks of the following types: %v", skippedBlockTypes))
+		return fail(fmt.Errorf("tlcp: failed to find \"CERTIFICATE\" PEM block in certificate input after skipping PEM blocks of the following types: %v", skippedBlockTypes))
 	}
 
 	skippedBlockTypes = skippedBlockTypes[:0]
@@ -276,12 +277,12 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
 		if keyDERBlock == nil {
 			if len(skippedBlockTypes) == 0 {
-				return fail(errors.New("tls: failed to find any PEM data in key input"))
+				return fail(errors.New("tlcp: failed to find any PEM data in key input"))
 			}
 			if len(skippedBlockTypes) == 1 && skippedBlockTypes[0] == "CERTIFICATE" {
-				return fail(errors.New("tls: found a certificate rather than a key in the PEM for the private key"))
+				return fail(errors.New("tlcp: found a certificate rather than a key in the PEM for the private key"))
 			}
-			return fail(fmt.Errorf("tls: failed to find PEM block with type ending in \"PRIVATE KEY\" in key input after skipping PEM blocks of the following types: %v", skippedBlockTypes))
+			return fail(fmt.Errorf("tlcp: failed to find PEM block with type ending in \"PRIVATE KEY\" in key input after skipping PEM blocks of the following types: %v", skippedBlockTypes))
 		}
 		if keyDERBlock.Type == "PRIVATE KEY" || strings.HasSuffix(keyDERBlock.Type, " PRIVATE KEY") {
 			break
@@ -291,7 +292,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 
 	// We don't need to parse the public key for TLS, but we so do anyway
 	// to check that it looks sane and matches the private key.
-	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	x509Cert, err := smx509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
 		return fail(err)
 	}
@@ -305,29 +306,29 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	case *rsa.PublicKey:
 		priv, ok := cert.PrivateKey.(*rsa.PrivateKey)
 		if !ok {
-			return fail(errors.New("tls: private key type does not match public key type"))
+			return fail(errors.New("tlcp: private key type does not match public key type"))
 		}
 		if pub.N.Cmp(priv.N) != 0 {
-			return fail(errors.New("tls: private key does not match public key"))
+			return fail(errors.New("tlcp: private key does not match public key"))
 		}
 	case *ecdsa.PublicKey:
 		priv, ok := cert.PrivateKey.(*ecdsa.PrivateKey)
 		if !ok {
-			return fail(errors.New("tls: private key type does not match public key type"))
+			return fail(errors.New("tlcp: private key type does not match public key type"))
 		}
 		if pub.X.Cmp(priv.X) != 0 || pub.Y.Cmp(priv.Y) != 0 {
-			return fail(errors.New("tls: private key does not match public key"))
+			return fail(errors.New("tlcp: private key does not match public key"))
 		}
 	case ed25519.PublicKey:
 		priv, ok := cert.PrivateKey.(ed25519.PrivateKey)
 		if !ok {
-			return fail(errors.New("tls: private key type does not match public key type"))
+			return fail(errors.New("tlcp: private key type does not match public key type"))
 		}
 		if !bytes.Equal(priv.Public().(ed25519.PublicKey), pub) {
-			return fail(errors.New("tls: private key does not match public key"))
+			return fail(errors.New("tlcp: private key does not match public key"))
 		}
 	default:
-		return fail(errors.New("tls: unknown public key algorithm"))
+		return fail(errors.New("tlcp: unknown public key algorithm"))
 	}
 
 	return cert, nil
@@ -340,17 +341,17 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
 		return key, nil
 	}
-	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+	if key, err := smx509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
 		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 			return key, nil
 		default:
-			return nil, errors.New("tls: found unknown private key type in PKCS#8 wrapping")
+			return nil, errors.New("tlcp: found unknown private key type in PKCS#8 wrapping")
 		}
 	}
-	if key, err := x509.ParseECPrivateKey(der); err == nil {
+	if key, err := smx509.ParseECPrivateKey(der); err == nil {
 		return key, nil
 	}
 
-	return nil, errors.New("tls: failed to parse private key")
+	return nil, errors.New("tlcp: failed to parse private key")
 }

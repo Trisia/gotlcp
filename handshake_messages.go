@@ -319,11 +319,11 @@ func (m *clientHelloMsg) marshalWithoutBinders() []byte {
 // length as the current m.pskBinders.
 func (m *clientHelloMsg) updateBinders(pskBinders [][]byte) {
 	if len(pskBinders) != len(m.pskBinders) {
-		panic("tls: internal error: pskBinders length mismatch")
+		panic("tlcp: internal error: pskBinders length mismatch")
 	}
 	for i := range m.pskBinders {
 		if len(pskBinders[i]) != len(m.pskBinders[i]) {
-			panic("tls: internal error: pskBinders length mismatch")
+			panic("tlcp: internal error: pskBinders length mismatch")
 		}
 	}
 	m.pskBinders = pskBinders
@@ -338,7 +338,7 @@ func (m *clientHelloMsg) updateBinders(pskBinders [][]byte) {
 			}
 		})
 		if out, err := b.Bytes(); err != nil || len(out) != len(m.raw) {
-			panic("tls: internal error: failed to update binders")
+			panic("tlcp: internal error: failed to update binders")
 		}
 	}
 }
@@ -1718,10 +1718,10 @@ func (m *certificateRequestMsg) unmarshal(data []byte) bool {
 }
 
 type certificateVerifyMsg struct {
-	raw                   []byte
-	hasSignatureAlgorithm bool // format change introduced in TLS 1.2
-	signatureAlgorithm    SignatureScheme
-	signature             []byte
+	raw []byte
+	//hasSignatureAlgorithm bool // format change introduced in TLS 1.2
+	signatureAlgorithm SignatureScheme
+	signature          []byte
 }
 
 func (m *certificateVerifyMsg) marshal() (x []byte) {

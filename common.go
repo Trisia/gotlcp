@@ -26,14 +26,16 @@ import (
 )
 
 const (
-	VersionTLS10 = 0x0301
-	VersionTLS11 = 0x0302
-	VersionTLS12 = 0x0303
-	VersionTLS13 = 0x0304
-
+	//VersionTLS10 = 0x0301
+	//VersionTLS11 = 0x0302
+	//VersionTLS12 = 0x0303
+	//VersionTLS13 = 0x0304
 	// Deprecated: SSLv3 is cryptographically broken, and is no longer
 	// supported by this package. See golang.org/issue/32716.
-	VersionSSL30 = 0x0300
+	//VersionSSL30 = 0x0300
+
+	VersionTLCP = 0x0101 // GM/T 38636-2016
+
 )
 
 const (
@@ -230,10 +232,10 @@ type ConnectionState struct {
 	// NegotiatedProtocol is the application protocol negotiated with ALPN.
 	NegotiatedProtocol string
 
-	// NegotiatedProtocolIsMutual used to indicate a mutual NPN negotiation.
-	//
-	// Deprecated: this value is always true.
-	NegotiatedProtocolIsMutual bool
+	//// NegotiatedProtocolIsMutual used to indicate a mutual NPN negotiation.
+	////
+	//// Deprecated: this value is always true.
+	//NegotiatedProtocolIsMutual bool
 
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
@@ -838,7 +840,7 @@ func (c *Config) initLegacySessionTicketKeyRLocked() {
 	defer c.mutex.Unlock()
 	if c.SessionTicketKey == [32]byte{} {
 		if _, err := io.ReadFull(c.rand(), c.SessionTicketKey[:]); err != nil {
-			panic(fmt.Sprintf("tls: unable to generate random session ticket key: %v", err))
+			panic(fmt.Sprintf("tlcp: unable to generate random session ticket key: %v", err))
 		}
 		// Write the deprecated prefix at the beginning so we know we created
 		// it. This key with the DEPRECATED prefix isn't used as an actual
@@ -930,7 +932,7 @@ func (c *Config) ticketKeys(configForClient *Config) []ticketKey {
 // compromised.
 func (c *Config) SetSessionTicketKeys(keys [][32]byte) {
 	if len(keys) == 0 {
-		panic("tls: keys must have at least one key")
+		panic("tlcp: keys must have at least one key")
 	}
 
 	newKeys := make([]ticketKey, len(keys))
@@ -970,10 +972,7 @@ func (c *Config) cipherSuites() []uint16 {
 }
 
 var supportedVersions = []uint16{
-	VersionTLS13,
-	VersionTLS12,
-	VersionTLS11,
-	VersionTLS10,
+	VersionTLCP,
 }
 
 // roleClient and roleServer are meant to call supportedVersions and parents
@@ -984,13 +983,6 @@ const roleServer = false
 func (c *Config) supportedVersions(isClient bool) []uint16 {
 	versions := make([]uint16, 0, len(supportedVersions))
 	for _, v := range supportedVersions {
-		if needFIPS() && (v < fipsMinVersion(c) || v > fipsMaxVersion(c)) {
-			continue
-		}
-		if (c == nil || c.MinVersion == 0) &&
-			isClient && v < VersionTLS12 {
-			continue
-		}
 		if c != nil && c.MinVersion != 0 && v < c.MinVersion {
 			continue
 		}
@@ -1059,7 +1051,7 @@ func (c *Config) mutualVersion(isClient bool, peerVersions []uint16) (uint16, bo
 	return 0, false
 }
 
-var errNoCertificates = errors.New("tls: no certificates configured")
+var errNoCertificates = errors.New("tlcp: no certificates configured")
 
 // getCertificate returns the best certificate for the given ClientHelloInfo,
 // defaulting to the first element of c.Certificates.
@@ -1472,7 +1464,7 @@ func defaultConfig() *Config {
 }
 
 func unexpectedMessageError(wanted, got any) error {
-	return fmt.Errorf("tls: received unexpected handshake message of type %T when waiting for %T", got, wanted)
+	return fmt.Errorf("tlcp: received unexpected handshake message of type %T when waiting for %T", got, wanted)
 }
 
 func isSupportedSignatureAlgorithm(sigAlg SignatureScheme, supportedSignatureAlgorithms []SignatureScheme) bool {

@@ -34,8 +34,8 @@ type keyAgreement interface {
 	generateClientKeyExchange(*Config, *clientHelloMsg, *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error)
 }
 
-var errClientKeyExchange = errors.New("tls: invalid ClientKeyExchange message")
-var errServerKeyExchange = errors.New("tls: invalid ServerKeyExchange message")
+var errClientKeyExchange = errors.New("tlcp: invalid ClientKeyExchange message")
+var errServerKeyExchange = errors.New("tlcp: invalid ServerKeyExchange message")
 
 // rsaKeyAgreement implements the standard TLS key agreement where the client
 // encrypts the pre-master secret to the server's public key.
@@ -57,7 +57,7 @@ func (ka rsaKeyAgreement) processClientKeyExchange(config *Config, cert *Certifi
 
 	priv, ok := cert.PrivateKey.(crypto.Decrypter)
 	if !ok {
-		return nil, errors.New("tls: certificate private key does not implement crypto.Decrypter")
+		return nil, errors.New("tlcp: certificate private key does not implement crypto.Decrypter")
 	}
 	// Perform constant time RSA PKCS #1 v1.5 decryption
 	preMasterSecret, err := priv.Decrypt(config.rand(), ciphertext, &rsa.PKCS1v15DecryptOptions{SessionKeyLen: 48})
@@ -74,7 +74,7 @@ func (ka rsaKeyAgreement) processClientKeyExchange(config *Config, cert *Certifi
 }
 
 func (ka rsaKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
-	return errors.New("tls: unexpected ServerKeyExchange")
+	return errors.New("tlcp: unexpected ServerKeyExchange")
 }
 
 func (ka rsaKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
@@ -88,7 +88,7 @@ func (ka rsaKeyAgreement) generateClientKeyExchange(config *Config, clientHello 
 
 	rsaKey, ok := cert.PublicKey.(*rsa.PublicKey)
 	if !ok {
-		return nil, nil, errors.New("tls: server certificate contains incorrect key type for selected ciphersuite")
+		return nil, nil, errors.New("tlcp: server certificate contains incorrect key type for selected ciphersuite")
 	}
 	encrypted, err := rsa.EncryptPKCS1v15(config.rand(), rsaKey, preMasterSecret)
 	if err != nil {
@@ -175,10 +175,10 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Cer
 	}
 
 	if curveID == 0 {
-		return nil, errors.New("tls: no supported elliptic curves offered")
+		return nil, errors.New("tlcp: no supported elliptic curves offered")
 	}
 	if _, ok := curveForCurveID(curveID); curveID != X25519 && !ok {
-		return nil, errors.New("tls: CurvePreferences includes unsupported curve")
+		return nil, errors.New("tlcp: CurvePreferences includes unsupported curve")
 	}
 
 	params, err := generateECDHEParameters(config.rand(), curveID)
@@ -198,7 +198,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Cer
 
 	priv, ok := cert.PrivateKey.(crypto.Signer)
 	if !ok {
-		return nil, fmt.Errorf("tls: certificate private key of type %T does not implement crypto.Signer", cert.PrivateKey)
+		return nil, fmt.Errorf("tlcp: certificate private key of type %T does not implement crypto.Signer", cert.PrivateKey)
 	}
 
 	var signatureAlgorithm SignatureScheme
@@ -220,7 +220,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Cer
 		}
 	}
 	if (sigType == signaturePKCS1v15 || sigType == signatureRSAPSS) != ka.isRSA {
-		return nil, errors.New("tls: certificate cannot be used with the selected cipher suite")
+		return nil, errors.New("tlcp: certificate cannot be used with the selected cipher suite")
 	}
 
 	signed := hashForServerKeyExchange(sigType, sigHash, ka.version, clientHello.random, hello.random, serverECDHEParams)
@@ -231,7 +231,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Cer
 	}
 	sig, err := priv.Sign(config.rand(), signed, signOpts)
 	if err != nil {
-		return nil, errors.New("tls: failed to sign ECDHE parameters: " + err.Error())
+		return nil, errors.New("tlcp: failed to sign ECDHE parameters: " + err.Error())
 	}
 
 	skx := new(serverKeyExchangeMsg)
@@ -272,7 +272,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 		return errServerKeyExchange
 	}
 	if skx.key[0] != 3 { // named curve
-		return errors.New("tls: server selected unsupported curve")
+		return errors.New("tlcp: server selected unsupported curve")
 	}
 	curveID := CurveID(skx.key[1])<<8 | CurveID(skx.key[2])
 
@@ -289,7 +289,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 	}
 
 	if _, ok := curveForCurveID(curveID); curveID != X25519 && !ok {
-		return errors.New("tls: server selected unsupported curve")
+		return errors.New("tlcp: server selected unsupported curve")
 	}
 
 	params, err := generateECDHEParameters(config.rand(), curveID)
@@ -319,7 +319,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 		}
 
 		if !isSupportedSignatureAlgorithm(signatureAlgorithm, clientHello.supportedSignatureAlgorithms) {
-			return errors.New("tls: certificate used with invalid signature algorithm")
+			return errors.New("tlcp: certificate used with invalid signature algorithm")
 		}
 		sigType, sigHash, err = typeAndHashFromSignatureScheme(signatureAlgorithm)
 		if err != nil {
@@ -343,14 +343,14 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 
 	signed := hashForServerKeyExchange(sigType, sigHash, ka.version, clientHello.random, serverHello.random, serverECDHEParams)
 	if err := verifyHandshakeSignature(sigType, cert.PublicKey, sigHash, signed, sig); err != nil {
-		return errors.New("tls: invalid signature by the server certificate: " + err.Error())
+		return errors.New("tlcp: invalid signature by the server certificate: " + err.Error())
 	}
 	return nil
 }
 
 func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
 	if ka.ckx == nil {
-		return nil, nil, errors.New("tls: missing ServerKeyExchange message")
+		return nil, nil, errors.New("tlcp: missing ServerKeyExchange message")
 	}
 
 	return ka.preMasterSecret, ka.ckx, nil

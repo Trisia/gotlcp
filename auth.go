@@ -139,9 +139,9 @@ func legacyTypeAndHashFromPublicKey(pub crypto.PublicKey) (sigType uint8, hash c
 		// but it requires holding on to a handshake transcript to do a
 		// full signature, and not even OpenSSL bothers with the
 		// complexity, so we can't even test it properly.
-		return 0, 0, fmt.Errorf("tls: Ed25519 public keys are not supported before TLS 1.2")
+		return 0, 0, fmt.Errorf("tlcp: Ed25519 public keys are not supported before TLS 1.2")
 	default:
-		return 0, 0, fmt.Errorf("tls: unsupported public key: %T", pub)
+		return 0, 0, fmt.Errorf("tlcp: unsupported public key: %T", pub)
 	}
 }
 
@@ -249,7 +249,7 @@ func selectSignatureScheme(vers uint16, c *Certificate, peerAlgs []SignatureSche
 			return preferredAlg, nil
 		}
 	}
-	return 0, errors.New("tls: peer doesn't support any of the certificate's signature algorithms")
+	return 0, errors.New("tlcp: peer doesn't support any of the certificate's signature algorithms")
 }
 
 // unsupportedCertificateError returns a helpful error for certificates with
@@ -257,15 +257,15 @@ func selectSignatureScheme(vers uint16, c *Certificate, peerAlgs []SignatureSche
 func unsupportedCertificateError(cert *Certificate) error {
 	switch cert.PrivateKey.(type) {
 	case rsa.PrivateKey, ecdsa.PrivateKey:
-		return fmt.Errorf("tls: unsupported certificate: private key is %T, expected *%T",
+		return fmt.Errorf("tlcp: unsupported certificate: private key is %T, expected *%T",
 			cert.PrivateKey, cert.PrivateKey)
 	case *ed25519.PrivateKey:
-		return fmt.Errorf("tls: unsupported certificate: private key is *ed25519.PrivateKey, expected ed25519.PrivateKey")
+		return fmt.Errorf("tlcp: unsupported certificate: private key is *ed25519.PrivateKey, expected ed25519.PrivateKey")
 	}
 
 	signer, ok := cert.PrivateKey.(crypto.Signer)
 	if !ok {
-		return fmt.Errorf("tls: certificate private key (%T) does not implement crypto.Signer",
+		return fmt.Errorf("tlcp: certificate private key (%T) does not implement crypto.Signer",
 			cert.PrivateKey)
 	}
 
@@ -276,18 +276,18 @@ func unsupportedCertificateError(cert *Certificate) error {
 		case elliptic.P384():
 		case elliptic.P521():
 		default:
-			return fmt.Errorf("tls: unsupported certificate curve (%s)", pub.Curve.Params().Name)
+			return fmt.Errorf("tlcp: unsupported certificate curve (%s)", pub.Curve.Params().Name)
 		}
 	case *rsa.PublicKey:
-		return fmt.Errorf("tls: certificate RSA key size too small for supported signature algorithms")
+		return fmt.Errorf("tlcp: certificate RSA key size too small for supported signature algorithms")
 	case ed25519.PublicKey:
 	default:
-		return fmt.Errorf("tls: unsupported certificate key (%T)", pub)
+		return fmt.Errorf("tlcp: unsupported certificate key (%T)", pub)
 	}
 
 	if cert.SupportedSignatureAlgorithms != nil {
-		return fmt.Errorf("tls: peer doesn't support the certificate custom signature algorithms")
+		return fmt.Errorf("tlcp: peer doesn't support the certificate custom signature algorithms")
 	}
 
-	return fmt.Errorf("tls: internal error: unsupported key (%T)", cert.PrivateKey)
+	return fmt.Errorf("tlcp: internal error: unsupported key (%T)", cert.PrivateKey)
 }

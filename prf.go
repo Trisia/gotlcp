@@ -217,7 +217,7 @@ func (h finishedHash) serverSum(masterSecret []byte) []byte {
 // necessary, suitable for signing by a TLS client certificate.
 func (h finishedHash) hashForClientCertificate(sigType uint8, hashAlg crypto.Hash, masterSecret []byte) []byte {
 	if (h.version >= VersionTLS12 || sigType == signatureEd25519) && h.buffer == nil {
-		panic("tls: handshake hash for a client certificate requested after discarding the handshake buffer")
+		panic("tlcp: handshake hash for a client certificate requested after discarding the handshake buffer")
 	}
 
 	if sigType == signatureEd25519 {
@@ -247,7 +247,7 @@ func (h *finishedHash) discardHandshakeBuffer() {
 // ConnectionState.ekm when renegotiation is enabled and thus
 // we wish to fail all key-material export requests.
 func noExportedKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
-	return nil, errors.New("crypto/tls: ExportKeyingMaterial is unavailable when renegotiation is enabled")
+	return nil, errors.New("crypto/tlcp: ExportKeyingMaterial is unavailable when renegotiation is enabled")
 }
 
 // ekmFromMasterSecret generates exported keying material as defined in RFC 5705.
@@ -256,7 +256,7 @@ func ekmFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clien
 		switch label {
 		case "client finished", "server finished", "master secret", "key expansion":
 			// These values are reserved and may not be used.
-			return nil, fmt.Errorf("crypto/tls: reserved ExportKeyingMaterial label: %s", label)
+			return nil, fmt.Errorf("crypto/tlcp: reserved ExportKeyingMaterial label: %s", label)
 		}
 
 		seedLen := len(serverRandom) + len(clientRandom)
@@ -270,7 +270,7 @@ func ekmFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clien
 
 		if context != nil {
 			if len(context) >= 1<<16 {
-				return nil, fmt.Errorf("crypto/tls: ExportKeyingMaterial context too long")
+				return nil, fmt.Errorf("crypto/tlcp: ExportKeyingMaterial context too long")
 			}
 			seed = append(seed, byte(len(context)>>8), byte(len(context)))
 			seed = append(seed, context...)

@@ -127,20 +127,20 @@ var alertTextCN = map[alert]string{
 func (e alert) String() string {
 	s, ok := alertText[e]
 	if ok {
-		return "tls: " + s
+		return "tlcp: " + s
 	}
-	return "tls: alert(" + strconv.Itoa(int(e)) + ")"
+	return "tlcp: alert(" + strconv.Itoa(int(e)) + ")"
 }
 
 func (e alert) Error() string {
 	return e.String()
 }
 
-// AlertCN 报警消息中文意义
-func AlertCN(e uint8) string {
-	s, ok := alertTextCN[alert(e)]
+// CN 报警消息中文意义
+func (e alert) CN() string {
+	s, ok := alertTextCN[e]
 	if ok {
 		return s
 	}
-	return "报警(" + strconv.Itoa(int(e)) + ")"
+	return "TLCP: 报警(" + strconv.Itoa(int(e)) + ")"
 }

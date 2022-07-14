@@ -5,7 +5,6 @@
 package tlcp
 
 import (
-	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
@@ -188,20 +187,20 @@ func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *
 	return nil
 }
 
-// A cipherSuiteTLS13 defines only the pair of the AEAD algorithm and hash
-// algorithm to be used with HKDF. See RFC 8446, Appendix B.4.
-type cipherSuiteTLS13 struct {
-	id     uint16
-	keyLen int
-	aead   func(key, fixedNonce []byte) aead
-	hash   crypto.Hash
-}
-
-var cipherSuitesTLS13 = []*cipherSuiteTLS13{ // TODO: replace with a map.
-	{TLS_AES_128_GCM_SHA256, 16, aeadAESGCMTLS13, crypto.SHA256},
-	{TLS_CHACHA20_POLY1305_SHA256, 32, aeadChaCha20Poly1305, crypto.SHA256},
-	{TLS_AES_256_GCM_SHA384, 32, aeadAESGCMTLS13, crypto.SHA384},
-}
+//// A cipherSuiteTLS13 defines only the pair of the AEAD algorithm and hash
+//// algorithm to be used with HKDF. See RFC 8446, Appendix B.4.
+//type cipherSuiteTLS13 struct {
+//	id     uint16
+//	keyLen int
+//	aead   func(key, fixedNonce []byte) aead
+//	hash   crypto.Hash
+//}
+//
+//var cipherSuitesTLS13 = []*cipherSuiteTLS13{ // TODO: replace with a map.
+//	{TLS_AES_128_GCM_SHA256, 16, aeadAESGCMTLS13, crypto.SHA256},
+//	{TLS_CHACHA20_POLY1305_SHA256, 32, aeadChaCha20Poly1305, crypto.SHA256},
+//	{TLS_AES_256_GCM_SHA384, 32, aeadAESGCMTLS13, crypto.SHA384},
+//}
 
 // cipherSuitesPreferenceOrder is the order in which we'll select (on the
 // server) or advertise (on the client) TLS 1.0–1.2 cipher suites.
@@ -509,7 +508,7 @@ func (f *xorNonceAEAD) Open(out, nonce, ciphertext, additionalData []byte) ([]by
 
 func aeadAESGCM(key, noncePrefix []byte) aead {
 	if len(noncePrefix) != noncePrefixLength {
-		panic("tls: internal error: wrong nonce length")
+		panic("tlcp: internal error: wrong nonce length")
 	}
 	aes, err := aes.NewCipher(key)
 	if err != nil {
@@ -533,7 +532,7 @@ func aeadAESGCM(key, noncePrefix []byte) aead {
 
 func aeadAESGCMTLS13(key, nonceMask []byte) aead {
 	if len(nonceMask) != aeadNonceLength {
-		panic("tls: internal error: wrong nonce length")
+		panic("tlcp: internal error: wrong nonce length")
 	}
 	aes, err := aes.NewCipher(key)
 	if err != nil {
@@ -551,7 +550,7 @@ func aeadAESGCMTLS13(key, nonceMask []byte) aead {
 
 func aeadChaCha20Poly1305(key, nonceMask []byte) aead {
 	if len(nonceMask) != aeadNonceLength {
-		panic("tls: internal error: wrong nonce length")
+		panic("tlcp: internal error: wrong nonce length")
 	}
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {

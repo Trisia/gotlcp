@@ -45,15 +45,6 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 		return err
 	}
 
-	if c.vers == VersionTLS13 {
-		hs := serverHandshakeStateTLS13{
-			c:           c,
-			ctx:         ctx,
-			clientHello: clientHello,
-		}
-		return hs.handshake()
-	}
-
 	hs := serverHandshakeState{
 		c:           c,
 		ctx:         ctx,
@@ -156,10 +147,11 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	if len(clientHello.supportedVersions) == 0 {
 		clientVersions = supportedVersionsFromMax(clientHello.vers)
 	}
+	// 客户端支持的协议版本 与 服务端支持的服务版本 进行匹配
 	c.vers, ok = c.config.mutualVersion(roleServer, clientVersions)
 	if !ok {
 		c.sendAlert(alertProtocolVersion)
-		return nil, fmt.Errorf("tls: client offered only unsupported versions: %x", clientVersions)
+		return nil, fmt.Errorf("tlcp: client offered only unsupported versions: %x", clientVersions)
 	}
 	c.haveVers = true
 	c.in.version = c.vers
@@ -185,30 +177,17 @@ func (hs *serverHandshakeState) processClientHello() error {
 
 	if !foundCompression {
 		c.sendAlert(alertHandshakeFailure)
-		return errors.New("tls: client does not support uncompressed connections")
+		return errors.New("tlcp: client does not support uncompressed connections")
 	}
-
-	hs.hello.random = make([]byte, 32)
-	serverRandom := hs.hello.random
-	// Downgrade protection canaries. See RFC 8446, Section 4.1.3.
-	maxVers := c.config.maxSupportedVersion(roleServer)
-	if maxVers >= VersionTLS12 && c.vers < maxVers || testingOnlyForceDowngradeCanary {
-		if c.vers == VersionTLS12 {
-			copy(serverRandom[24:], downgradeCanaryTLS12)
-		} else {
-			copy(serverRandom[24:], downgradeCanaryTLS11)
-		}
-		serverRandom = serverRandom[:24]
-	}
-	_, err := io.ReadFull(c.config.rand(), serverRandom)
-	if err != nil {
+	var err error
+	if hs.hello.random, err = c.gmtRandom(); err != nil {
 		c.sendAlert(alertInternalError)
 		return err
 	}
 
 	if len(hs.clientHello.secureRenegotiation) != 0 {
 		c.sendAlert(alertHandshakeFailure)
-		return errors.New("tls: initial handshake had non-empty renegotiation extension")
+		return errors.New("tlcp: initial handshake had non-empty renegotiation extension")
 	}
 
 	hs.hello.secureRenegotiationSupported = hs.clientHello.secureRenegotiationSupported
@@ -259,7 +238,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 			hs.rsaSignOk = true
 		default:
 			c.sendAlert(alertInternalError)
-			return fmt.Errorf("tls: unsupported signing key type (%T)", priv.Public())
+			return fmt.Errorf("tlcp: unsupported signing key type (%T)", priv.Public())
 		}
 	}
 	if priv, ok := hs.cert.PrivateKey.(crypto.Decrypter); ok {
@@ -268,7 +247,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 			hs.rsaDecryptOk = true
 		default:
 			c.sendAlert(alertInternalError)
-			return fmt.Errorf("tls: unsupported decryption key type (%T)", priv.Public())
+			return fmt.Errorf("tlcp: unsupported decryption key type (%T)", priv.Public())
 		}
 	}
 
@@ -300,7 +279,7 @@ func negotiateALPN(serverProtos, clientProtos []string) (string, error) {
 	if http11fallback {
 		return "", nil
 	}
-	return "", fmt.Errorf("tls: client requested unsupported application protocols (%s)", clientProtos)
+	return "", fmt.Errorf("tlcp: client requested unsupported application protocols (%s)", clientProtos)
 }
 
 // supportsECDHE returns whether ECDHE key exchanges can be used with this
@@ -347,7 +326,7 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 	hs.suite = selectCipherSuite(preferenceList, hs.clientHello.cipherSuites, hs.cipherSuiteOk)
 	if hs.suite == nil {
 		c.sendAlert(alertHandshakeFailure)
-		return errors.New("tls: no cipher suite supported by both client and server")
+		return errors.New("tlcp: no cipher suite supported by both client and server")
 	}
 	c.cipherSuite = hs.suite.id
 
@@ -356,7 +335,7 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 			// The client is doing a fallback connection. See RFC 7507.
 			if hs.clientHello.vers < c.config.maxSupportedVersion(roleServer) {
 				c.sendAlert(alertInappropriateFallback)
-				return errors.New("tls: client using inappropriate protocol fallback")
+				return errors.New("tlcp: client using inappropriate protocol fallback")
 			}
 			break
 		}
@@ -647,7 +626,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		if c.vers >= VersionTLS12 {
 			if !isSupportedSignatureAlgorithm(certVerify.signatureAlgorithm, certReq.supportedSignatureAlgorithms) {
 				c.sendAlert(alertIllegalParameter)
-				return errors.New("tls: client certificate used with invalid signature algorithm")
+				return errors.New("tlcp: client certificate used with invalid signature algorithm")
 			}
 			sigType, sigHash, err = typeAndHashFromSignatureScheme(certVerify.signatureAlgorithm)
 			if err != nil {
@@ -664,7 +643,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		signed := hs.finishedHash.hashForClientCertificate(sigType, sigHash, hs.masterSecret)
 		if err := verifyHandshakeSignature(sigType, pub, sigHash, signed, certVerify.signature); err != nil {
 			c.sendAlert(alertDecryptError)
-			return errors.New("tls: invalid signature by the client certificate: " + err.Error())
+			return errors.New("tlcp: invalid signature by the client certificate: " + err.Error())
 		}
 
 		hs.finishedHash.Write(certVerify.marshal())
@@ -721,7 +700,7 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 	if len(verify) != len(clientFinished.verifyData) ||
 		subtle.ConstantTimeCompare(verify, clientFinished.verifyData) != 1 {
 		c.sendAlert(alertHandshakeFailure)
-		return errors.New("tls: client's Finished message is incorrect")
+		return errors.New("tlcp: client's Finished message is incorrect")
 	}
 
 	hs.finishedHash.Write(clientFinished.marshal())
@@ -801,13 +780,13 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	for i, asn1Data := range certificates {
 		if certs[i], err = x509.ParseCertificate(asn1Data); err != nil {
 			c.sendAlert(alertBadCertificate)
-			return errors.New("tls: failed to parse client certificate: " + err.Error())
+			return errors.New("tlcp: failed to parse client certificate: " + err.Error())
 		}
 	}
 
 	if len(certs) == 0 && requiresClientCert(c.config.ClientAuth) {
 		c.sendAlert(alertBadCertificate)
-		return errors.New("tls: client didn't provide a certificate")
+		return errors.New("tlcp: client didn't provide a certificate")
 	}
 
 	if c.config.ClientAuth >= VerifyClientCertIfGiven && len(certs) > 0 {
@@ -825,7 +804,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		chains, err := certs[0].Verify(opts)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
-			return errors.New("tls: failed to verify client certificate: " + err.Error())
+			return errors.New("tlcp: failed to verify client certificate: " + err.Error())
 		}
 
 		c.verifiedChains = chains
@@ -840,7 +819,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey:
 		default:
 			c.sendAlert(alertUnsupportedCertificate)
-			return fmt.Errorf("tls: client certificate contains an unsupported public key of type %T", certs[0].PublicKey)
+			return fmt.Errorf("tlcp: client certificate contains an unsupported public key of type %T", certs[0].PublicKey)
 		}
 	}
 
@@ -872,4 +851,20 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 		config:            c.config,
 		ctx:               ctx,
 	}
+}
+
+// 国密类型的随机数 4 byte unix time 28 byte random
+// 见 GM/T 38636-2016 6.4.5.2.1 b) random
+func (c *Conn) gmtRandom() ([]byte, error) {
+	rd := make([]byte, 32)
+	_, err := io.ReadFull(c.config.rand(), rd)
+	if err != nil {
+		return nil, err
+	}
+	unixTime := time.Now().Unix()
+	rd[0] = uint8(unixTime >> 24)
+	rd[1] = uint8(unixTime >> 16)
+	rd[2] = uint8(unixTime >> 8)
+	rd[3] = uint8(unixTime)
+	return rd, nil
 }
