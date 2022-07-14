@@ -3,8 +3,9 @@
 // license that can be found in the LICENSE file.
 
 //go:build unix
+// +build unix
 
-package tls
+package tlcp
 
 import (
 	"errors"

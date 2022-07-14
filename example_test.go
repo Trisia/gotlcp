@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package tls_test
+package tlcp_test
 
 import (
 	"crypto/tls"

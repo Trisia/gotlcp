@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package tls
+package tlcp
 
 import (
 	"crypto"
@@ -10,13 +10,12 @@ import (
 	"crypto/cipher"
 	"crypto/des"
 	"crypto/hmac"
-	"crypto/internal/boring"
 	"crypto/rc4"
 	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
+	"golang.org/x/sys/cpu"
 	"hash"
-	"internal/cpu"
 	"runtime"
 
 	"golang.org/x/crypto/chacha20poly1305"

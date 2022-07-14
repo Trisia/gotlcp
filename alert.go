@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package tls
+package tlcp
 
 import "strconv"
 
@@ -48,6 +48,12 @@ const (
 	alertUnknownPSKIdentity           alert = 115
 	alertCertificateRequired          alert = 116
 	alertNoApplicationProtocol        alert = 120
+	alertUnsupportedSite2site         alert = 200 // 不支持site2site
+	alertNoArea                       alert = 201 // 没有保护域
+	alertUnsupportedAreatype          alert = 202 // 不支持的保护域类型
+	alertBadIbcparam                  alert = 203 // 接收到一个无效的ibc公共参数
+	alertUnsupportedIbcparam          alert = 204 // 不支持的 ibc公共参数中定义的信息
+	alertIdentityNeed                 alert = 205 // 缺少对方的ibc标识
 )
 
 var alertText = map[alert]string{
@@ -86,6 +92,38 @@ var alertText = map[alert]string{
 	alertNoApplicationProtocol:        "no application protocol",
 }
 
+// 错误中文描述 FROM GB/T 38636-2016 6.4.3.3
+var alertTextCN = map[alert]string{
+	alertCloseNotify:            "关闭通知",
+	alertUnexpectedMessage:      "接收到一个不符合上下文关系的消息",
+	alertBadRecordMAC:           "MAC校验错误或解密错误",
+	alertDecryptionFailed:       "解密失败",
+	alertRecordOverflow:         "报文过长",
+	alertDecompressionFailure:   "解压缩失败",
+	alertHandshakeFailure:       "协商失败",
+	alertBadCertificate:         "证书破坏",
+	alertUnsupportedCertificate: "不支持证书类型",
+	alertCertificateRevoked:     "证书被撤销",
+	alertCertificateExpired:     "证书过期或未生效",
+	alertCertificateUnknown:     "未知证书错误",
+	alertIllegalParameter:       "非法参数",
+	alertUnknownCA:              "根证书不可信",
+	alertAccessDenied:           "拒绝访问",
+	alertDecodeError:            "消息解码失败",
+	alertDecryptError:           "消息解密失败",
+	alertProtocolVersion:        "版本不匹配",
+	alertInsufficientSecurity:   "安全性不足",
+	alertInternalError:          "内部错误",
+	alertUserCanceled:           "用户取消操作",
+	alertNoRenegotiation:        "拒绝重新协商",
+	alertUnsupportedSite2site:   "不支持 site2site",
+	alertNoArea:                 "没有保护域",
+	alertUnsupportedAreatype:    "不支持的保护域类型",
+	alertBadIbcparam:            "接收到一个无效的ibc公共参数",
+	alertUnsupportedIbcparam:    "不支持ibc公共参数中定义的信息",
+	alertIdentityNeed:           "缺少对方的ibc标识",
+}
+
 func (e alert) String() string {
 	s, ok := alertText[e]
 	if ok {
@@ -96,4 +134,13 @@ func (e alert) String() string {
 
 func (e alert) Error() string {
 	return e.String()
+}
+
+// AlertCN 报警消息中文意义
+func AlertCN(e uint8) string {
+	s, ok := alertTextCN[alert(e)]
+	if ok {
+		return s
+	}
+	return "报警(" + strconv.Itoa(int(e)) + ")"
 }

@@ -3,8 +3,9 @@
 // license that can be found in the LICENSE file.
 
 //go:build !boringcrypto
+// +build !boringcrypto
 
-package tls
+package tlcp
 
 func needFIPS() bool { return false }
 
