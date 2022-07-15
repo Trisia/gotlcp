@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
-	"crypto/sha512"
 	"errors"
 	"fmt"
 	x509 "github.com/emmansun/gmsm/smx509"
@@ -566,14 +565,6 @@ type Config struct {
 	// If RootCAs is nil, TLS uses the host's root CA set.
 	RootCAs *x509.CertPool
 
-	// NextProtos is a list of supported application level protocols, in
-	// order of preference. If both peers support ALPN, the selected
-	// protocol will be one from this list, and the connection will fail
-	// if there is no mutually supported protocol. If NextProtos is empty
-	// or the peer doesn't support ALPN, the connection will succeed and
-	// ConnectionState.NegotiatedProtocol will be empty.
-	NextProtos []string
-
 	// ServerName is used to verify the hostname on the returned
 	// certificates unless InsecureSkipVerify is given. It is also included
 	// in the client's handshake to support virtual hosting unless it is
@@ -603,31 +594,6 @@ type Config struct {
 	// If CipherSuites is nil, a safe default list is used. The default cipher
 	// suites might change over time.
 	CipherSuites []uint16
-
-	// PreferServerCipherSuites is a legacy field and has no effect.
-	//
-	// It used to control whether the server would follow the client's or the
-	// server's preference. Servers now select the best mutually supported
-	// cipher suite based on logic that takes into account inferred client
-	// hardware, server hardware, and security.
-	//
-	// Deprecated: PreferServerCipherSuites is ignored.
-	PreferServerCipherSuites bool
-
-	// SessionTicketsDisabled may be set to true to disable session ticket and
-	// PSK (resumption) support. Note that on clients, session ticket support is
-	// also disabled if ClientSessionCache is nil.
-	SessionTicketsDisabled bool
-
-	// SessionTicketKey is used by TLS servers to provide session resumption.
-	// See RFC 5077 and the PSK mode of RFC 8446. If zero, it will be filled
-	// with random data before the first server handshake.
-	//
-	// Deprecated: if this field is left at zero, session ticket keys will be
-	// automatically rotated every day and dropped after seven days. For
-	// customizing the rotation schedule or synchronizing servers that are
-	// terminating connections for the same host, use SetSessionTicketKeys.
-	SessionTicketKey [32]byte
 
 	// ClientSessionCache is a cache of ClientSessionState entries for TLS
 	// session resumption. It is only used by clients.
@@ -677,57 +643,59 @@ type Config struct {
 
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
-	// sessionTicketKeys contains zero or more ticket keys. If set, it means the
-	// the keys were set with SessionTicketKey or SetSessionTicketKeys. The
-	// first key is used for new tickets and any subsequent keys can be used to
-	// decrypt old tickets. The slice contents are not protected by the mutex
-	// and are immutable.
-	sessionTicketKeys []ticketKey
-	// autoSessionTicketKeys is like sessionTicketKeys but is owned by the
-	// auto-rotation logic. See Config.ticketKeys.
-	autoSessionTicketKeys []ticketKey
+
+	//// sessionTicketKeys contains zero or more ticket keys. If set, it means the
+	//// the keys were set with SessionTicketKey or SetSessionTicketKeys. The
+	//// first key is used for new tickets and any subsequent keys can be used to
+	//// decrypt old tickets. The slice contents are not protected by the mutex
+	//// and are immutable.
+	//sessionTicketKeys []ticketKey
+	//// autoSessionTicketKeys is like sessionTicketKeys but is owned by the
+	//// auto-rotation logic. See Config.ticketKeys.
+	//autoSessionTicketKeys []ticketKey
 }
 
-const (
-	// ticketKeyNameLen is the number of bytes of identifier that is prepended to
-	// an encrypted session ticket in order to identify the key used to encrypt it.
-	ticketKeyNameLen = 16
-
-	// ticketKeyLifetime is how long a ticket key remains valid and can be used to
-	// resume a client connection.
-	ticketKeyLifetime = 7 * 24 * time.Hour // 7 days
-
-	// ticketKeyRotation is how often the server should rotate the session ticket key
-	// that is used for new tickets.
-	ticketKeyRotation = 24 * time.Hour
-)
-
-// ticketKey is the internal representation of a session ticket key.
-type ticketKey struct {
-	// keyName is an opaque byte string that serves to identify the session
-	// ticket key. It's exposed as plaintext in every session ticket.
-	keyName [ticketKeyNameLen]byte
-	aesKey  [16]byte
-	hmacKey [16]byte
-	// created is the time at which this ticket key was created. See Config.ticketKeys.
-	created time.Time
-}
-
-// ticketKeyFromBytes converts from the external representation of a session
-// ticket key to a ticketKey. Externally, session ticket keys are 32 random
-// bytes and this function expands that into sufficient name and key material.
-func (c *Config) ticketKeyFromBytes(b [32]byte) (key ticketKey) {
-	hashed := sha512.Sum512(b[:])
-	copy(key.keyName[:], hashed[:ticketKeyNameLen])
-	copy(key.aesKey[:], hashed[ticketKeyNameLen:ticketKeyNameLen+16])
-	copy(key.hmacKey[:], hashed[ticketKeyNameLen+16:ticketKeyNameLen+32])
-	key.created = c.time()
-	return key
-}
-
-// maxSessionTicketLifetime is the maximum allowed lifetime of a TLS 1.3 session
-// ticket, and the lifetime we set for tickets we send.
-const maxSessionTicketLifetime = 7 * 24 * time.Hour
+//
+//const (
+//	// ticketKeyNameLen is the number of bytes of identifier that is prepended to
+//	// an encrypted session ticket in order to identify the key used to encrypt it.
+//	ticketKeyNameLen = 16
+//
+//	// ticketKeyLifetime is how long a ticket key remains valid and can be used to
+//	// resume a client connection.
+//	ticketKeyLifetime = 7 * 24 * time.Hour // 7 days
+//
+//	// ticketKeyRotation is how often the server should rotate the session ticket key
+//	// that is used for new tickets.
+//	ticketKeyRotation = 24 * time.Hour
+//)
+//
+//// ticketKey is the internal representation of a session ticket key.
+//type ticketKey struct {
+//	// keyName is an opaque byte string that serves to identify the session
+//	// ticket key. It's exposed as plaintext in every session ticket.
+//	keyName [ticketKeyNameLen]byte
+//	aesKey  [16]byte
+//	hmacKey [16]byte
+//	// created is the time at which this ticket key was created. See Config.ticketKeys.
+//	created time.Time
+//}
+//
+//// ticketKeyFromBytes converts from the external representation of a session
+//// ticket key to a ticketKey. Externally, session ticket keys are 32 random
+//// bytes and this function expands that into sufficient name and key material.
+//func (c *Config) ticketKeyFromBytes(b [32]byte) (key ticketKey) {
+//	hashed := sha512.Sum512(b[:])
+//	copy(key.keyName[:], hashed[:ticketKeyNameLen])
+//	copy(key.aesKey[:], hashed[ticketKeyNameLen:ticketKeyNameLen+16])
+//	copy(key.hmacKey[:], hashed[ticketKeyNameLen+16:ticketKeyNameLen+32])
+//	key.created = c.time()
+//	return key
+//}
+//
+//// maxSessionTicketLifetime is the maximum allowed lifetime of a TLS 1.3 session
+//// ticket, and the lifetime we set for tickets we send.
+//const maxSessionTicketLifetime = 7 * 24 * time.Hour
 
 // Clone returns a shallow clone of c or nil if c is nil. It is safe to clone a Config that is
 // being used concurrently by a TLS client or server.
@@ -742,21 +710,21 @@ func (c *Config) Clone() *Config {
 		Time:         c.Time,
 		Certificates: c.Certificates,
 		//NameToCertificate:           c.NameToCertificate,
-		GetCertificate:              c.GetCertificate,
-		GetClientCertificate:        c.GetClientCertificate,
-		GetConfigForClient:          c.GetConfigForClient,
-		VerifyPeerCertificate:       c.VerifyPeerCertificate,
-		VerifyConnection:            c.VerifyConnection,
-		RootCAs:                     c.RootCAs,
-		NextProtos:                  c.NextProtos,
-		ServerName:                  c.ServerName,
-		ClientAuth:                  c.ClientAuth,
-		ClientCAs:                   c.ClientCAs,
-		InsecureSkipVerify:          c.InsecureSkipVerify,
-		CipherSuites:                c.CipherSuites,
-		PreferServerCipherSuites:    c.PreferServerCipherSuites,
-		SessionTicketsDisabled:      c.SessionTicketsDisabled,
-		SessionTicketKey:            c.SessionTicketKey,
+		GetCertificate:        c.GetCertificate,
+		GetClientCertificate:  c.GetClientCertificate,
+		GetConfigForClient:    c.GetConfigForClient,
+		VerifyPeerCertificate: c.VerifyPeerCertificate,
+		VerifyConnection:      c.VerifyConnection,
+		RootCAs:               c.RootCAs,
+		//NextProtos:            c.NextProtos,
+		ServerName:         c.ServerName,
+		ClientAuth:         c.ClientAuth,
+		ClientCAs:          c.ClientCAs,
+		InsecureSkipVerify: c.InsecureSkipVerify,
+		CipherSuites:       c.CipherSuites,
+		//PreferServerCipherSuites:    c.PreferServerCipherSuites,
+		//SessionTicketsDisabled:      c.SessionTicketsDisabled,
+		//SessionTicketKey:            c.SessionTicketKey,
 		ClientSessionCache:          c.ClientSessionCache,
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
@@ -764,136 +732,138 @@ func (c *Config) Clone() *Config {
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 		Renegotiation:               c.Renegotiation,
 		KeyLogWriter:                c.KeyLogWriter,
-		sessionTicketKeys:           c.sessionTicketKeys,
-		autoSessionTicketKeys:       c.autoSessionTicketKeys,
+		//sessionTicketKeys:           c.sessionTicketKeys,
+		//autoSessionTicketKeys:       c.autoSessionTicketKeys,
 	}
 }
 
-// deprecatedSessionTicketKey is set as the prefix of SessionTicketKey if it was
-// randomized for backwards compatibility but is not in use.
-var deprecatedSessionTicketKey = []byte("DEPRECATED")
-
-// initLegacySessionTicketKeyRLocked ensures the legacy SessionTicketKey field is
-// randomized if empty, and that sessionTicketKeys is populated from it otherwise.
-func (c *Config) initLegacySessionTicketKeyRLocked() {
-	// Don't write if SessionTicketKey is already defined as our deprecated string,
-	// or if it is defined by the user but sessionTicketKeys is already set.
-	if c.SessionTicketKey != [32]byte{} &&
-		(bytes.HasPrefix(c.SessionTicketKey[:], deprecatedSessionTicketKey) || len(c.sessionTicketKeys) > 0) {
-		return
-	}
-
-	// We need to write some data, so get an exclusive lock and re-check any conditions.
-	c.mutex.RUnlock()
-	defer c.mutex.RLock()
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.SessionTicketKey == [32]byte{} {
-		if _, err := io.ReadFull(c.rand(), c.SessionTicketKey[:]); err != nil {
-			panic(fmt.Sprintf("tlcp: unable to generate random session ticket key: %v", err))
-		}
-		// Write the deprecated prefix at the beginning so we know we created
-		// it. This key with the DEPRECATED prefix isn't used as an actual
-		// session ticket key, and is only randomized in case the application
-		// reuses it for some reason.
-		copy(c.SessionTicketKey[:], deprecatedSessionTicketKey)
-	} else if !bytes.HasPrefix(c.SessionTicketKey[:], deprecatedSessionTicketKey) && len(c.sessionTicketKeys) == 0 {
-		c.sessionTicketKeys = []ticketKey{c.ticketKeyFromBytes(c.SessionTicketKey)}
-	}
-
-}
-
-// ticketKeys returns the ticketKeys for this connection.
-// If configForClient has explicitly set keys, those will
-// be returned. Otherwise, the keys on c will be used and
-// may be rotated if auto-managed.
-// During rotation, any expired session ticket keys are deleted from
-// c.sessionTicketKeys. If the session ticket key that is currently
-// encrypting tickets (ie. the first ticketKey in c.sessionTicketKeys)
-// is not fresh, then a new session ticket key will be
-// created and prepended to c.sessionTicketKeys.
-func (c *Config) ticketKeys(configForClient *Config) []ticketKey {
-	// If the ConfigForClient callback returned a Config with explicitly set
-	// keys, use those, otherwise just use the original Config.
-	if configForClient != nil {
-		configForClient.mutex.RLock()
-		if configForClient.SessionTicketsDisabled {
-			return nil
-		}
-		configForClient.initLegacySessionTicketKeyRLocked()
-		if len(configForClient.sessionTicketKeys) != 0 {
-			ret := configForClient.sessionTicketKeys
-			configForClient.mutex.RUnlock()
-			return ret
-		}
-		configForClient.mutex.RUnlock()
-	}
-
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	if c.SessionTicketsDisabled {
-		return nil
-	}
-	c.initLegacySessionTicketKeyRLocked()
-	if len(c.sessionTicketKeys) != 0 {
-		return c.sessionTicketKeys
-	}
-	// Fast path for the common case where the key is fresh enough.
-	if len(c.autoSessionTicketKeys) > 0 && c.time().Sub(c.autoSessionTicketKeys[0].created) < ticketKeyRotation {
-		return c.autoSessionTicketKeys
-	}
-
-	// autoSessionTicketKeys are managed by auto-rotation.
-	c.mutex.RUnlock()
-	defer c.mutex.RLock()
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	// Re-check the condition in case it changed since obtaining the new lock.
-	if len(c.autoSessionTicketKeys) == 0 || c.time().Sub(c.autoSessionTicketKeys[0].created) >= ticketKeyRotation {
-		var newKey [32]byte
-		if _, err := io.ReadFull(c.rand(), newKey[:]); err != nil {
-			panic(fmt.Sprintf("unable to generate random session ticket key: %v", err))
-		}
-		valid := make([]ticketKey, 0, len(c.autoSessionTicketKeys)+1)
-		valid = append(valid, c.ticketKeyFromBytes(newKey))
-		for _, k := range c.autoSessionTicketKeys {
-			// While rotating the current key, also remove any expired ones.
-			if c.time().Sub(k.created) < ticketKeyLifetime {
-				valid = append(valid, k)
-			}
-		}
-		c.autoSessionTicketKeys = valid
-	}
-	return c.autoSessionTicketKeys
-}
-
-// SetSessionTicketKeys updates the session ticket keys for a server.
 //
-// The first key will be used when creating new tickets, while all keys can be
-// used for decrypting tickets. It is safe to call this function while the
-// server is running in order to rotate the session ticket keys. The function
-// will panic if keys is empty.
+//// deprecatedSessionTicketKey is set as the prefix of SessionTicketKey if it was
+//// randomized for backwards compatibility but is not in use.
+//var deprecatedSessionTicketKey = []byte("DEPRECATED")
 //
-// Calling this function will turn off automatic session ticket key rotation.
+//// initLegacySessionTicketKeyRLocked ensures the legacy SessionTicketKey field is
+//// randomized if empty, and that sessionTicketKeys is populated from it otherwise.
+//func (c *Config) initLegacySessionTicketKeyRLocked() {
+//	// Don't write if SessionTicketKey is already defined as our deprecated string,
+//	// or if it is defined by the user but sessionTicketKeys is already set.
+//	if c.SessionTicketKey != [32]byte{} &&
+//		(bytes.HasPrefix(c.SessionTicketKey[:], deprecatedSessionTicketKey) || len(c.sessionTicketKeys) > 0) {
+//		return
+//	}
 //
-// If multiple servers are terminating connections for the same host they should
-// all have the same session ticket keys. If the session ticket keys leaks,
-// previously recorded and future TLS connections using those keys might be
-// compromised.
-func (c *Config) SetSessionTicketKeys(keys [][32]byte) {
-	if len(keys) == 0 {
-		panic("tlcp: keys must have at least one key")
-	}
+//	// We need to write some data, so get an exclusive lock and re-check any conditions.
+//	c.mutex.RUnlock()
+//	defer c.mutex.RLock()
+//	c.mutex.Lock()
+//	defer c.mutex.Unlock()
+//	if c.SessionTicketKey == [32]byte{} {
+//		if _, err := io.ReadFull(c.rand(), c.SessionTicketKey[:]); err != nil {
+//			panic(fmt.Sprintf("tlcp: unable to generate random session ticket key: %v", err))
+//		}
+//		// Write the deprecated prefix at the beginning so we know we created
+//		// it. This key with the DEPRECATED prefix isn't used as an actual
+//		// session ticket key, and is only randomized in case the application
+//		// reuses it for some reason.
+//		copy(c.SessionTicketKey[:], deprecatedSessionTicketKey)
+//	} else if !bytes.HasPrefix(c.SessionTicketKey[:], deprecatedSessionTicketKey) && len(c.sessionTicketKeys) == 0 {
+//		c.sessionTicketKeys = []ticketKey{c.ticketKeyFromBytes(c.SessionTicketKey)}
+//	}
+//
+//}
 
-	newKeys := make([]ticketKey, len(keys))
-	for i, bytes := range keys {
-		newKeys[i] = c.ticketKeyFromBytes(bytes)
-	}
-
-	c.mutex.Lock()
-	c.sessionTicketKeys = newKeys
-	c.mutex.Unlock()
-}
+//
+//// ticketKeys returns the ticketKeys for this connection.
+//// If configForClient has explicitly set keys, those will
+//// be returned. Otherwise, the keys on c will be used and
+//// may be rotated if auto-managed.
+//// During rotation, any expired session ticket keys are deleted from
+//// c.sessionTicketKeys. If the session ticket key that is currently
+//// encrypting tickets (ie. the first ticketKey in c.sessionTicketKeys)
+//// is not fresh, then a new session ticket key will be
+//// created and prepended to c.sessionTicketKeys.
+//func (c *Config) ticketKeys(configForClient *Config) []ticketKey {
+//	// If the ConfigForClient callback returned a Config with explicitly set
+//	// keys, use those, otherwise just use the original Config.
+//	if configForClient != nil {
+//		configForClient.mutex.RLock()
+//		if configForClient.SessionTicketsDisabled {
+//			return nil
+//		}
+//		configForClient.initLegacySessionTicketKeyRLocked()
+//		if len(configForClient.sessionTicketKeys) != 0 {
+//			ret := configForClient.sessionTicketKeys
+//			configForClient.mutex.RUnlock()
+//			return ret
+//		}
+//		configForClient.mutex.RUnlock()
+//	}
+//
+//	c.mutex.RLock()
+//	defer c.mutex.RUnlock()
+//	if c.SessionTicketsDisabled {
+//		return nil
+//	}
+//	c.initLegacySessionTicketKeyRLocked()
+//	if len(c.sessionTicketKeys) != 0 {
+//		return c.sessionTicketKeys
+//	}
+//	// Fast path for the common case where the key is fresh enough.
+//	if len(c.autoSessionTicketKeys) > 0 && c.time().Sub(c.autoSessionTicketKeys[0].created) < ticketKeyRotation {
+//		return c.autoSessionTicketKeys
+//	}
+//
+//	// autoSessionTicketKeys are managed by auto-rotation.
+//	c.mutex.RUnlock()
+//	defer c.mutex.RLock()
+//	c.mutex.Lock()
+//	defer c.mutex.Unlock()
+//	// Re-check the condition in case it changed since obtaining the new lock.
+//	if len(c.autoSessionTicketKeys) == 0 || c.time().Sub(c.autoSessionTicketKeys[0].created) >= ticketKeyRotation {
+//		var newKey [32]byte
+//		if _, err := io.ReadFull(c.rand(), newKey[:]); err != nil {
+//			panic(fmt.Sprintf("unable to generate random session ticket key: %v", err))
+//		}
+//		valid := make([]ticketKey, 0, len(c.autoSessionTicketKeys)+1)
+//		valid = append(valid, c.ticketKeyFromBytes(newKey))
+//		for _, k := range c.autoSessionTicketKeys {
+//			// While rotating the current key, also remove any expired ones.
+//			if c.time().Sub(k.created) < ticketKeyLifetime {
+//				valid = append(valid, k)
+//			}
+//		}
+//		c.autoSessionTicketKeys = valid
+//	}
+//	return c.autoSessionTicketKeys
+//}
+//
+//// SetSessionTicketKeys updates the session ticket keys for a server.
+////
+//// The first key will be used when creating new tickets, while all keys can be
+//// used for decrypting tickets. It is safe to call this function while the
+//// server is running in order to rotate the session ticket keys. The function
+//// will panic if keys is empty.
+////
+//// Calling this function will turn off automatic session ticket key rotation.
+////
+//// If multiple servers are terminating connections for the same host they should
+//// all have the same session ticket keys. If the session ticket keys leaks,
+//// previously recorded and future TLS connections using those keys might be
+//// compromised.
+//func (c *Config) SetSessionTicketKeys(keys [][32]byte) {
+//	if len(keys) == 0 {
+//		panic("tlcp: keys must have at least one key")
+//	}
+//
+//	newKeys := make([]ticketKey, len(keys))
+//	for i, bytes := range keys {
+//		newKeys[i] = c.ticketKeyFromBytes(bytes)
+//	}
+//
+//	c.mutex.Lock()
+//	c.sessionTicketKeys = newKeys
+//	c.mutex.Unlock()
+//}
 
 func (c *Config) rand() io.Reader {
 	r := c.Rand
