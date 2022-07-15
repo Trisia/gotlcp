@@ -30,6 +30,7 @@ type serverHandshakeState struct {
 	suite        *cipherSuite
 	ecdheOk      bool
 	ecSignOk     bool
+	ecDecryptOk  bool
 	rsaDecryptOk bool
 	rsaSignOk    bool
 	sessionState *sessionState
@@ -181,24 +182,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 		return err
 	}
 
-	//if len(hs.clientHello.secureRenegotiation) != 0 {
-	//	c.sendAlert(alertHandshakeFailure)
-	//	return errors.New("tlcp: initial handshake had non-empty renegotiation extension")
-	//}
-	//
-	//hs.hello.secureRenegotiationSupported = hs.clientHello.secureRenegotiationSupported
 	hs.hello.compressionMethod = compressionNone
-	//if len(hs.clientHello.serverName) > 0 {
-	//	c.serverName = hs.clientHello.serverName
-	//}
-
-	//selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols)
-	//if err != nil {
-	//	c.sendAlert(alertNoApplicationProtocol)
-	//	return err
-	//}
-	//hs.hello.alpnProtocol = selectedProto
-	//c.clientProtocol = selectedProto
 
 	// 选择服务端签名证书
 	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
@@ -227,26 +211,9 @@ func (hs *serverHandshakeState) processClientHello() error {
 		_ = c.sendAlert(alertInternalError)
 	}
 
-	//if hs.clientHello.scts {
-	//	hs.hello.scts = hs.cert.SignedCertificateTimestamps
-	//}
-
-	//hs.ecdheOk = supportsECDHE(c.config, hs.clientHello.supportedCurves, hs.clientHello.supportedPoints)
-	//
-	//if hs.ecdheOk {
-	//	// Although omitting the ec_point_formats extension is permitted, some
-	//	// old OpenSSL version will refuse to handshake if not present.
-	//	//
-	//	// Per RFC 4492, section 5.1.2, implementations MUST support the
-	//	// uncompressed point format. See golang.org/issue/31943.
-	//	hs.hello.supportedPoints = []uint8{pointFormatUncompressed}
-	//}
-
 	if priv, ok := hs.cert.PrivateKey.(crypto.Signer); ok {
 		switch priv.Public().(type) {
 		case *ecdsa.PublicKey:
-			hs.ecSignOk = true
-		case ed25519.PublicKey:
 			hs.ecSignOk = true
 		case *rsa.PublicKey:
 			hs.rsaSignOk = true
@@ -255,8 +222,10 @@ func (hs *serverHandshakeState) processClientHello() error {
 			return fmt.Errorf("tlcp: unsupported signing key type (%T)", priv.Public())
 		}
 	}
-	if priv, ok := hs.cert.PrivateKey.(crypto.Decrypter); ok {
+	if priv, ok := hs.encCert.PrivateKey.(crypto.Decrypter); ok {
 		switch priv.Public().(type) {
+		case *ecdsa.PublicKey:
+			hs.ecDecryptOk = true
 		case *rsa.PublicKey:
 			hs.rsaDecryptOk = true
 		default:
@@ -344,7 +313,14 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 }
 
 func (hs *serverHandshakeState) cipherSuiteOk(c *cipherSuite) bool {
-	if c.flags&suiteECDHE != 0 {
+	if c.flags&suiteECSign != 0 {
+		if !hs.ecSignOk {
+			return false
+		}
+		if !hs.ecDecryptOk {
+			return false
+		}
+	} else if c.flags&suiteECDHE != 0 {
 		if !hs.ecdheOk {
 			return false
 		}
@@ -820,18 +796,9 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 }
 
 func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) *ClientHelloInfo {
-	//supportedVersions := clientHello.supportedVersions
-	//if len(clientHello.supportedVersions) == 0 {
-	//	supportedVersions = supportedVersionsFromMax(clientHello.vers)
-	//}
 	supportedVers := supportedVersionsFromMax(clientHello.vers)
 	return &ClientHelloInfo{
-		CipherSuites: clientHello.cipherSuites,
-		//ServerName:      clientHello.serverName,
-		//SupportedCurves: clientHello.supportedCurves,
-		//SupportedPoints: clientHello.supportedPoints,
-		//SignatureSchemes:  clientHello.supportedSignatureAlgorithms,
-		//SupportedProtos:   clientHello.alpnProtocols,
+		CipherSuites:      clientHello.cipherSuites,
 		SupportedVersions: supportedVers,
 		Conn:              c.conn,
 		config:            c.config,

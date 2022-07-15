@@ -74,7 +74,9 @@ func Test_serverHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := &Config{}
+	config := &Config{
+		Certificates: []Certificate{sigCert, encCert},
+	}
 	for {
 		conn, err := tcpLn.Accept()
 		if err != nil {

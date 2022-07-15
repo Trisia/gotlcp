@@ -20,30 +20,21 @@ import (
 )
 
 const (
-	//VersionTLS10 = 0x0301
-	//VersionTLS11 = 0x0302
-	//VersionTLS12 = 0x0303
-	//VersionTLS13 = 0x0304
-	// Deprecated: SSLv3 is cryptographically broken, and is no longer
-	// supported by this package. See golang.org/issue/32716.
-	//VersionSSL30 = 0x0300
-
 	VersionTLCP = 0x0101 // GM/T 38636-2016
-
 )
 
 const (
-	maxPlaintext       = 16384        // maximum plaintext payload length
-	maxCiphertext      = 16384 + 2048 // maximum ciphertext payload length
-	maxCiphertextTLS13 = 16384 + 256  // maximum ciphertext length in TLS 1.3
-	recordHeaderLen    = 5            // record header length
-	maxHandshake       = 65536        // maximum handshake we support (protocol max is 16 MB)
-	maxUselessRecords  = 16           // maximum number of consecutive non-advancing records
+	maxPlaintext      = 16384        // maximum plaintext payload length
+	maxCiphertext     = 16384 + 2048 // maximum ciphertext payload length
+	recordHeaderLen   = 5            // record header length
+	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
+	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
 )
 
 // TLS record types.
 type recordType uint8
 
+// TLCP GB/T 38636-2016 6.3.3.2 a) Type
 const (
 	recordTypeChangeCipherSpec recordType = 20
 	recordTypeAlert            recordType = 21
@@ -51,57 +42,23 @@ const (
 	recordTypeApplicationData  recordType = 23
 )
 
-// TLS handshake message types.
+// TLCP GB/T 38636-2016 6.4.5.1 握手消息类型定义
 const (
-	typeHelloRequest        uint8 = 0
-	typeClientHello         uint8 = 1
-	typeServerHello         uint8 = 2
-	typeNewSessionTicket    uint8 = 4
-	typeEndOfEarlyData      uint8 = 5
-	typeEncryptedExtensions uint8 = 8
-	typeCertificate         uint8 = 11
-	typeServerKeyExchange   uint8 = 12
-	typeCertificateRequest  uint8 = 13
-	typeServerHelloDone     uint8 = 14
-	typeCertificateVerify   uint8 = 15
-	typeClientKeyExchange   uint8 = 16
-	typeFinished            uint8 = 20
-	typeCertificateStatus   uint8 = 22
-	typeKeyUpdate           uint8 = 24
-	typeNextProtocol        uint8 = 67  // Not IANA assigned
-	typeMessageHash         uint8 = 254 // synthetic message
+	typeClientHello        uint8 = 1
+	typeServerHello        uint8 = 2
+	typeCertificate        uint8 = 11
+	typeServerKeyExchange  uint8 = 12
+	typeCertificateRequest uint8 = 13
+	typeServerHelloDone    uint8 = 14
+	typeCertificateVerify  uint8 = 15
+	typeClientKeyExchange  uint8 = 16
+	typeFinished           uint8 = 20
 )
 
 // TLS compression types.
 const (
 	compressionNone uint8 = 0
 )
-
-// TLS extension numbers
-const (
-	extensionServerName              uint16 = 0
-	extensionStatusRequest           uint16 = 5
-	extensionSupportedCurves         uint16 = 10 // supported_groups in TLS 1.3, see RFC 8446, Section 4.2.7
-	extensionSupportedPoints         uint16 = 11
-	extensionSignatureAlgorithms     uint16 = 13
-	extensionALPN                    uint16 = 16
-	extensionSCT                     uint16 = 18
-	extensionSessionTicket           uint16 = 35
-	extensionPreSharedKey            uint16 = 41
-	extensionEarlyData               uint16 = 42
-	extensionSupportedVersions       uint16 = 43
-	extensionCookie                  uint16 = 44
-	extensionPSKModes                uint16 = 45
-	extensionCertificateAuthorities  uint16 = 47
-	extensionSignatureAlgorithmsCert uint16 = 50
-	extensionKeyShare                uint16 = 51
-	extensionRenegotiationInfo       uint16 = 0xff01
-)
-
-//// TLS signaling cipher suite values
-//const (
-//	scsvRenegotiation uint16 = 0x00ff
-//)
 
 // CurveID is the type of a TLS identifier for an elliptic curve. See
 // https://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-8.
@@ -117,72 +74,19 @@ const (
 	X25519    CurveID = 29
 )
 
-// TLS 1.3 Key Share. See RFC 8446, Section 4.2.8.
-type keyShare struct {
-	group CurveID
-	data  []byte
-}
-
-// TLS 1.3 PSK Key Exchange Modes. See RFC 8446, Section 4.2.9.
-const (
-	pskModePlain uint8 = 0
-	pskModeDHE   uint8 = 1
-)
-
-// TLS 1.3 PSK Identity. Can be a Session Ticket, or a reference to a saved
-// session. See RFC 8446, Section 4.2.11.
-type pskIdentity struct {
-	label               []byte
-	obfuscatedTicketAge uint32
-}
-
 // TLS Elliptic Curve Point Formats
 // https://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-9
 const (
 	pointFormatUncompressed uint8 = 0
 )
 
-// TLS CertificateStatusType (RFC 3546)
-const (
-	statusTypeOCSP uint8 = 1
-)
-
 // Certificate types (for certificateRequestMsg)
+// 见 GB/T 38636-2016 6.4.5.5 a) certificate_types
 const (
 	certTypeRSASign   = 1
 	certTypeECDSASign = 64 // ECDSA or EdDSA keys, see RFC 8422, Section 3.
-	certTypeIbcParams = 80 // 见 GB/T 38636-2016 6.4.5.5 a) certificate_types
+	certTypeIbcParams = 80 //
 )
-
-//// Signature algorithms (for internal signaling use). Starting at 225 to avoid overlap with
-//// TLS 1.2 codepoints (RFC 5246, Appendix A.4.1), with which these have nothing to do.
-//const (
-//	signaturePKCS1v15 uint8 = iota + 225
-//	signatureRSAPSS
-//	signatureECDSA
-//	signatureEd25519
-//)
-
-//// helloRetryRequestRandom is set as the Random value of a ServerHello
-//// to signal that the message is actually a HelloRetryRequest.
-//var helloRetryRequestRandom = []byte{ // See RFC 8446, Section 4.1.3.
-//	0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11,
-//	0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
-//	0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E,
-//	0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C,
-//}
-
-//const (
-//	// downgradeCanaryTLS12 or downgradeCanaryTLS11 is embedded in the server
-//	// random as a downgrade protection if the server would be capable of
-//	// negotiating a higher version. See RFC 8446, Section 4.1.3.
-//	downgradeCanaryTLS12 = "DOWNGRD\x01"
-//	downgradeCanaryTLS11 = "DOWNGRD\x00"
-//)
-
-//// testingOnlyForceDowngradeCanary is set in tests to force the server side to
-//// include downgrade canaries even if it's using its highers supported version.
-//var testingOnlyForceDowngradeCanary bool
 
 // ConnectionState records basic TLS details about the connection.
 type ConnectionState struct {
@@ -202,11 +106,6 @@ type ConnectionState struct {
 
 	// NegotiatedProtocol is the application protocol negotiated with ALPN.
 	NegotiatedProtocol string
-
-	//// NegotiatedProtocolIsMutual used to indicate a mutual NPN negotiation.
-	////
-	//// Deprecated: this value is always true.
-	//NegotiatedProtocolIsMutual bool
 
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
@@ -230,13 +129,13 @@ type ConnectionState struct {
 	// (and the peer provided a certificate) or RequireAndVerifyClientCert.
 	VerifiedChains [][]*x509.Certificate
 
-	// SignedCertificateTimestamps is a list of SCTs provided by the peer
-	// through the TLS handshake for the leaf certificate, if any.
-	SignedCertificateTimestamps [][]byte
-
-	// OCSPResponse is a stapled Online Certificate Status Protocol (OCSP)
-	// response provided by the peer for the leaf certificate, if any.
-	OCSPResponse []byte
+	//// SignedCertificateTimestamps is a list of SCTs provided by the peer
+	//// through the TLS handshake for the leaf certificate, if any.
+	//SignedCertificateTimestamps [][]byte
+	//
+	//// OCSPResponse is a stapled Online Certificate Status Protocol (OCSP)
+	//// response provided by the peer for the leaf certificate, if any.
+	//OCSPResponse []byte
 
 	// TLSUnique contains the "tls-unique" channel binding value (see RFC 5929,
 	// Section 3). This value will be nil for TLS 1.3 connections and for all
@@ -307,14 +206,14 @@ type ClientSessionState struct {
 	masterSecret       []byte                // Full handshake MasterSecret, or TLS 1.3 resumption_master_secret
 	serverCertificates []*x509.Certificate   // Certificate chain presented by the server
 	verifiedChains     [][]*x509.Certificate // Certificate chains we built for verification
-	receivedAt         time.Time             // When the session ticket was received from the server
-	ocspResponse       []byte                // Stapled OCSP response presented by the server
-	scts               [][]byte              // SCTs presented by the server
+	//receivedAt         time.Time             // When the session ticket was received from the server
+	//ocspResponse       []byte                // Stapled OCSP response presented by the server
+	//scts               [][]byte              // SCTs presented by the server
 
-	// TLS 1.3 fields.
-	nonce  []byte    // Ticket nonce sent by the server, to derive PSK
-	useBy  time.Time // Expiration of the ticket lifetime as set by the server
-	ageAdd uint32    // Random obfuscation factor for sending the ticket age
+	//// TLS 1.3 fields.
+	//nonce  []byte    // Ticket nonce sent by the server, to derive PSK
+	//useBy  time.Time // Expiration of the ticket lifetime as set by the server
+	//ageAdd uint32    // Random obfuscation factor for sending the ticket age
 }
 
 // ClientSessionCache is a cache of ClientSessionState objects that can be used
@@ -483,15 +382,6 @@ type Config struct {
 	// per-handshake performance cost.
 	Certificates []Certificate
 
-	//// NameToCertificate maps from a certificate name to an element of
-	//// Certificates. Note that a certificate name can be of the form
-	//// '*.example.com' and so doesn't have to be a domain name as such.
-	////
-	//// Deprecated: NameToCertificate only allows associating a single
-	//// certificate with a given name. Leave this field nil to let the library
-	//// select the first compatible chain from Certificates.
-	//NameToCertificate map[string]*Certificate
-
 	// GetCertificate returns a Certificate based on the given
 	// ClientHelloInfo. It will only be called if the client supplies SNI
 	// information or if Certificates is empty.
@@ -643,16 +533,6 @@ type Config struct {
 
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
-
-	//// sessionTicketKeys contains zero or more ticket keys. If set, it means the
-	//// the keys were set with SessionTicketKey or SetSessionTicketKeys. The
-	//// first key is used for new tickets and any subsequent keys can be used to
-	//// decrypt old tickets. The slice contents are not protected by the mutex
-	//// and are immutable.
-	//sessionTicketKeys []ticketKey
-	//// autoSessionTicketKeys is like sessionTicketKeys but is owned by the
-	//// auto-rotation logic. See Config.ticketKeys.
-	//autoSessionTicketKeys []ticketKey
 }
 
 //

@@ -1080,55 +1080,6 @@ func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
 	return readUint16LengthPrefixed(&s, &m.signature) && s.Empty()
 }
 
-type newSessionTicketMsg struct {
-	raw    []byte
-	ticket []byte
-}
-
-func (m *newSessionTicketMsg) marshal() (x []byte) {
-	if m.raw != nil {
-		return m.raw
-	}
-
-	// See RFC 5077, Section 3.3.
-	ticketLen := len(m.ticket)
-	length := 2 + 4 + ticketLen
-	x = make([]byte, 4+length)
-	x[0] = typeNewSessionTicket
-	x[1] = uint8(length >> 16)
-	x[2] = uint8(length >> 8)
-	x[3] = uint8(length)
-	x[8] = uint8(ticketLen >> 8)
-	x[9] = uint8(ticketLen)
-	copy(x[10:], m.ticket)
-
-	m.raw = x
-
-	return
-}
-
-func (m *newSessionTicketMsg) unmarshal(data []byte) bool {
-	m.raw = data
-
-	if len(data) < 10 {
-		return false
-	}
-
-	length := uint32(data[1])<<16 | uint32(data[2])<<8 | uint32(data[3])
-	if uint32(len(data))-4 != length {
-		return false
-	}
-
-	ticketLen := int(data[8])<<8 + int(data[9])
-	if len(data)-10 != ticketLen {
-		return false
-	}
-
-	m.ticket = data[10:]
-
-	return true
-}
-
 //type helloRequestMsg struct {
 //}
 //
