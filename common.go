@@ -948,16 +948,6 @@ type Certificate struct {
 	// an RSA PublicKey.
 	PrivateKey crypto.PrivateKey
 
-	//// SupportedSignatureAlgorithms is an optional list restricting what
-	//// signature algorithms the PrivateKey can be used for.
-	//SupportedSignatureAlgorithms []SignatureScheme
-
-	// OCSPStaple contains an optional OCSP response which will be served
-	// to clients that request it.
-	OCSPStaple []byte
-	// SignedCertificateTimestamps contains an optional list of Signed
-	// Certificate Timestamps which will be served to clients that request it.
-	SignedCertificateTimestamps [][]byte
 	// Leaf is the parsed form of the leaf certificate, which may be initialized
 	// using x509.ParseCertificate to reduce per-handshake processing. If nil,
 	// the leaf certificate will be parsed as needed.

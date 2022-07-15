@@ -463,15 +463,6 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		return err
 	}
 
-	//if hs.hello.ocspStapling {
-	//	certStatus := new(certificateStatusMsg)
-	//	certStatus.response = hs.cert.OCSPStaple
-	//	hs.finishedHash.Write(certStatus.marshal())
-	//	if _, err := c.writeRecord(recordTypeHandshake, certStatus.marshal()); err != nil {
-	//		return err
-	//	}
-	//}
-
 	keyAgreement := hs.suite.ka(c.vers)
 	skx, err := keyAgreement.generateServerKeyExchange(c.config, []*Certificate{hs.cert, hs.encCert}, hs.clientHello, hs.hello)
 	if err != nil {

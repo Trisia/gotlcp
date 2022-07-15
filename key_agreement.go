@@ -69,17 +69,14 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 	*/
 	sigCert := certs[0]
 	encCert := certs[1]
-
-	buffer := new(bytes.Buffer)
-	buffer.Write(clientHello.random)
-	buffer.Write(serverHello.random)
-	buffer.Write(encCert.Certificate[0])
-
+	// 组装签名数据
+	param := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Certificate[0])
+	//fmt.Printf("%02X\n", param)
 	priv, ok := sigCert.PrivateKey.(crypto.Signer)
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
 	}
-	sig, err := priv.Sign(config.rand(), buffer.Bytes(), nil)
+	sig, err := priv.Sign(config.rand(), param, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +90,30 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 	copy(ske.key[2:], sig)
 
 	return ske, nil
+}
+
+// GM/T 38636-2016 Server Key Exchange 组装待签名数据
+func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, cert []byte) []byte {
+	/*
+		struct {
+			opaque client_random[32];
+			opaque server_random[32];
+			opaque ASN.1Cert<1..2^24-1>;
+		}params
+	*/
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientRandom)
+	buffer.Write(serverRandom)
+
+	certLen := len(cert)
+	buffer.Write([]byte{
+		byte(certLen>>16) & 0xFF,
+		byte(certLen>>8) & 0xFF,
+		byte(certLen),
+	})
+	buffer.Write(cert)
+
+	return buffer.Bytes()
 }
 
 func (e *eccKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
@@ -148,12 +169,10 @@ func (e *eccKeyAgreement) processServerKeyExchange(config *Config, clientHello *
 		return errors.New("tlcp: sm2 signing requires a sm2 public key")
 	}
 
-	buffer := new(bytes.Buffer)
-	buffer.Write(clientHello.random)
-	buffer.Write(serverHello.random)
-	buffer.Write(encCert.Raw)
+	// 组装签名数据
+	param := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Raw)
 
-	if !sm2.VerifyASN1(pub, buffer.Bytes(), sig) {
+	if !sm2.VerifyASN1(pub, param, sig) {
 		return errors.New("tlcp: processServerKeyExchange: sm2 verification failure")
 	}
 	return nil
