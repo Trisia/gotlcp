@@ -18,11 +18,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/emmansun/gmsm/smx509"
+	x509 "github.com/emmansun/gmsm/smx509"
 	"net"
 	"os"
 	"strings"
@@ -292,7 +291,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 
 	// We don't need to parse the public key for TLS, but we so do anyway
 	// to check that it looks sane and matches the private key.
-	x509Cert, err := smx509.ParseCertificate(cert.Certificate[0])
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
 		return fail(err)
 	}
@@ -338,10 +337,10 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 // PKCS #1 private keys by default, while OpenSSL 1.0.0 generates PKCS #8 keys.
 // OpenSSL ecparam generates SEC1 EC private keys for ECDSA. We try all three.
 func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
-	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
-		return key, nil
-	}
-	if key, err := smx509.ParsePKCS8PrivateKey(der); err == nil {
+	//if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+	//	return key, nil
+	//}
+	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
 		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 			return key, nil
@@ -349,7 +348,7 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 			return nil, errors.New("tlcp: found unknown private key type in PKCS#8 wrapping")
 		}
 	}
-	if key, err := smx509.ParseECPrivateKey(der); err == nil {
+	if key, err := x509.ParseECPrivateKey(der); err == nil {
 		return key, nil
 	}
 

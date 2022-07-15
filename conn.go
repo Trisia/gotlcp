@@ -11,9 +11,9 @@ import (
 	"context"
 	"crypto/cipher"
 	"crypto/subtle"
-	"crypto/x509"
 	"errors"
 	"fmt"
+	x509 "github.com/emmansun/gmsm/smx509"
 	"hash"
 	"io"
 	"net"
@@ -89,8 +89,8 @@ type Conn struct {
 	clientFinished [12]byte
 	serverFinished [12]byte
 
-	// clientProtocol is the negotiated ALPN protocol.
-	clientProtocol string
+	//// clientProtocol is the negotiated ALPN protocol.
+	//clientProtocol string
 
 	// input/output
 	in, out   halfConn
@@ -1032,7 +1032,7 @@ func (c *Conn) writeRecord(typ recordType, data []byte) (int, error) {
 
 // readHandshake reads the next handshake message from
 // the record layer.
-func (c *Conn) readHandshake() (any, error) {
+func (c *Conn) readHandshake() (interface{}, error) {
 	for c.hand.Len() < 4 {
 		if err := c.readRecord(); err != nil {
 			return nil, err
@@ -1053,14 +1053,14 @@ func (c *Conn) readHandshake() (any, error) {
 	data = c.hand.Next(4 + n)
 	var m handshakeMessage
 	switch data[0] {
-	case typeHelloRequest:
-		m = new(helloRequestMsg)
+	//case typeHelloRequest:
+	//	m = new(helloRequestMsg)
 	case typeClientHello:
 		m = new(clientHelloMsg)
 	case typeServerHello:
 		m = new(serverHelloMsg)
-	case typeCertificateStatus:
-		m = new(certificateStatusMsg)
+	//case typeCertificateStatus:
+	//	m = new(certificateStatusMsg)
 	case typeServerKeyExchange:
 		m = new(serverKeyExchangeMsg)
 	case typeServerHelloDone:
@@ -1068,18 +1068,15 @@ func (c *Conn) readHandshake() (any, error) {
 	case typeClientKeyExchange:
 		m = new(clientKeyExchangeMsg)
 	case typeCertificateVerify:
-		//m = &certificateVerifyMsg{
-		//	hasSignatureAlgorithm: c.vers >= VersionTLS12,
-		//}
 		m = new(certificateVerifyMsg)
 	case typeFinished:
 		m = new(finishedMsg)
-	case typeEncryptedExtensions:
-		m = new(encryptedExtensionsMsg)
-	case typeEndOfEarlyData:
-		m = new(endOfEarlyDataMsg)
-	case typeKeyUpdate:
-		m = new(keyUpdateMsg)
+	//case typeEncryptedExtensions:
+	//	m = new(encryptedExtensionsMsg)
+	//case typeEndOfEarlyData:
+	//	m = new(endOfEarlyDataMsg)
+	//case typeKeyUpdate:
+	//	m = new(keyUpdateMsg)
 	default:
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
@@ -1168,16 +1165,16 @@ func (c *Conn) handleRenegotiation() error {
 	//	return errors.New("tlcp: internal error: unexpected renegotiation")
 	//}
 
-	msg, err := c.readHandshake()
-	if err != nil {
-		return err
-	}
+	//msg, err := c.readHandshake()
+	//if err != nil {
+	//	return err
+	//}
 
-	helloReq, ok := msg.(*helloRequestMsg)
-	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
-		return unexpectedMessageError(helloReq, msg)
-	}
+	//helloReq, ok := msg.(*helloRequestMsg)
+	//if !ok {
+	//	c.sendAlert(alertUnexpectedMessage)
+	//	return unexpectedMessageError(helloReq, msg)
+	//}
 
 	if !c.isClient {
 		return c.sendAlert(alertNoRenegotiation)
@@ -1432,7 +1429,7 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	var state ConnectionState
 	state.HandshakeComplete = c.handshakeComplete()
 	state.Version = c.vers
-	state.NegotiatedProtocol = c.clientProtocol
+	//state.NegotiatedProtocol = c.clientProtocol
 	state.DidResume = c.didResume
 	//state.NegotiatedProtocolIsMutual = true
 	state.ServerName = c.serverName

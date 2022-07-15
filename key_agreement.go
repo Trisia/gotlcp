@@ -5,14 +5,14 @@
 package tlcp
 
 import (
+	"bytes"
 	"crypto"
-	"crypto/md5"
-	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/x509"
+	"crypto/ecdsa"
 	"errors"
-	"fmt"
+	"github.com/emmansun/gmsm/sm2"
+	x509 "github.com/emmansun/gmsm/smx509"
 	"io"
+	"math/big"
 )
 
 // a keyAgreement implements the client and server side of a TLS key agreement
@@ -23,61 +23,148 @@ type keyAgreement interface {
 	// In the case that the key agreement protocol doesn't use a
 	// ServerKeyExchange message, generateServerKeyExchange can return nil,
 	// nil.
-	generateServerKeyExchange(*Config, *Certificate, *clientHelloMsg, *serverHelloMsg) (*serverKeyExchangeMsg, error)
+	generateServerKeyExchange(*Config, []*Certificate, *clientHelloMsg, *serverHelloMsg) (*serverKeyExchangeMsg, error)
 	processClientKeyExchange(*Config, *Certificate, *clientKeyExchangeMsg, uint16) ([]byte, error)
 
 	// On the client side, the next two methods are called in order.
 
 	// This method may not be called if the server doesn't send a
 	// ServerKeyExchange message.
-	processServerKeyExchange(*Config, *clientHelloMsg, *serverHelloMsg, *x509.Certificate, *serverKeyExchangeMsg) error
-	generateClientKeyExchange(*Config, *clientHelloMsg, *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error)
+	processServerKeyExchange(*Config, *clientHelloMsg, *serverHelloMsg, []*x509.Certificate, *serverKeyExchangeMsg) error
+	generateClientKeyExchange(*Config, *clientHelloMsg, []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error)
 }
 
 var errClientKeyExchange = errors.New("tlcp: invalid ClientKeyExchange message")
 var errServerKeyExchange = errors.New("tlcp: invalid ServerKeyExchange message")
 
-// rsaKeyAgreement implements the standard TLS key agreement where the client
-// encrypts the pre-master secret to the server's public key.
-type rsaKeyAgreement struct{}
+// eccKeyAgreement SM2密钥交换，公钥加密预主密钥，私钥解密。
+type eccKeyAgreement struct {
+	version    uint16
+	privateKey []byte
+	curveid    CurveID
 
-func (ka rsaKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
-	return nil, nil
+	publicKey []byte
+	x, y      *big.Int
+
+	// 加密证书
+	encipherCert *x509.Certificate
 }
 
-func (ka rsaKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
-	if len(ckx.ciphertext) < 2 {
-		return nil, errClientKeyExchange
-	}
-	ciphertextLen := int(ckx.ciphertext[0])<<8 | int(ckx.ciphertext[1])
-	if ciphertextLen != len(ckx.ciphertext)-2 {
-		return nil, errClientKeyExchange
-	}
-	ciphertext := ckx.ciphertext[2:]
+func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Certificate, clientHello *clientHelloMsg, serverHello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
 
-	priv, ok := cert.PrivateKey.(crypto.Decrypter)
-	if !ok {
-		return nil, errors.New("tlcp: certificate private key does not implement crypto.Decrypter")
+	if len(certs) < 2 {
+		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
 	}
-	// Perform constant time RSA PKCS #1 v1.5 decryption
-	preMasterSecret, err := priv.Decrypt(config.rand(), ciphertext, &rsa.PKCS1v15DecryptOptions{SessionKeyLen: 48})
+
+	// GM/T 38636-2016 6.4.5.4 Server Key Exchange消息
+	// e) signed_params
+	// 当密钥交换方式为ECC和RSA时，signed_params是服务端对双方
+	// 随机数和服务端加密证书的签名。
+	/*
+		digitally-signed struct {
+			opaque client_random[32];
+			opaque server_random[32];
+			opaque ASN.1Cert<1..2^24-1>;
+		}signed_params
+	*/
+	sigCert := certs[0]
+	encCert := certs[1]
+
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientHello.random)
+	buffer.Write(serverHello.random)
+	buffer.Write(encCert.Certificate[0])
+
+	priv, ok := sigCert.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
+	}
+	sig, err := priv.Sign(config.rand(), buffer.Bytes(), nil)
 	if err != nil {
 		return nil, err
 	}
-	// We don't check the version number in the premaster secret. For one,
-	// by checking it, we would leak information about the validity of the
-	// encrypted pre-master secret. Secondly, it provides only a small
-	// benefit against a downgrade attack and some implementations send the
-	// wrong version anyway. See the discussion at the end of section
-	// 7.4.7.1 of RFC 4346.
-	return preMasterSecret, nil
+
+	size := len(sig)
+
+	ske := new(serverKeyExchangeMsg)
+	ske.key = make([]byte, size+2)
+	ske.key[0] = byte(size >> 8)
+	ske.key[1] = byte(size & 0xFF)
+	copy(ske.key[2:], sig)
+
+	return ske, nil
 }
 
-func (ka rsaKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
-	return errors.New("tlcp: unexpected ServerKeyExchange")
+func (e *eccKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+	if len(ckx.ciphertext) == 0 {
+		return nil, errClientKeyExchange
+	}
+
+	size := int(ckx.ciphertext[0]) << 8
+	size |= int(ckx.ciphertext[1])
+
+	if size != len(ckx.ciphertext)-2 {
+		return nil, errClientKeyExchange
+	}
+
+	cipher := ckx.ciphertext[2:]
+	decrypter, ok := cert.PrivateKey.(crypto.Decrypter)
+	if !ok {
+		return nil, errors.New("tlcp: certificate private key does not implement crypto.Decrypter")
+	}
+	plain, err := decrypter.Decrypt(config.rand(), cipher, sm2.DecrypterOpts{CiphertextEncoding: sm2.ENCODING_ASN1})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(plain) != 48 {
+		return nil, errClientKeyExchange
+	}
+
+	return plain, nil
 }
 
-func (ka rsaKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+func (e *eccKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, certs []*x509.Certificate, skx *serverKeyExchangeMsg) error {
+	if len(certs) < 2 {
+		return errors.New("tlcp: ecc key exchange need 2 certificates")
+	}
+
+	sigCert := certs[0]
+	encCert := certs[1]
+
+	if len(skx.key) <= 2 {
+		return errServerKeyExchange
+	}
+	sigLen := int(skx.key[0]) << 8
+	sigLen |= int(skx.key[1])
+	if sigLen+2 != len(skx.key) {
+		return errServerKeyExchange
+	}
+
+	sig := skx.key[2:]
+
+	pub, ok := sigCert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return errors.New("tlcp: sm2 signing requires a sm2 public key")
+	}
+
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientHello.random)
+	buffer.Write(serverHello.random)
+	buffer.Write(encCert.Raw)
+
+	if !sm2.VerifyASN1(pub, buffer.Bytes(), sig) {
+		return errors.New("tlcp: processServerKeyExchange: sm2 verification failure")
+	}
+	return nil
+}
+
+func (e *eccKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, certs []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+	if len(certs) < 2 {
+		return nil, nil, errors.New("tlcp: ecc key exchange need 2 certificates")
+	}
+	encCert := certs[1]
+
 	preMasterSecret := make([]byte, 48)
 	preMasterSecret[0] = byte(clientHello.vers >> 8)
 	preMasterSecret[1] = byte(clientHello.vers)
@@ -86,272 +173,17 @@ func (ka rsaKeyAgreement) generateClientKeyExchange(config *Config, clientHello 
 		return nil, nil, err
 	}
 
-	rsaKey, ok := cert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return nil, nil, errors.New("tlcp: server certificate contains incorrect key type for selected ciphersuite")
-	}
-	encrypted, err := rsa.EncryptPKCS1v15(config.rand(), rsaKey, preMasterSecret)
+	pub := encCert.PublicKey.(*ecdsa.PublicKey)
+	encrypted, err := sm2.EncryptASN1(config.rand(), pub, preMasterSecret)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	ckx := new(clientKeyExchangeMsg)
+	size := len(encrypted)
 	ckx.ciphertext = make([]byte, len(encrypted)+2)
-	ckx.ciphertext[0] = byte(len(encrypted) >> 8)
-	ckx.ciphertext[1] = byte(len(encrypted))
+	ckx.ciphertext[0] = byte(size >> 8)
+	ckx.ciphertext[1] = byte(size & 0xFF)
 	copy(ckx.ciphertext[2:], encrypted)
 	return preMasterSecret, ckx, nil
-}
-
-// sha1Hash calculates a SHA1 hash over the given byte slices.
-func sha1Hash(slices [][]byte) []byte {
-	hsha1 := sha1.New()
-	for _, slice := range slices {
-		hsha1.Write(slice)
-	}
-	return hsha1.Sum(nil)
-}
-
-// md5SHA1Hash implements TLS 1.0's hybrid hash function which consists of the
-// concatenation of an MD5 and SHA1 hash.
-func md5SHA1Hash(slices [][]byte) []byte {
-	md5sha1 := make([]byte, md5.Size+sha1.Size)
-	hmd5 := md5.New()
-	for _, slice := range slices {
-		hmd5.Write(slice)
-	}
-	copy(md5sha1, hmd5.Sum(nil))
-	copy(md5sha1[md5.Size:], sha1Hash(slices))
-	return md5sha1
-}
-
-// hashForServerKeyExchange hashes the given slices and returns their digest
-// using the given hash function (for >= TLS 1.2) or using a default based on
-// the sigType (for earlier TLS versions). For Ed25519 signatures, which don't
-// do pre-hashing, it returns the concatenation of the slices.
-func hashForServerKeyExchange(sigType uint8, hashFunc crypto.Hash, version uint16, slices ...[]byte) []byte {
-	if sigType == signatureEd25519 {
-		var signed []byte
-		for _, slice := range slices {
-			signed = append(signed, slice...)
-		}
-		return signed
-	}
-	if version >= VersionTLS12 {
-		h := hashFunc.New()
-		for _, slice := range slices {
-			h.Write(slice)
-		}
-		digest := h.Sum(nil)
-		return digest
-	}
-	if sigType == signatureECDSA {
-		return sha1Hash(slices)
-	}
-	return md5SHA1Hash(slices)
-}
-
-// ecdheKeyAgreement implements a TLS key agreement where the server
-// generates an ephemeral EC public/private key pair and signs it. The
-// pre-master secret is then calculated using ECDH. The signature may
-// be ECDSA, Ed25519 or RSA.
-type ecdheKeyAgreement struct {
-	version uint16
-	isRSA   bool
-	params  ecdheParameters
-
-	// ckx and preMasterSecret are generated in processServerKeyExchange
-	// and returned in generateClientKeyExchange.
-	ckx             *clientKeyExchangeMsg
-	preMasterSecret []byte
-}
-
-func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
-	var curveID CurveID
-	for _, c := range clientHello.supportedCurves {
-		if config.supportsCurve(c) {
-			curveID = c
-			break
-		}
-	}
-
-	if curveID == 0 {
-		return nil, errors.New("tlcp: no supported elliptic curves offered")
-	}
-	if _, ok := curveForCurveID(curveID); curveID != X25519 && !ok {
-		return nil, errors.New("tlcp: CurvePreferences includes unsupported curve")
-	}
-
-	params, err := generateECDHEParameters(config.rand(), curveID)
-	if err != nil {
-		return nil, err
-	}
-	ka.params = params
-
-	// See RFC 4492, Section 5.4.
-	ecdhePublic := params.PublicKey()
-	serverECDHEParams := make([]byte, 1+2+1+len(ecdhePublic))
-	serverECDHEParams[0] = 3 // named curve
-	serverECDHEParams[1] = byte(curveID >> 8)
-	serverECDHEParams[2] = byte(curveID)
-	serverECDHEParams[3] = byte(len(ecdhePublic))
-	copy(serverECDHEParams[4:], ecdhePublic)
-
-	priv, ok := cert.PrivateKey.(crypto.Signer)
-	if !ok {
-		return nil, fmt.Errorf("tlcp: certificate private key of type %T does not implement crypto.Signer", cert.PrivateKey)
-	}
-
-	var signatureAlgorithm SignatureScheme
-	var sigType uint8
-	var sigHash crypto.Hash
-	if ka.version >= VersionTLS12 {
-		signatureAlgorithm, err = selectSignatureScheme(ka.version, cert, clientHello.supportedSignatureAlgorithms)
-		if err != nil {
-			return nil, err
-		}
-		sigType, sigHash, err = typeAndHashFromSignatureScheme(signatureAlgorithm)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		sigType, sigHash, err = legacyTypeAndHashFromPublicKey(priv.Public())
-		if err != nil {
-			return nil, err
-		}
-	}
-	if (sigType == signaturePKCS1v15 || sigType == signatureRSAPSS) != ka.isRSA {
-		return nil, errors.New("tlcp: certificate cannot be used with the selected cipher suite")
-	}
-
-	signed := hashForServerKeyExchange(sigType, sigHash, ka.version, clientHello.random, hello.random, serverECDHEParams)
-
-	signOpts := crypto.SignerOpts(sigHash)
-	if sigType == signatureRSAPSS {
-		signOpts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: sigHash}
-	}
-	sig, err := priv.Sign(config.rand(), signed, signOpts)
-	if err != nil {
-		return nil, errors.New("tlcp: failed to sign ECDHE parameters: " + err.Error())
-	}
-
-	skx := new(serverKeyExchangeMsg)
-	sigAndHashLen := 0
-	if ka.version >= VersionTLS12 {
-		sigAndHashLen = 2
-	}
-	skx.key = make([]byte, len(serverECDHEParams)+sigAndHashLen+2+len(sig))
-	copy(skx.key, serverECDHEParams)
-	k := skx.key[len(serverECDHEParams):]
-	if ka.version >= VersionTLS12 {
-		k[0] = byte(signatureAlgorithm >> 8)
-		k[1] = byte(signatureAlgorithm)
-		k = k[2:]
-	}
-	k[0] = byte(len(sig) >> 8)
-	k[1] = byte(len(sig))
-	copy(k[2:], sig)
-
-	return skx, nil
-}
-
-func (ka *ecdheKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
-	if len(ckx.ciphertext) == 0 || int(ckx.ciphertext[0]) != len(ckx.ciphertext)-1 {
-		return nil, errClientKeyExchange
-	}
-
-	preMasterSecret := ka.params.SharedKey(ckx.ciphertext[1:])
-	if preMasterSecret == nil {
-		return nil, errClientKeyExchange
-	}
-
-	return preMasterSecret, nil
-}
-
-func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
-	if len(skx.key) < 4 {
-		return errServerKeyExchange
-	}
-	if skx.key[0] != 3 { // named curve
-		return errors.New("tlcp: server selected unsupported curve")
-	}
-	curveID := CurveID(skx.key[1])<<8 | CurveID(skx.key[2])
-
-	publicLen := int(skx.key[3])
-	if publicLen+4 > len(skx.key) {
-		return errServerKeyExchange
-	}
-	serverECDHEParams := skx.key[:4+publicLen]
-	publicKey := serverECDHEParams[4:]
-
-	sig := skx.key[4+publicLen:]
-	if len(sig) < 2 {
-		return errServerKeyExchange
-	}
-
-	if _, ok := curveForCurveID(curveID); curveID != X25519 && !ok {
-		return errors.New("tlcp: server selected unsupported curve")
-	}
-
-	params, err := generateECDHEParameters(config.rand(), curveID)
-	if err != nil {
-		return err
-	}
-	ka.params = params
-
-	ka.preMasterSecret = params.SharedKey(publicKey)
-	if ka.preMasterSecret == nil {
-		return errServerKeyExchange
-	}
-
-	ourPublicKey := params.PublicKey()
-	ka.ckx = new(clientKeyExchangeMsg)
-	ka.ckx.ciphertext = make([]byte, 1+len(ourPublicKey))
-	ka.ckx.ciphertext[0] = byte(len(ourPublicKey))
-	copy(ka.ckx.ciphertext[1:], ourPublicKey)
-
-	var sigType uint8
-	var sigHash crypto.Hash
-	if ka.version >= VersionTLS12 {
-		signatureAlgorithm := SignatureScheme(sig[0])<<8 | SignatureScheme(sig[1])
-		sig = sig[2:]
-		if len(sig) < 2 {
-			return errServerKeyExchange
-		}
-
-		if !isSupportedSignatureAlgorithm(signatureAlgorithm, clientHello.supportedSignatureAlgorithms) {
-			return errors.New("tlcp: certificate used with invalid signature algorithm")
-		}
-		sigType, sigHash, err = typeAndHashFromSignatureScheme(signatureAlgorithm)
-		if err != nil {
-			return err
-		}
-	} else {
-		sigType, sigHash, err = legacyTypeAndHashFromPublicKey(cert.PublicKey)
-		if err != nil {
-			return err
-		}
-	}
-	if (sigType == signaturePKCS1v15 || sigType == signatureRSAPSS) != ka.isRSA {
-		return errServerKeyExchange
-	}
-
-	sigLen := int(sig[0])<<8 | int(sig[1])
-	if sigLen+2 != len(sig) {
-		return errServerKeyExchange
-	}
-	sig = sig[2:]
-
-	signed := hashForServerKeyExchange(sigType, sigHash, ka.version, clientHello.random, serverHello.random, serverECDHEParams)
-	if err := verifyHandshakeSignature(sigType, cert.PublicKey, sigHash, signed, sig); err != nil {
-		return errors.New("tlcp: invalid signature by the server certificate: " + err.Error())
-	}
-	return nil
-}
-
-func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
-	if ka.ckx == nil {
-		return nil, nil, errors.New("tlcp: missing ServerKeyExchange message")
-	}
-
-	return ka.preMasterSecret, ka.ckx, nil
 }
