@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/emmansun/gmsm/sm2"
 	x509 "github.com/emmansun/gmsm/smx509"
 	"net"
 	"os"
@@ -311,7 +312,7 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 			return fail(errors.New("tlcp: private key does not match public key"))
 		}
 	case *ecdsa.PublicKey:
-		priv, ok := cert.PrivateKey.(*ecdsa.PrivateKey)
+		priv, ok := cert.PrivateKey.(*sm2.PrivateKey)
 		if !ok {
 			return fail(errors.New("tlcp: private key type does not match public key type"))
 		}
@@ -333,16 +334,14 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	return cert, nil
 }
 
-// Attempt to parse the given private key DER block. OpenSSL 0.9.8 generates
-// PKCS #1 private keys by default, while OpenSSL 1.0.0 generates PKCS #8 keys.
-// OpenSSL ecparam generates SEC1 EC private keys for ECDSA. We try all three.
+// 解析PKCS8(PEM)格式 SM2密钥对
 func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	//if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
 	//	return key, nil
 	//}
 	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
+		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, *sm2.PrivateKey:
 			return key, nil
 		default:
 			return nil, errors.New("tlcp: found unknown private key type in PKCS#8 wrapping")

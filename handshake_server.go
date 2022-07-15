@@ -132,7 +132,6 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	}
 
 	var configForClient *Config
-	originalConfig := c.config
 	if c.config.GetConfigForClient != nil {
 		chi := clientHelloInfo(ctx, c, clientHello)
 		if configForClient, err = c.config.GetConfigForClient(chi); err != nil {
@@ -142,7 +141,6 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 			c.config = configForClient
 		}
 	}
-	c.ticketKeys = originalConfig.ticketKeys(configForClient)
 
 	clientVersions := supportedVersionsFromMax(clientHello.vers)
 	// 客户端支持的协议版本 与 服务端支持的服务版本 进行匹配
@@ -647,7 +645,7 @@ func (hs *serverHandshakeState) establishKeys() error {
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
 		keysFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.clientHello.random, hs.hello.random, hs.suite.macLen, hs.suite.keyLen, hs.suite.ivLen)
 
-	var clientCipher, serverCipher any
+	var clientCipher, serverCipher interface{}
 	var clientHash, serverHash hash.Hash
 
 	if hs.suite.aead == nil {

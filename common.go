@@ -1181,7 +1181,7 @@ func defaultConfig() *Config {
 	return &emptyConfig
 }
 
-func unexpectedMessageError(wanted, got any) error {
+func unexpectedMessageError(wanted, got interface{}) error {
 	return fmt.Errorf("tlcp: received unexpected handshake message of type %T when waiting for %T", got, wanted)
 }
 

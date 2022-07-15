@@ -164,16 +164,16 @@ func (c *Conn) NetConn() net.Conn {
 type halfConn struct {
 	sync.Mutex
 
-	err     error  // first permanent error
-	version uint16 // protocol version
-	cipher  any    // cipher algorithm
+	err     error       // first permanent error
+	version uint16      // protocol version
+	cipher  interface{} // cipher algorithm
 	mac     hash.Hash
 	seq     [8]byte // 64-bit sequence number
 
 	scratchBuf [13]byte // to avoid allocs; interface method args escape
 
-	nextCipher any       // next encryption state
-	nextMac    hash.Hash // next MAC algorithm
+	nextCipher interface{} // next encryption state
+	nextMac    hash.Hash   // next MAC algorithm
 
 	trafficSecret []byte // current TLS 1.3 traffic secret
 }
@@ -198,7 +198,7 @@ func (hc *halfConn) setErrorLocked(err error) error {
 
 // prepareCipherSpec sets the encryption and MAC states
 // that a subsequent changeCipherSpec will use.
-func (hc *halfConn) prepareCipherSpec(version uint16, cipher any, mac hash.Hash) {
+func (hc *halfConn) prepareCipherSpec(version uint16, cipher interface{}, mac hash.Hash) {
 	hc.version = version
 	hc.nextCipher = cipher
 	hc.nextMac = mac
@@ -953,7 +953,7 @@ func (c *Conn) flush() (int, error) {
 
 // outBufPool pools the record-sized scratch buffers used by writeRecordLocked.
 var outBufPool = sync.Pool{
-	New: func() any {
+	New: func() interface{} {
 		return new([]byte)
 	},
 }

@@ -90,7 +90,7 @@ type cipherSuite struct {
 	ka     func(version uint16) keyAgreement
 	// flags is a bitmask of the suite* values, above.
 	flags  int
-	cipher func(key, iv []byte, isRead bool) any
+	cipher func(key, iv []byte, isRead bool) interface{}
 	mac    func(key []byte) hash.Hash
 	aead   func(key, fixedNonce []byte) aead
 }
