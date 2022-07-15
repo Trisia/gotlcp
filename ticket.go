@@ -5,15 +5,6 @@
 package tlcp
 
 import (
-	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"errors"
-	"io"
-
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -115,71 +106,71 @@ func (m *sessionState) unmarshal(data []byte) bool {
 //		unmarshalCertificate(&s, &m.certificate) &&
 //		s.Empty()
 //}
-
-func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
-	if len(c.ticketKeys) == 0 {
-		return nil, errors.New("tlcp: internal error: session ticket keys unavailable")
-	}
-
-	encrypted := make([]byte, ticketKeyNameLen+aes.BlockSize+len(state)+sha256.Size)
-	keyName := encrypted[:ticketKeyNameLen]
-	iv := encrypted[ticketKeyNameLen : ticketKeyNameLen+aes.BlockSize]
-	macBytes := encrypted[len(encrypted)-sha256.Size:]
-
-	if _, err := io.ReadFull(c.config.rand(), iv); err != nil {
-		return nil, err
-	}
-	key := c.ticketKeys[0]
-	copy(keyName, key.keyName[:])
-	block, err := aes.NewCipher(key.aesKey[:])
-	if err != nil {
-		return nil, errors.New("tlcp: failed to create cipher while encrypting ticket: " + err.Error())
-	}
-	cipher.NewCTR(block, iv).XORKeyStream(encrypted[ticketKeyNameLen+aes.BlockSize:], state)
-
-	mac := hmac.New(sha256.New, key.hmacKey[:])
-	mac.Write(encrypted[:len(encrypted)-sha256.Size])
-	mac.Sum(macBytes[:0])
-
-	return encrypted, nil
-}
-
-func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
-	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
-		return nil, false
-	}
-
-	keyName := encrypted[:ticketKeyNameLen]
-	iv := encrypted[ticketKeyNameLen : ticketKeyNameLen+aes.BlockSize]
-	macBytes := encrypted[len(encrypted)-sha256.Size:]
-	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
-
-	keyIndex := -1
-	for i, candidateKey := range c.ticketKeys {
-		if bytes.Equal(keyName, candidateKey.keyName[:]) {
-			keyIndex = i
-			break
-		}
-	}
-	if keyIndex == -1 {
-		return nil, false
-	}
-	key := &c.ticketKeys[keyIndex]
-
-	mac := hmac.New(sha256.New, key.hmacKey[:])
-	mac.Write(encrypted[:len(encrypted)-sha256.Size])
-	expected := mac.Sum(nil)
-
-	if subtle.ConstantTimeCompare(macBytes, expected) != 1 {
-		return nil, false
-	}
-
-	block, err := aes.NewCipher(key.aesKey[:])
-	if err != nil {
-		return nil, false
-	}
-	plaintext = make([]byte, len(ciphertext))
-	cipher.NewCTR(block, iv).XORKeyStream(plaintext, ciphertext)
-
-	return plaintext, keyIndex > 0
-}
+//
+//func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
+//	if len(c.ticketKeys) == 0 {
+//		return nil, errors.New("tlcp: internal error: session ticket keys unavailable")
+//	}
+//
+//	encrypted := make([]byte, ticketKeyNameLen+aes.BlockSize+len(state)+sha256.Size)
+//	keyName := encrypted[:ticketKeyNameLen]
+//	iv := encrypted[ticketKeyNameLen : ticketKeyNameLen+aes.BlockSize]
+//	macBytes := encrypted[len(encrypted)-sha256.Size:]
+//
+//	if _, err := io.ReadFull(c.config.rand(), iv); err != nil {
+//		return nil, err
+//	}
+//	key := c.ticketKeys[0]
+//	copy(keyName, key.keyName[:])
+//	block, err := aes.NewCipher(key.aesKey[:])
+//	if err != nil {
+//		return nil, errors.New("tlcp: failed to create cipher while encrypting ticket: " + err.Error())
+//	}
+//	cipher.NewCTR(block, iv).XORKeyStream(encrypted[ticketKeyNameLen+aes.BlockSize:], state)
+//
+//	mac := hmac.New(sha256.New, key.hmacKey[:])
+//	mac.Write(encrypted[:len(encrypted)-sha256.Size])
+//	mac.Sum(macBytes[:0])
+//
+//	return encrypted, nil
+//}
+//
+//func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
+//	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
+//		return nil, false
+//	}
+//
+//	keyName := encrypted[:ticketKeyNameLen]
+//	iv := encrypted[ticketKeyNameLen : ticketKeyNameLen+aes.BlockSize]
+//	macBytes := encrypted[len(encrypted)-sha256.Size:]
+//	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
+//
+//	keyIndex := -1
+//	for i, candidateKey := range c.ticketKeys {
+//		if bytes.Equal(keyName, candidateKey.keyName[:]) {
+//			keyIndex = i
+//			break
+//		}
+//	}
+//	if keyIndex == -1 {
+//		return nil, false
+//	}
+//	key := &c.ticketKeys[keyIndex]
+//
+//	mac := hmac.New(sha256.New, key.hmacKey[:])
+//	mac.Write(encrypted[:len(encrypted)-sha256.Size])
+//	expected := mac.Sum(nil)
+//
+//	if subtle.ConstantTimeCompare(macBytes, expected) != 1 {
+//		return nil, false
+//	}
+//
+//	block, err := aes.NewCipher(key.aesKey[:])
+//	if err != nil {
+//		return nil, false
+//	}
+//	plaintext = make([]byte, len(ciphertext))
+//	cipher.NewCTR(block, iv).XORKeyStream(plaintext, ciphertext)
+//
+//	return plaintext, keyIndex > 0
+//}
