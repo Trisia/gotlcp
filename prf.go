@@ -7,18 +7,9 @@ package tlcp
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"errors"
-	"fmt"
 	"github.com/emmansun/gmsm/sm3"
 	"hash"
 )
-
-//// Split a premaster secret in two as specified in RFC 4346, Section 5.
-//func splitPreMasterSecret(secret []byte) (s1, s2 []byte) {
-//	s1 = secret[0 : (len(secret)+1)/2]
-//	s2 = secret[len(secret)/2:]
-//	return
-//}
 
 // pHash implements the P_hash function, as defined in RFC 4346, Section 5.
 func pHash(result, secret, seed []byte, hash func() hash.Hash) {
@@ -40,25 +31,6 @@ func pHash(result, secret, seed []byte, hash func() hash.Hash) {
 		a = h.Sum(nil)
 	}
 }
-
-//// prf10 implements the TLS 1.0 pseudo-random function, as defined in RFC 2246, Section 5.
-//func prf10(result, secret, label, seed []byte) {
-//	hashSHA1 := sha1.New
-//	hashMD5 := md5.New
-//
-//	labelAndSeed := make([]byte, len(label)+len(seed))
-//	copy(labelAndSeed, label)
-//	copy(labelAndSeed[len(label):], seed)
-//
-//	s1, s2 := splitPreMasterSecret(secret)
-//	pHash(result, s1, labelAndSeed, hashMD5)
-//	result2 := make([]byte, len(result))
-//	pHash(result2, s2, labelAndSeed, hashSHA1)
-//
-//	for i, b := range result2 {
-//		result[i] ^= b
-//	}
-//}
 
 // prf12 implements the TLS 1.2 pseudo-random function, as defined in RFC 5246, Section 5.
 func prf12(hashFunc func() hash.Hash) func(result, secret, label, seed []byte) {
@@ -184,13 +156,6 @@ func (h *finishedHash) Write(msg []byte) (n int, err error) {
 
 func (h finishedHash) Sum() []byte {
 	return h.client.Sum(nil)
-	//if h.version >= VersionTLS12 {
-	//	return h.client.Sum(nil)
-	//}
-	//
-	//out := make([]byte, 0, md5.Size+sha1.Size)
-	//out = h.clientMD5.Sum(out)
-	//return h.client.Sum(out)
 }
 
 // clientSum returns the contents of the verify_data member of a client's
@@ -209,71 +174,8 @@ func (h finishedHash) serverSum(masterSecret []byte) []byte {
 	return out
 }
 
-//// hashForClientCertificate returns the handshake messages so far, pre-hashed if
-//// necessary, suitable for signing by a TLS client certificate.
-//func (h finishedHash) hashForClientCertificate(sigType uint8, hashAlg func() hash.Hash, masterSecret []byte) []byte {
-//	if (h.version >= VersionTLS12 || sigType == signatureEd25519) && h.buffer == nil {
-//		panic("tlcp: handshake hash for a client certificate requested after discarding the handshake buffer")
-//	}
-//
-//	if sigType == signatureEd25519 {
-//		return h.buffer
-//	}
-//
-//	if h.version >= VersionTLS12 {
-//		hash := hashAlg.New()
-//		hash.Write(h.buffer)
-//		return hash.Sum(nil)
-//	}
-//
-//	if sigType == signatureECDSA {
-//		return h.server.Sum(nil)
-//	}
-//
-//	return h.Sum()
-//}
-
 // discardHandshakeBuffer is called when there is no more need to
 // buffer the entirety of the handshake messages.
 func (h *finishedHash) discardHandshakeBuffer() {
 	h.buffer = nil
-}
-
-// noExportedKeyingMaterial is used as a value of
-// ConnectionState.ekm when renegotiation is enabled and thus
-// we wish to fail all key-material export requests.
-func noExportedKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
-	return nil, errors.New("crypto/tlcp: ExportKeyingMaterial is unavailable when renegotiation is enabled")
-}
-
-// ekmFromMasterSecret generates exported keying material as defined in RFC 5705.
-func ekmFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clientRandom, serverRandom []byte) func(string, []byte, int) ([]byte, error) {
-	return func(label string, context []byte, length int) ([]byte, error) {
-		switch label {
-		case "client finished", "server finished", "master secret", "key expansion":
-			// These values are reserved and may not be used.
-			return nil, fmt.Errorf("crypto/tlcp: reserved ExportKeyingMaterial label: %s", label)
-		}
-
-		seedLen := len(serverRandom) + len(clientRandom)
-		if context != nil {
-			seedLen += 2 + len(context)
-		}
-		seed := make([]byte, 0, seedLen)
-
-		seed = append(seed, clientRandom...)
-		seed = append(seed, serverRandom...)
-
-		if context != nil {
-			if len(context) >= 1<<16 {
-				return nil, fmt.Errorf("crypto/tlcp: ExportKeyingMaterial context too long")
-			}
-			seed = append(seed, byte(len(context)>>8), byte(len(context)))
-			seed = append(seed, context...)
-		}
-
-		keyMaterial := make([]byte, length)
-		prfForVersion(version, suite)(keyMaterial, masterSecret, []byte(label), seed)
-		return keyMaterial, nil
-	}
 }

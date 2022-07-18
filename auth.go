@@ -11,10 +11,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
 	"hash"
 )
 
+// 根据算法套件获取 签名算法 和对应的Hash函数
 func typeAndHashFrom(suite uint16) (SignatureAlgorithm, func() hash.Hash, error) {
 	switch suite {
 	case TLCP_ECC_SM4_CBC_SM3, TLCP_ECC_SM4_GCM_SM3:
@@ -35,14 +37,14 @@ func typeAndHashFrom(suite uint16) (SignatureAlgorithm, func() hash.Hash, error)
 }
 
 // verifyHandshakeSignature 验证握手消息的签名值
-func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKey, hashFunc func() hash.Hash, signed, sig []byte) error {
+func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKey, h func() hash.Hash, tbs, sig []byte) error {
 	switch sigType {
 	case ECC_SM3:
 		pubKey, ok := pubkey.(*ecdsa.PublicKey)
 		if !ok {
 			return fmt.Errorf("expected an ECC(SM2) public key, got %T", pubkey)
 		}
-		if !ecdsa.VerifyASN1(pubKey, signed, sig) {
+		if !ecdsa.VerifyASN1(pubKey, tbs, sig) {
 			return errors.New("ECDSA verification failure")
 		}
 	case RSA_SHA256:
@@ -50,7 +52,7 @@ func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKe
 		if !ok {
 			return fmt.Errorf("expected an RSA public key, got %T", pubkey)
 		}
-		if err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, signed, sig); err != nil {
+		if err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, tbs, sig); err != nil {
 			return err
 		}
 	case RSA_SM3:
@@ -63,4 +65,29 @@ func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKe
 		return errors.New("internal error: unknown signature type")
 	}
 	return nil
+}
+
+// signHandshake 对握手消息进行签名，产生签名值
+func signHandshake(c *Conn, sigType SignatureAlgorithm, prvKey crypto.PrivateKey, newHash func() hash.Hash, tbs []byte) (sig []byte, err error) {
+	key, ok := prvKey.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("client certificate private key not implement crypto.Signer")
+	}
+	var signOpts crypto.SignerOpts = nil
+	switch sigType {
+	case ECC_SM3:
+		if _, ok := prvKey.(*sm2.PrivateKey); ok {
+			// SM2密钥需要额外进行 H的Hash计算
+			signOpts = &sm2.SM2SignerOption{ForceGMSign: true}
+		}
+	case RSA_SHA256:
+		// TODO: RSA_SHA256 签名参数
+	case RSA_SM3:
+		// TODO: RSA_SM3 签名参数
+	case IBS_SM3:
+		// TODO: IBS_SM3 签名参数
+	default:
+		signOpts = nil
+	}
+	return key.Sign(c.config.rand(), tbs, signOpts)
 }

@@ -59,8 +59,8 @@ type Conn struct {
 	// renegotiation extension. (This is meaningless as a server because
 	// renegotiation is not supported in that case.)
 	secureRenegotiation bool
-	// ekm is a closure for exporting keying material.
-	ekm func(label string, context []byte, length int) ([]byte, error)
+	//// ekm is a closure for exporting keying material.
+	//ekm func(label string, context []byte, length int) ([]byte, error)
 	// resumptionSecret is the resumption_master_secret for handling
 	// NewSessionTicket messages. nil if config.SessionTicketsDisabled.
 	resumptionSecret []byte
@@ -1445,11 +1445,6 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 		} else {
 			state.TLSUnique = c.serverFinished[:]
 		}
-	}
-	if c.config.Renegotiation != RenegotiateNever {
-		state.ekm = noExportedKeyingMaterial
-	} else {
-		state.ekm = c.ekm
 	}
 	return state
 }

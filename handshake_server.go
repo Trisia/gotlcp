@@ -113,8 +113,6 @@ func (hs *serverHandshakeState) handshake() error {
 			return err
 		}
 	}
-
-	c.ekm = ekmFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.clientHello.random, hs.hello.random)
 	atomic.StoreUint32(&c.handshakeStatus, 1)
 
 	return nil
@@ -560,10 +558,6 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		return err
 	}
 	hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.clientHello.random, hs.hello.random)
-	if err := c.config.writeKeyLog(keyLogLabelTLS12, hs.clientHello.random, hs.masterSecret); err != nil {
-		c.sendAlert(alertInternalError)
-		return err
-	}
 
 	// If we received a client sigCert in response to our certificate request message,
 	// the client will send us a certificateVerifyMsg immediately after the
@@ -583,7 +577,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 
 		// 根据算法套件确定签名算法和Hash算法
-		sigType, sigHash, err := typeAndHashFrom(hs.suite.id)
+		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
 		if err != nil {
 			c.sendAlert(alertIllegalParameter)
 			return err
@@ -593,7 +587,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		// 运算内容时自客户端hello消息开始直到本消息为止（不包括本消息）的所有与握手有关的消息（加密证书要包括在签名计算中），
 		// 包括握手消息的类型和长度域。
 		signed := hs.finishedHash.Sum()
-		if err := verifyHandshakeSignature(sigType, pub, sigHash, signed, certVerify.signature); err != nil {
+		if err := verifyHandshakeSignature(sigType, pub, newHash, signed, certVerify.signature); err != nil {
 			c.sendAlert(alertDecryptError)
 			return errors.New("tlcp: invalid signature by the client certificate: " + err.Error())
 		}
@@ -660,50 +654,6 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 	return nil
 }
 
-//
-//func (hs *serverHandshakeState) sendSessionTicket() error {
-//	// ticketSupported is set in a resumption handshake if the
-//	// ticket from the client was encrypted with an old session
-//	// ticket key and thus a refreshed ticket should be sent.
-//	if !hs.hello.ticketSupported {
-//		return nil
-//	}
-//
-//	c := hs.c
-//	m := new(newSessionTicketMsg)
-//
-//	createdAt := uint64(c.config.time().Unix())
-//	if hs.sessionState != nil {
-//		// If this is re-wrapping an old key, then keep
-//		// the original time it was created.
-//		createdAt = hs.sessionState.createdAt
-//	}
-//
-//	var certsFromClient [][]byte
-//	for _, sigCert := range c.peerCertificates {
-//		certsFromClient = append(certsFromClient, sigCert.Raw)
-//	}
-//	state := sessionState{
-//		vers:         c.vers,
-//		cipherSuite:  hs.suite.id,
-//		createdAt:    createdAt,
-//		masterSecret: hs.masterSecret,
-//		certificates: certsFromClient,
-//	}
-//	var err error
-//	m.ticket, err = c.encryptTicket(state.marshal())
-//	if err != nil {
-//		return err
-//	}
-//
-//	hs.finishedHash.Write(m.marshal())
-//	if _, err := c.writeRecord(recordTypeHandshake, m.marshal()); err != nil {
-//		return err
-//	}
-//
-//	return nil
-//}
-
 func (hs *serverHandshakeState) sendFinished(out []byte) error {
 	c := hs.c
 
@@ -750,10 +700,6 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		}
 
-		//for _, sigCert := range certs[1:] {
-		//	opts.Intermediates.AddCert(sigCert)
-		//}
-
 		chains, err := certs[0].Verify(opts)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
@@ -764,8 +710,6 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	}
 
 	c.peerCertificates = certs
-	//c.ocspResponse = certificate.OCSPStaple
-	//c.scts = certificate.SignedCertificateTimestamps
 
 	if len(certs) > 0 {
 		switch certs[0].PublicKey.(type) {

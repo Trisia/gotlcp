@@ -886,10 +886,6 @@ func (c *Config) getEKCertificate(clientHello *ClientHelloInfo) (*Certificate, e
 // the server that sent the CertificateRequest. Otherwise, it returns an error
 // describing the reason for the incompatibility.
 func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
-	//if _, err := selectSignatureScheme(cri.Version, c, cri.SignatureSchemes); err != nil {
-	//	return err
-	//}
-
 	if len(cri.AcceptableCAs) == 0 {
 		return nil
 	}
@@ -914,31 +910,31 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	return errors.New("chain is not signed by an acceptable CA")
 }
 
-const (
-	keyLogLabelTLS12           = "CLIENT_RANDOM"
-	keyLogLabelClientHandshake = "CLIENT_HANDSHAKE_TRAFFIC_SECRET"
-	keyLogLabelServerHandshake = "SERVER_HANDSHAKE_TRAFFIC_SECRET"
-	keyLogLabelClientTraffic   = "CLIENT_TRAFFIC_SECRET_0"
-	keyLogLabelServerTraffic   = "SERVER_TRAFFIC_SECRET_0"
-)
+//const (
+//	keyLogLabelTLS12           = "CLIENT_RANDOM"
+//	keyLogLabelClientHandshake = "CLIENT_HANDSHAKE_TRAFFIC_SECRET"
+//	keyLogLabelServerHandshake = "SERVER_HANDSHAKE_TRAFFIC_SECRET"
+//	keyLogLabelClientTraffic   = "CLIENT_TRAFFIC_SECRET_0"
+//	keyLogLabelServerTraffic   = "SERVER_TRAFFIC_SECRET_0"
+//)
 
-func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
-	if c.KeyLogWriter == nil {
-		return nil
-	}
+//func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
+//	if c.KeyLogWriter == nil {
+//		return nil
+//	}
+//
+//	logLine := []byte(fmt.Sprintf("%s %x %x\n", label, clientRandom, secret))
+//
+//	writerMutex.Lock()
+//	_, err := c.KeyLogWriter.Write(logLine)
+//	writerMutex.Unlock()
+//
+//	return err
+//}
 
-	logLine := []byte(fmt.Sprintf("%s %x %x\n", label, clientRandom, secret))
-
-	writerMutex.Lock()
-	_, err := c.KeyLogWriter.Write(logLine)
-	writerMutex.Unlock()
-
-	return err
-}
-
-// writerMutex protects all KeyLogWriters globally. It is rarely enabled,
-// and is only for debugging, so a global mutex saves space.
-var writerMutex sync.Mutex
+//// writerMutex protects all KeyLogWriters globally. It is rarely enabled,
+//// and is only for debugging, so a global mutex saves space.
+//var writerMutex sync.Mutex
 
 // A Certificate is a chain of one or more certificates, leaf first.
 type Certificate struct {

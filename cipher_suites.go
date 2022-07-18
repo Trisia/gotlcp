@@ -103,7 +103,7 @@ var cipherSuites = map[uint16]*cipherSuite{
 // selectCipherSuite 从推荐ID和候选ID中选择出符合条件的密钥套件
 func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *cipherSuite {
 	for _, id := range ids {
-		candidate := cipherSuiteByID(id)
+		candidate := cipherSuites[id]
 		if candidate == nil || !ok(candidate) {
 			continue
 		}
@@ -149,18 +149,19 @@ func tls10MAC(h hash.Hash, out, seq, header, data, extra []byte) []byte {
 func mutualCipherSuite(have []uint16, want uint16) *cipherSuite {
 	for _, id := range have {
 		if id == want {
-			return cipherSuiteByID(id)
+			//return cipherSuiteByID(id)
+			return cipherSuites[id]
 		}
 	}
 	return nil
 }
 
-func cipherSuiteByID(id uint16) *cipherSuite {
-	if suite, ok := cipherSuites[id]; ok {
-		return suite
-	}
-	return nil
-}
+//func cipherSuiteByID(id uint16) *cipherSuite {
+//	if suite, ok := cipherSuites[id]; ok {
+//		return suite
+//	}
+//	return nil
+//}
 
 // 密码套件ID，见 GB/T 38636-2016 6.4.5.2.1  表 2 密码套件列表
 const (
