@@ -18,19 +18,33 @@ import (
 // a keyAgreement implements the client and server side of a TLS key agreement
 // protocol by generating and processing key exchange messages.
 type keyAgreement interface {
-	// On the server side, the first two methods are called in order.
+	// 服务端侧
 
-	// In the case that the key agreement protocol doesn't use a
-	// ServerKeyExchange message, generateServerKeyExchange can return nil,
-	// nil.
+	// 生成服务端密钥加交换消息
+	// config: 配置
+	// certs: 证书列表 {签名证书,加密证书}
+	// msg: 服务端Hello消息
 	generateServerKeyExchange(*Config, []*Certificate, *clientHelloMsg, *serverHelloMsg) (*serverKeyExchangeMsg, error)
-	processClientKeyExchange(*Config, *Certificate, *clientKeyExchangeMsg, uint16) ([]byte, error)
+	// 处理客户端密钥交换消息
+	// config: 配置
+	// certs: 证书列表 {签名证书,加密证书}
+	// msg: 客户端密钥交换消息
+	// ver: 协议版本号
+	processClientKeyExchange(*Config, []*Certificate, *clientKeyExchangeMsg, uint16) ([]byte, error)
 
-	// On the client side, the next two methods are called in order.
+	// 客户端侧
 
-	// This method may not be called if the server doesn't send a
-	// ServerKeyExchange message.
+	// 处理服务端密钥交换消息
+	// config: 配置
+	// clientHello: 客户端Hello消息
+	// serverHello: 服务端Hello消息
+	// certs: 服务端证书列表 {签名证书,加密证书}
+	// msg: 服务端密钥交换消息
 	processServerKeyExchange(*Config, *clientHelloMsg, *serverHelloMsg, []*x509.Certificate, *serverKeyExchangeMsg) error
+	// 生成客户端密钥交换消息
+	// config: 配置
+	// clientHello: 客户端Hello消息
+	// certs: 服务端证书列表 {签名证书,加密证书}
 	generateClientKeyExchange(*Config, *clientHelloMsg, []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error)
 }
 
@@ -55,7 +69,8 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 	if len(certs) < 2 {
 		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
 	}
-
+	sigCert := certs[0]
+	encCert := certs[1]
 	// GM/T 38636-2016 6.4.5.4 Server Key Exchange消息
 	// e) signed_params
 	// 当密钥交换方式为ECC和RSA时，signed_params是服务端对双方
@@ -67,23 +82,24 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 			opaque ASN.1Cert<1..2^24-1>;
 		}signed_params
 	*/
-	sigCert := certs[0]
-	encCert := certs[1]
+
 	// 组装签名数据
-	param := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Certificate[0])
-	//fmt.Printf("%02X\n", param)
+	msg := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Certificate[0])
+
 	priv, ok := sigCert.PrivateKey.(crypto.Signer)
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
 	}
-	sig, err := priv.Sign(config.rand(), param, nil)
+	sig, err := priv.Sign(config.rand(), msg, &sm2.SM2SignerOption{ForceGMSign: true})
 	if err != nil {
 		return nil, err
 	}
 
-	size := len(sig)
+	//fmt.Printf("[src]>> %02X\n", msg)
+	//fmt.Printf("[sig]>> %02X\n", sig)
 
 	ske := new(serverKeyExchangeMsg)
+	size := len(sig)
 	ske.key = make([]byte, size+2)
 	ske.key[0] = byte(size >> 8)
 	ske.key[1] = byte(size & 0xFF)
@@ -116,7 +132,12 @@ func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, c
 	return buffer.Bytes()
 }
 
-func (e *eccKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+func (e *eccKeyAgreement) processClientKeyExchange(config *Config, certs []*Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+	if len(certs) < 2 {
+		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
+	}
+	encCert := certs[1]
+
 	if len(ckx.ciphertext) == 0 {
 		return nil, errClientKeyExchange
 	}
@@ -124,16 +145,17 @@ func (e *eccKeyAgreement) processClientKeyExchange(config *Config, cert *Certifi
 	size := int(ckx.ciphertext[0]) << 8
 	size |= int(ckx.ciphertext[1])
 
-	if size != len(ckx.ciphertext)-2 {
+	if 2+size != len(ckx.ciphertext) {
 		return nil, errClientKeyExchange
 	}
 
 	cipher := ckx.ciphertext[2:]
-	decrypter, ok := cert.PrivateKey.(crypto.Decrypter)
+
+	decrypter, ok := encCert.PrivateKey.(crypto.Decrypter)
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Decrypter")
 	}
-	plain, err := decrypter.Decrypt(config.rand(), cipher, sm2.DecrypterOpts{CiphertextEncoding: sm2.ENCODING_ASN1})
+	plain, err := decrypter.Decrypt(config.rand(), cipher, &sm2.DecrypterOpts{CiphertextEncoding: sm2.ENCODING_ASN1})
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +171,6 @@ func (e *eccKeyAgreement) processServerKeyExchange(config *Config, clientHello *
 	if len(certs) < 2 {
 		return errors.New("tlcp: ecc key exchange need 2 certificates")
 	}
-
 	sigCert := certs[0]
 	encCert := certs[1]
 
@@ -193,7 +214,7 @@ func (e *eccKeyAgreement) generateClientKeyExchange(config *Config, clientHello 
 	}
 
 	pub := encCert.PublicKey.(*ecdsa.PublicKey)
-	encrypted, err := sm2.EncryptASN1(config.rand(), pub, preMasterSecret)
+	encrypted, err := sm2.Encrypt(config.rand(), pub, preMasterSecret, sm2.ASN1EncrypterOpts)
 	if err != nil {
 		return nil, nil, err
 	}

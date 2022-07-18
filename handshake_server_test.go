@@ -70,15 +70,17 @@ func init() {
 }
 
 func Test_serverHandshake(t *testing.T) {
-	tcpLn, err := net.Listen("tcp", ":30443")
+	var err error
+	tcpLn, err := net.Listen("tcp", ":8443")
 	if err != nil {
 		t.Fatal(err)
 	}
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 	}
+	var conn net.Conn
 	for {
-		conn, err := tcpLn.Accept()
+		conn, err = tcpLn.Accept()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,9 +88,9 @@ func Test_serverHandshake(t *testing.T) {
 		server := Server(conn, config)
 		err = server.Handshake()
 		if err != nil {
+			_ = conn.Close()
 			t.Fatal(err)
 		}
-		_ = conn.Close()
-
+		_ = server.Close()
 	}
 }

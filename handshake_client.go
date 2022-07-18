@@ -845,12 +845,12 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	//certs := make([]*x509.Certificate, len(certificates))
 	//for i, asn1Data := range certificates {
-	//	cert, err := x509.ParseCertificate(asn1Data)
+	//	sigCert, err := x509.ParseCertificate(asn1Data)
 	//	if err != nil {
 	//		c.sendAlert(alertBadCertificate)
 	//		return errors.New("tlcp: failed to parse certificate from server: " + err.Error())
 	//	}
-	//	certs[i] = cert
+	//	certs[i] = sigCert
 	//}
 	//
 	//if !c.config.InsecureSkipVerify {
@@ -861,8 +861,8 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	//		Intermediates: x509.NewCertPool(),
 	//	}
 	//
-	//	for _, cert := range certs[1:] {
-	//		opts.Intermediates.AddCert(cert)
+	//	for _, sigCert := range certs[1:] {
+	//		opts.Intermediates.AddCert(sigCert)
 	//	}
 	//	var err error
 	//	c.verifiedChains, err = certs[0].Verify(opts)

@@ -36,8 +36,8 @@ type serverHandshakeState struct {
 	sessionState *sessionState
 	finishedHash finishedHash
 	masterSecret []byte
-	cert         *Certificate
-	encCert      *Certificate
+	sigCert      *Certificate // 签名证书
+	encCert      *Certificate // 加密证书
 }
 
 // serverHandshake performs a TLS handshake as a server.
@@ -186,7 +186,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 
 	// 选择服务端签名证书
 	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
-	hs.cert, err = c.config.getCertificate(helloInfo)
+	hs.sigCert, err = c.config.getCertificate(helloInfo)
 	if err != nil {
 		if err == errNoCertificates {
 			_ = c.sendAlert(alertUnrecognizedName)
@@ -207,11 +207,11 @@ func (hs *serverHandshakeState) processClientHello() error {
 		return err
 	}
 
-	if hs.encCert == nil || hs.cert == nil {
+	if hs.encCert == nil || hs.sigCert == nil {
 		_ = c.sendAlert(alertInternalError)
 	}
 
-	if priv, ok := hs.cert.PrivateKey.(crypto.Signer); ok {
+	if priv, ok := hs.sigCert.PrivateKey.(crypto.Signer); ok {
 		switch priv.Public().(type) {
 		case *ecdsa.PublicKey:
 			hs.ecSignOk = true
@@ -435,7 +435,7 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 func (hs *serverHandshakeState) doFullHandshake() error {
 	c := hs.c
 
-	//if hs.clientHello.ocspStapling && len(hs.cert.OCSPStaple) > 0 {
+	//if hs.clientHello.ocspStapling && len(hs.sigCert.OCSPStaple) > 0 {
 	//	hs.hello.ocspStapling = true
 	//}
 	//hs.hello.ticketSupported = hs.clientHello.ticketSupported && !c.config.SessionTicketsDisabled
@@ -456,7 +456,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 
 	certMsg := new(certificateMsg)
 	certMsg.certificates = [][]byte{
-		hs.cert.Certificate[0], hs.encCert.Certificate[0],
+		hs.sigCert.Certificate[0], hs.encCert.Certificate[0],
 	}
 	hs.finishedHash.Write(certMsg.marshal())
 	if _, err := c.writeRecord(recordTypeHandshake, certMsg.marshal()); err != nil {
@@ -464,7 +464,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	keyAgreement := hs.suite.ka(c.vers)
-	skx, err := keyAgreement.generateServerKeyExchange(c.config, []*Certificate{hs.cert, hs.encCert}, hs.clientHello, hs.hello)
+	skx, err := keyAgreement.generateServerKeyExchange(c.config, []*Certificate{hs.sigCert, hs.encCert}, hs.clientHello, hs.hello)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err
@@ -554,7 +554,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	hs.finishedHash.Write(ckx.marshal())
 
-	preMasterSecret, err := keyAgreement.processClientKeyExchange(c.config, hs.cert, ckx, c.vers)
+	preMasterSecret, err := keyAgreement.processClientKeyExchange(c.config, []*Certificate{hs.sigCert, hs.encCert}, ckx, c.vers)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err
@@ -565,7 +565,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		return err
 	}
 
-	// If we received a client cert in response to our certificate request message,
+	// If we received a client sigCert in response to our certificate request message,
 	// the client will send us a certificateVerifyMsg immediately after the
 	// clientKeyExchangeMsg. This message is a digest of all preceding
 	// handshake-layer messages that is signed using the private key corresponding
@@ -680,8 +680,8 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 //	}
 //
 //	var certsFromClient [][]byte
-//	for _, cert := range c.peerCertificates {
-//		certsFromClient = append(certsFromClient, cert.Raw)
+//	for _, sigCert := range c.peerCertificates {
+//		certsFromClient = append(certsFromClient, sigCert.Raw)
 //	}
 //	state := sessionState{
 //		vers:         c.vers,
@@ -750,8 +750,8 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		}
 
-		//for _, cert := range certs[1:] {
-		//	opts.Intermediates.AddCert(cert)
+		//for _, sigCert := range certs[1:] {
+		//	opts.Intermediates.AddCert(sigCert)
 		//}
 
 		chains, err := certs[0].Verify(opts)

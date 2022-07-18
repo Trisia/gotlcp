@@ -690,9 +690,9 @@ func (m *certificateMsg) unmarshal(data []byte) bool {
 //
 //func marshalCertificate(b *cryptobyte.Builder, certificate Certificate) {
 //	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		for i, cert := range certificate.Certificate {
+//		for i, sigCert := range certificate.Certificate {
 //			b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//				b.AddBytes(cert)
+//				b.AddBytes(sigCert)
 //			})
 //			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 //				if i > 0 {
@@ -749,13 +749,13 @@ func (m *certificateMsg) unmarshal(data []byte) bool {
 //		return false
 //	}
 //	for !certList.Empty() {
-//		var cert []byte
+//		var sigCert []byte
 //		var extensions cryptobyte.String
-//		if !readUint24LengthPrefixed(&certList, &cert) ||
+//		if !readUint24LengthPrefixed(&certList, &sigCert) ||
 //			!certList.ReadUint16LengthPrefixed(&extensions) {
 //			return false
 //		}
-//		certificate.Certificate = append(certificate.Certificate, cert)
+//		certificate.Certificate = append(certificate.Certificate, sigCert)
 //		for !extensions.Empty() {
 //			var extension uint16
 //			var extData cryptobyte.String
