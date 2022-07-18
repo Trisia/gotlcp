@@ -1,6 +1,7 @@
 package tlcp
 
 import (
+	"fmt"
 	"net"
 	"testing"
 )
@@ -70,10 +71,18 @@ func init() {
 }
 
 func Test_serverHandshake(t *testing.T) {
-	var err error
-	tcpLn, err := net.Listen("tcp", ":8443")
+	err := server(8443)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 启动TLCP服务端
+func server(port int) error {
+	var err error
+	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
 	}
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
@@ -82,14 +91,14 @@ func Test_serverHandshake(t *testing.T) {
 	for {
 		conn, err = tcpLn.Accept()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 
 		server := Server(conn, config)
 		err = server.Handshake()
 		if err != nil {
 			_ = conn.Close()
-			t.Fatal(err)
+			return err
 		}
 		_ = server.Close()
 	}

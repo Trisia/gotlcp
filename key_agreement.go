@@ -71,16 +71,18 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 	}
 	sigCert := certs[0]
 	encCert := certs[1]
-	// GM/T 38636-2016 6.4.5.4 Server Key Exchange消息
-	// e) signed_params
-	// 当密钥交换方式为ECC和RSA时，signed_params是服务端对双方
-	// 随机数和服务端加密证书的签名。
+
 	/*
-		digitally-signed struct {
-			opaque client_random[32];
-			opaque server_random[32];
-			opaque ASN.1Cert<1..2^24-1>;
-		}signed_params
+			digitally-signed struct {
+				opaque client_random[32];
+				opaque server_random[32];
+				opaque ASN.1Cert<1..2^24-1>;
+			}signed_params
+
+			 GM/T 38636-2016 6.4.5.4 Server Key Exchange消息
+		 		e) signed_params
+		 		当密钥交换方式为ECC和RSA时，signed_params是服务端对双方
+		 		随机数和服务端加密证书的签名。
 	*/
 
 	// 组装签名数据
@@ -95,8 +97,8 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 		return nil, err
 	}
 
-	//fmt.Printf("[src]>> %02X\n", msg)
-	//fmt.Printf("[sig]>> %02X\n", sig)
+	//fmt.Printf("server [src]>> %02X\n", msg)
+	//fmt.Printf("server [sig]>> %02X\n", sig)
 
 	ske := new(serverKeyExchangeMsg)
 	size := len(sig)
@@ -106,30 +108,6 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 	copy(ske.key[2:], sig)
 
 	return ske, nil
-}
-
-// GM/T 38636-2016 Server Key Exchange 组装待签名数据
-func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, cert []byte) []byte {
-	/*
-		struct {
-			opaque client_random[32];
-			opaque server_random[32];
-			opaque ASN.1Cert<1..2^24-1>;
-		}params
-	*/
-	buffer := new(bytes.Buffer)
-	buffer.Write(clientRandom)
-	buffer.Write(serverRandom)
-
-	certLen := len(cert)
-	buffer.Write([]byte{
-		byte(certLen>>16) & 0xFF,
-		byte(certLen>>8) & 0xFF,
-		byte(certLen),
-	})
-	buffer.Write(cert)
-
-	return buffer.Bytes()
 }
 
 func (e *eccKeyAgreement) processClientKeyExchange(config *Config, certs []*Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
@@ -191,9 +169,12 @@ func (e *eccKeyAgreement) processServerKeyExchange(config *Config, clientHello *
 	}
 
 	// 组装签名数据
-	param := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Raw)
+	tbs := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Raw)
 
-	if !sm2.VerifyASN1(pub, param, sig) {
+	//fmt.Printf("client [src]>> %02X\n", tbs)
+	//fmt.Printf("client [sig]>> %02X\n", sig)
+
+	if !sm2.VerifyASN1WithSM2(pub, nil, tbs, sig) {
 		return errors.New("tlcp: processServerKeyExchange: sm2 verification failure")
 	}
 	return nil
@@ -226,4 +207,28 @@ func (e *eccKeyAgreement) generateClientKeyExchange(config *Config, clientHello 
 	ckx.ciphertext[1] = byte(size & 0xFF)
 	copy(ckx.ciphertext[2:], encrypted)
 	return preMasterSecret, ckx, nil
+}
+
+// GM/T 38636-2016 Server Key Exchange 组装待签名数据
+func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, cert []byte) []byte {
+	/*
+		struct {
+			opaque client_random[32];
+			opaque server_random[32];
+			opaque ASN.1Cert<1..2^24-1>;
+		}params
+	*/
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientRandom)
+	buffer.Write(serverRandom)
+
+	certLen := len(cert)
+	buffer.Write([]byte{
+		byte(certLen>>16) & 0xFF,
+		byte(certLen>>8) & 0xFF,
+		byte(certLen),
+	})
+	buffer.Write(cert)
+
+	return buffer.Bytes()
 }

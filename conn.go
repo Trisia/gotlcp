@@ -1053,14 +1053,12 @@ func (c *Conn) readHandshake() (interface{}, error) {
 	data = c.hand.Next(4 + n)
 	var m handshakeMessage
 	switch data[0] {
-	//case typeHelloRequest:
-	//	m = new(helloRequestMsg)
 	case typeClientHello:
 		m = new(clientHelloMsg)
 	case typeServerHello:
 		m = new(serverHelloMsg)
-	//case typeCertificateStatus:
-	//	m = new(certificateStatusMsg)
+	case typeCertificate:
+		m = new(certificateMsg)
 	case typeServerKeyExchange:
 		m = new(serverKeyExchangeMsg)
 	case typeServerHelloDone:
@@ -1071,12 +1069,6 @@ func (c *Conn) readHandshake() (interface{}, error) {
 		m = new(certificateVerifyMsg)
 	case typeFinished:
 		m = new(finishedMsg)
-	//case typeEncryptedExtensions:
-	//	m = new(encryptedExtensionsMsg)
-	//case typeEndOfEarlyData:
-	//	m = new(endOfEarlyDataMsg)
-	//case typeKeyUpdate:
-	//	m = new(keyUpdateMsg)
 	default:
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
