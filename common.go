@@ -768,6 +768,7 @@ func (c *Config) cipherSuites() []uint16 {
 	return defaultCipherSuites
 }
 
+// 支持的协议版本列表
 var supportedVersions = []uint16{
 	VersionTLCP,
 }

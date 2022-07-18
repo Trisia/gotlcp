@@ -100,8 +100,7 @@ var cipherSuites = map[uint16]*cipherSuite{
 	TLCP_ECC_SM4_GCM_SM3: {TLCP_ECC_SM4_GCM_SM3, 16, 0, 4, eccKA, suiteECSign, nil, nil, aeadSM4GCM},
 }
 
-// selectCipherSuite returns the first TLS 1.0–1.2 cipher suite from ids which
-// is also in supportedIDs and passes the ok filter.
+// selectCipherSuite 从推荐ID和候选ID中选择出符合条件的密钥套件
 func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *cipherSuite {
 	for _, id := range ids {
 		candidate := cipherSuiteByID(id)
@@ -118,13 +117,13 @@ func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *
 	return nil
 }
 
+// 推荐的密码套件列表（顺序表示优先级）
 var cipherSuitesPreferenceOrder = []uint16{
 	TLCP_ECC_SM4_CBC_SM3,
 	TLCP_ECC_SM4_GCM_SM3,
 }
 
-// disabledCipherSuites are not used unless explicitly listed in
-// Config.CipherSuites. They MUST be at the end of cipherSuitesPreferenceOrder.
+// disabledCipherSuites 禁用的密码套件
 var disabledCipherSuites = []uint16{}
 
 var (
