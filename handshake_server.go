@@ -235,35 +235,6 @@ func (hs *serverHandshakeState) processClientHello() error {
 	return nil
 }
 
-//
-//// negotiateALPN picks a shared ALPN protocol that both sides support in server
-//// preference order. If ALPN is not configured or the peer doesn't support it,
-//// it returns "" and no error.
-//func negotiateALPN(serverProtos, clientProtos []string) (string, error) {
-//	if len(serverProtos) == 0 || len(clientProtos) == 0 {
-//		return "", nil
-//	}
-//	var http11fallback bool
-//	for _, s := range serverProtos {
-//		for _, c := range clientProtos {
-//			if s == c {
-//				return s, nil
-//			}
-//			if s == "h2" && c == "http/1.1" {
-//				http11fallback = true
-//			}
-//		}
-//	}
-//	// As a special case, let http/1.1 clients connect to h2 servers as if they
-//	// didn't support ALPN. We used not to enforce protocol overlap, so over
-//	// time a number of HTTP servers were configured with only "h2", but
-//	// expected to accept connections from "http/1.1" clients. See Issue 46310.
-//	if http11fallback {
-//		return "", nil
-//	}
-//	return "", fmt.Errorf("tlcp: client requested unsupported application protocols (%s)", clientProtos)
-//}
-
 // supportsECDHE returns whether ECDHE key exchanges can be used with this
 // pre-TLS 1.3 client.
 func supportsECDHE(c *Config, supportedCurves []CurveID, supportedPoints []uint8) bool {
@@ -523,9 +494,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 		hs.finishedHash.Write(certMsg.marshal())
 
-		if err := c.processCertsFromClient(Certificate{
-			Certificate: certMsg.certificates,
-		}); err != nil {
+		if err := c.processCertsFromClient(Certificate{Certificate: certMsg.certificates}); err != nil {
 			return err
 		}
 		if len(certMsg.certificates) != 0 {
@@ -697,7 +666,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			Roots:         c.config.ClientCAs,
 			CurrentTime:   c.config.time(),
 			Intermediates: x509.NewCertPool(),
-			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		}
 
 		chains, err := certs[0].Verify(opts)

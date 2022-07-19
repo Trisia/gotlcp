@@ -359,27 +359,25 @@ const (
 // modified. A Config may be reused; the tls package will also not
 // modify it.
 type Config struct {
-	// Rand provides the source of entropy for nonces and RSA blinding.
-	// If Rand is nil, TLS uses the cryptographic random reader in package
-	// crypto/rand.
-	// The Reader must be safe for use by multiple goroutines.
+	// Rand 外部随机源，若不配置则默认使用 crypto/rand 作为随机源
+	// 随机源必须线程安全，能够被多goroutines访问。
 	Rand io.Reader
 
 	// Time returns the current time as the number of seconds since the epoch.
 	// If Time is nil, TLS uses time.Now.
 	Time func() time.Time
 
-	// Certificates contains one or more certificate chains to present to the
-	// other side of the connection. The first certificate compatible with the
-	// peer's requirements is selected automatically.
+	// Certificates TLCP握手过程中的证书密钥对，数组中每一个元素表示一对密钥以及一张证书
 	//
-	// Server configurations must set one of Certificates, GetCertificate or
-	// GetConfigForClient. Clients doing client-authentication may set either
-	// Certificates or GetClientCertificate.
+	// TLCP协议中服务端需要2对密钥对，1对签名密钥对和签名证书、1对加密密钥对和加密证书，
+	// TLCP协议中客户端在需要身份认证的场景下也需要1对签名密钥对和签名证书。
 	//
-	// Note: if there are multiple Certificates, and they don't have the
-	// optional field Leaf set, certificate selection will incur a significant
-	// per-handshake performance cost.
+	// 服务端：至少2对密钥对和证书，按照顺序[签名密钥对, 加密密钥对]
+	// 客户端：若不需要客户端身份认证则可以为空，否则至少1对密钥对。
+	//
+	// 特别的也可以使用动态方法获取证书，使该参数为空
+	// 服务端需实现： GetCertificate GetKECertificate
+	// 客户端需实现： GetClientCertificate
 	Certificates []Certificate
 
 	// GetCertificate returns a Certificate based on the given
@@ -450,9 +448,8 @@ type Config struct {
 	// regardless of InsecureSkipVerify or ClientAuth settings.
 	VerifyConnection func(ConnectionState) error
 
-	// RootCAs defines the set of root certificate authorities
-	// that clients use when verifying server certificates.
-	// If RootCAs is nil, TLS uses the host's root CA set.
+	// RootCAs 根证书列表，客户端使用该列表的证书验证服务端证书是否有效
+	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
 	RootCAs *x509.CertPool
 
 	// ServerName is used to verify the hostname on the returned
@@ -461,8 +458,8 @@ type Config struct {
 	// an IP address.
 	ServerName string
 
-	// ClientAuth determines the server's policy for
-	// TLS Client Authentication. The default is NoClientCert.
+	// ClientAuth 服务端对客户端身份认证策略
+	// 默认值为 NoClientCert 不验证客户端身份
 	ClientAuth ClientAuthType
 
 	// ClientCAs defines the set of root certificate authorities

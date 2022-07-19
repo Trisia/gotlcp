@@ -2,11 +2,26 @@ package tlcp
 
 import (
 	"fmt"
+	"github.com/emmansun/gmsm/smx509"
 	"net"
 	"testing"
 )
 
 const (
+	ROOT_CERT_PEM = `-----BEGIN CERTIFICATE-----
+MIIB3jCCAYOgAwIBAgIIAs4MAPwpIBcwCgYIKoEcz1UBg3UwQjELMAkGA1UEBhMC
+Q04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t5beeMREwDwYDVQQKDAjm
+tYvor5VDQTAeFw0yMTEyMjMwODQ4MzNaFw0zMTEyMjMwODQ4MzNaMEIxCzAJBgNV
+BAYTAkNOMQ8wDQYDVQQIDAbmtZnmsZ8xDzANBgNVBAcMBuadreW3njERMA8GA1UE
+CgwI5rWL6K+VQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAARKs6B5ZBy753Os
+ZSeIfv8zScbiiXkLjB+Plw+YWvoesRkqYGe/Mqjr8rrmThq6iEWubYK6ZiQQV54k
+Klcva3Hto2MwYTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNV
+HQ4EFgQUNpPjFOdFCfrV7+ovEi3ToZY8wqQwHwYDVR0jBBgwFoAUNpPjFOdFCfrV
+7+ovEi3ToZY8wqQwCgYIKoEcz1UBg3UDSQAwRgIhALDhtLKVziUhXbTedDovRANS
+Cdu6CJ0MAw7Wbl3vAWGOAiEAzCXLcF32DM5Aze9MqpUfQfYPaRTLYkNwSXlw/LUY
+E6E=
+-----END CERTIFICATE-----
+`
 	SIG_CERT_PEM = `-----BEGIN CERTIFICATE-----
 MIICHTCCAcSgAwIBAgIIAs5iVWOA17swCgYIKoEcz1UBg3UwQjELMAkGA1UEBhMC
 Q04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t5beeMREwDwYDVQQKDAjm
@@ -56,10 +71,16 @@ gmquZR3m
 var (
 	sigCert Certificate
 	encCert Certificate
+	root1   *smx509.Certificate
 )
 
 func init() {
 	var err error
+	root1, err = smx509.ParseCertificatePEM([]byte(ROOT_CERT_PEM))
+	if err != nil {
+		panic(err)
+	}
+
 	sigCert, err = X509KeyPair([]byte(SIG_CERT_PEM), []byte(SIG_KEY_PEM))
 	if err != nil {
 		panic(err)
@@ -86,6 +107,37 @@ func server(port int) error {
 	}
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
+	}
+	var conn net.Conn
+	for {
+		conn, err = tcpLn.Accept()
+		if err != nil {
+			return err
+		}
+
+		server := Server(conn, config)
+		err = server.Handshake()
+		if err != nil {
+			_ = conn.Close()
+			return err
+		}
+		_ = server.Close()
+	}
+}
+
+// 启动TLCP服务端 要求客户端进行身份认证
+func serverNeedAuth(port int) error {
+	var err error
+	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+	config := &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		ClientAuth:   RequireAndVerifyClientCert,
+		ClientCAs:    pool,
 	}
 	var conn net.Conn
 	for {

@@ -122,40 +122,32 @@ func keysFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clie
 }
 
 func newFinishedHash(version uint16, cipherSuite *cipherSuite) finishedHash {
-	var buffer = []byte{}
 	prf, newH := prfAndHashForVersion(version, cipherSuite)
 	if newH != nil {
-		return finishedHash{newH(), newH(), buffer, version, prf}
+		return finishedHash{newH(), version, prf}
 	}
-	return finishedHash{sm3.New(), sm3.New(), buffer, version, prf}
+	return finishedHash{sm3.New(), version, prf}
 }
 
 // A finishedHash calculates the hash of a set of handshake messages suitable
 // for including in a Finished message.
 type finishedHash struct {
-	client hash.Hash
-	server hash.Hash
-
-	// In TLS 1.2, a full buffer is sadly required.
-	buffer []byte
+	//client hash.Hash
+	//server hash.Hash
+	msgHash hash.Hash
 
 	version uint16
 	prf     func(result, secret, label, seed []byte)
 }
 
 func (h *finishedHash) Write(msg []byte) (n int, err error) {
-	h.client.Write(msg)
-	h.server.Write(msg)
-
-	if h.buffer != nil {
-		h.buffer = append(h.buffer, msg...)
-	}
-
+	h.msgHash.Write(msg)
+	//h.server.Write(msg)
 	return len(msg), nil
 }
 
 func (h finishedHash) Sum() []byte {
-	return h.client.Sum(nil)
+	return h.msgHash.Sum(nil)
 }
 
 // clientSum returns the contents of the verify_data member of a client's
@@ -177,5 +169,5 @@ func (h finishedHash) serverSum(masterSecret []byte) []byte {
 // discardHandshakeBuffer is called when there is no more need to
 // buffer the entirety of the handshake messages.
 func (h *finishedHash) discardHandshakeBuffer() {
-	h.buffer = nil
+	//h.buffer = nil
 }

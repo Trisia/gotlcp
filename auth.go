@@ -44,8 +44,8 @@ func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKe
 		if !ok {
 			return fmt.Errorf("expected an ECC(SM2) public key, got %T", pubkey)
 		}
-		if !ecdsa.VerifyASN1(pubKey, tbs, sig) {
-			return errors.New("ECDSA verification failure")
+		if !sm2.VerifyASN1WithSM2(pubKey, nil, tbs, sig) {
+			return errors.New("SM2 verification failure")
 		}
 	case RSA_SHA256:
 		pubKey, ok := pubkey.(*rsa.PublicKey)
