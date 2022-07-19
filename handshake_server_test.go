@@ -98,6 +98,13 @@ func Test_serverHandshake(t *testing.T) {
 	}
 }
 
+func Test_serverHandshake_auth(t *testing.T) {
+	err := serverNeedAuth(8442)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // 启动TLCP服务端
 func server(port int) error {
 	var err error
