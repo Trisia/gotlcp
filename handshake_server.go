@@ -404,12 +404,12 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 func (hs *serverHandshakeState) doFullHandshake() error {
 	c := hs.c
 
-	//if hs.clientHello.ocspStapling && len(hs.sigCert.OCSPStaple) > 0 {
-	//	hs.hello.ocspStapling = true
-	//}
-	//hs.hello.ticketSupported = hs.clientHello.ticketSupported && !c.config.SessionTicketsDisabled
-
 	hs.hello.cipherSuite = hs.suite.id
+	hs.hello.sessionId = make([]byte, 32)
+	// 服务端产生一个新的会话标识,用来建立一个新的会话。
+	if _, err := io.ReadFull(c.config.rand(), hs.hello.sessionId); err != nil {
+		return errors.New("tlcp: error in generate server side session id, " + err.Error())
+	}
 
 	hs.finishedHash = newFinishedHash(hs.c.vers, hs.suite)
 	if c.config.ClientAuth == NoClientCert {

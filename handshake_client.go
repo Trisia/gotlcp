@@ -596,14 +596,6 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	//	}
 	//}
 
-	//if err := checkALPN(hs.hello.alpnProtocols, hs.serverHello.alpnProtocol); err != nil {
-	//	c.sendAlert(alertUnsupportedExtension)
-	//	return false, err
-	//}
-	//c.clientProtocol = hs.serverHello.alpnProtocol
-	//
-	//c.scts = hs.serverHello.scts
-
 	if !hs.serverResumedSession() {
 		return false, nil
 	}
@@ -676,6 +668,7 @@ func (hs *clientHandshakeState) readFinished(out []byte) error {
 	return nil
 }
 
+// 生成Session会话信息，用于握手重用
 func (hs *clientHandshakeState) readSessionTicket() error {
 	//if !hs.serverHello.ticketSupported {
 	//	return nil

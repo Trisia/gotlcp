@@ -65,31 +65,17 @@ func readUint24LengthPrefixed(s *cryptobyte.String, out *[]byte) bool {
 }
 
 type clientHelloMsg struct {
-	raw                []byte
-	vers               uint16
-	random             []byte
+	raw    []byte
+	vers   uint16
+	random []byte
+	// sessionId 是一个可变长字段,其值由服务端决定。如果没有可重用的会话标识或希望协商
+	// 安全参数,该字段应为空,否则表示客户端希望重用该会话。这个会话标识可能是之前的连接
+	// 标识、当前连接标识、或其他处于连接状态的连接标识。会话标识生成后应一直保持到被超时
+	// 删除或与这个会话相关的连接遇到致命错误被关闭。一个会话失效或被关闭时则与其相关的
+	// 连接都应被强制关闭。
 	sessionId          []byte
 	cipherSuites       []uint16
 	compressionMethods []uint8
-	//serverName         string
-	//ocspStapling       bool
-	//supportedCurves    []CurveID
-	//supportedPoints    []uint8
-	//ticketSupported    bool
-	//sessionTicket      []uint8
-	//supportedSignatureAlgorithms     []SignatureScheme
-	//supportedSignatureAlgorithmsCert []SignatureScheme
-	//secureRenegotiationSupported bool
-	//secureRenegotiation          []byte
-	//alpnProtocols                []string
-	//scts                         bool
-	//supportedVersions            []uint16
-	//cookie                       []byte
-	//keyShares                    []keyShare
-	//earlyData                    bool
-	//pskModes                     []uint8
-	//pskIdentities                []pskIdentity
-	//pskBinders                   [][]byte
 }
 
 func (m *clientHelloMsg) marshal() []byte {
@@ -154,27 +140,15 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 }
 
 type serverHelloMsg struct {
-	raw               []byte
-	vers              uint16
-	random            []byte
+	raw    []byte
+	vers   uint16
+	random []byte
+	// sessionId 服务端使用的会话标识,如果客户端hello消息中的会话标识不为空,且服务端存在匹配的会
+	// 话标识,则服务端重用与该标识对应的会话建立新连接,并在回应的服务端hello消息中带上
+	// 与客户端一致的会话标识,否则服务端产生一个新的会话标识,用来建立一个新的会话。
 	sessionId         []byte
 	cipherSuite       uint16
 	compressionMethod uint8
-	//ocspStapling                 bool
-	//ticketSupported              bool
-	//secureRenegotiationSupported bool
-	//secureRenegotiation          []byte
-	//alpnProtocol                 string
-	//scts                    [][]byte
-	//supportedVersion        uint16
-	//serverShare             keyShare
-	//selectedIdentityPresent bool
-	//selectedIdentity        uint16
-	//supportedPoints         []uint8
-	//
-	//// HelloRetryRequest extensions
-	//cookie        []byte
-	//selectedGroup CurveID
 }
 
 func (m *serverHelloMsg) marshal() []byte {
