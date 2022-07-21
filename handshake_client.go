@@ -26,7 +26,7 @@ type clientHandshakeState struct {
 	suite        *cipherSuite
 	finishedHash finishedHash
 	masterSecret []byte
-	session      *ClientSessionState
+	session      *SessionState
 }
 
 func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
@@ -180,7 +180,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	return nil
 }
 
-func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string, session *ClientSessionState, earlySecret, binderKey []byte) {
+func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string, session *SessionState, earlySecret, binderKey []byte) {
 	//if c.config.SessionTicketsDisabled || c.config.ClientSessionCache == nil {
 	//	return "", nil, nil, nil
 	//}
@@ -612,8 +612,8 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 
 	// Restore masterSecret, peerCerts, and ocspResponse from previous state
 	hs.masterSecret = hs.session.masterSecret
-	c.peerCertificates = hs.session.serverCertificates
-	c.verifiedChains = hs.session.verifiedChains
+	c.peerCertificates = hs.session.peerCertificates
+	//c.verifiedChains = hs.session.verifiedChains
 	//c.ocspResponse = hs.session.ocspResponse
 	//// Let the ServerHello SCTs override the session SCTs from the original
 	//// connection, if any are provided

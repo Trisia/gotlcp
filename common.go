@@ -6,7 +6,6 @@ package tlcp
 
 import (
 	"bytes"
-	"container/list"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -31,7 +30,7 @@ const (
 	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
 )
 
-// TLS record types.
+// TLCP record types.
 type recordType uint8
 
 // TLCP GB/T 38636-2016 6.3.3.2 a) Type
@@ -55,7 +54,7 @@ const (
 	typeFinished           uint8 = 20
 )
 
-// TLS compression types.
+// TLCP compression types.
 const (
 	compressionNone uint8 = 0
 )
@@ -104,8 +103,8 @@ type ConnectionState struct {
 	// TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_AES_128_GCM_SHA256).
 	CipherSuite uint16
 
-	// NegotiatedProtocol is the application protocol negotiated with ALPN.
-	NegotiatedProtocol string
+	//// NegotiatedProtocol is the application protocol negotiated with ALPN.
+	//NegotiatedProtocol string
 
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
@@ -129,37 +128,29 @@ type ConnectionState struct {
 	// (and the peer provided a certificate) or RequireAndVerifyClientCert.
 	VerifiedChains [][]*x509.Certificate
 
-	//// SignedCertificateTimestamps is a list of SCTs provided by the peer
-	//// through the TLS handshake for the leaf certificate, if any.
-	//SignedCertificateTimestamps [][]byte
-	//
-	//// OCSPResponse is a stapled Online Certificate Status Protocol (OCSP)
-	//// response provided by the peer for the leaf certificate, if any.
-	//OCSPResponse []byte
-
-	// TLSUnique contains the "tls-unique" channel binding value (see RFC 5929,
-	// Section 3). This value will be nil for TLS 1.3 connections and for all
-	// resumed connections.
-	//
-	// Deprecated: there are conditions in which this value might not be unique
-	// to a connection. See the Security Considerations sections of RFC 5705 and
-	// RFC 7627, and https://mitls.org/pages/attacks/3SHAKE#channelbindings.
-	TLSUnique []byte
+	//// TLSUnique contains the "tls-unique" channel binding value (see RFC 5929,
+	//// Section 3). This value will be nil for TLS 1.3 connections and for all
+	//// resumed connections.
+	////
+	//// Deprecated: there are conditions in which this value might not be unique
+	//// to a connection. See the Security Considerations sections of RFC 5705 and
+	//// RFC 7627, and https://mitls.org/pages/attacks/3SHAKE#channelbindings.
+	//TLSUnique []byte
 
 	// ekm is a closure exposed via ExportKeyingMaterial.
 	ekm func(label string, context []byte, length int) ([]byte, error)
 }
 
-// ExportKeyingMaterial returns length bytes of exported key material in a new
-// slice as defined in RFC 5705. If context is nil, it is not used as part of
-// the seed. If the connection was set to allow renegotiation via
-// Config.Renegotiation, this function will return an error.
-func (cs *ConnectionState) ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
-	return cs.ekm(label, context, length)
-}
+//// ExportKeyingMaterial returns length bytes of exported key material in a new
+//// slice as defined in RFC 5705. If context is nil, it is not used as part of
+//// the seed. If the connection was set to allow renegotiation via
+//// Config.Renegotiation, this function will return an error.
+//func (cs *ConnectionState) ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
+//	return cs.ekm(label, context, length)
+//}
 
 // ClientAuthType declares the policy the server will follow for
-// TLS Client Authentication.
+// TLCP Client Authentication.
 type ClientAuthType int
 
 const (
@@ -197,45 +188,6 @@ func requiresClientCert(c ClientAuthType) bool {
 	}
 }
 
-// ClientSessionState contains the state needed by clients to resume TLS
-// sessions.
-type ClientSessionState struct {
-	sessionTicket      []uint8               // Encrypted ticket used for session resumption with server
-	vers               uint16                // TLS version negotiated for the session
-	cipherSuite        uint16                // Ciphersuite negotiated for the session
-	masterSecret       []byte                // Full handshake MasterSecret, or TLS 1.3 resumption_master_secret
-	serverCertificates []*x509.Certificate   // Certificate chain presented by the server
-	verifiedChains     [][]*x509.Certificate // Certificate chains we built for verification
-	//receivedAt         time.Time             // When the session ticket was received from the server
-	//ocspResponse       []byte                // Stapled OCSP response presented by the server
-	//scts               [][]byte              // SCTs presented by the server
-
-	//// TLS 1.3 fields.
-	//nonce  []byte    // Ticket nonce sent by the server, to derive PSK
-	//useBy  time.Time // Expiration of the ticket lifetime as set by the server
-	//ageAdd uint32    // Random obfuscation factor for sending the ticket age
-}
-
-// ClientSessionCache is a cache of ClientSessionState objects that can be used
-// by a client to resume a TLS session with a given server. ClientSessionCache
-// implementations should expect to be called concurrently from different
-// goroutines. Up to TLS 1.2, only ticket-based resumption is supported, not
-// SessionID-based resumption. In TLS 1.3 they were merged into PSK modes, which
-// are supported via this interface.
-type ClientSessionCache interface {
-	// Get searches for a ClientSessionState associated with the given key.
-	// On return, ok is true if one was found.
-	Get(sessionKey string) (session *ClientSessionState, ok bool)
-
-	// Put adds the ClientSessionState to the cache with the given key. It might
-	// get called multiple times in a connection if a TLS 1.3 server provides
-	// more than one session ticket. If called with a nil *ClientSessionState,
-	// it should remove the cache entry.
-	Put(sessionKey string, cs *ClientSessionState)
-}
-
-//go:generate stringer -type=SignatureScheme,CurveID,ClientAuthType -output=common_string.go
-
 // ClientHelloInfo contains information from a ClientHello message in order to
 // guide application logic in the GetCertificate and GetConfigForClient callbacks.
 type ClientHelloInfo struct {
@@ -271,14 +223,14 @@ type ClientHelloInfo struct {
 	//// GetConfigForClient return value.
 	//SupportedProtos []string
 
-	// SupportedVersions lists the TLS versions supported by the client.
-	// For TLS versions less than 1.3, this is extrapolated from the max
+	// SupportedVersions lists the TLCP versions supported by the client.
+	// For TLCP versions less than 1.3, this is extrapolated from the max
 	// version advertised by the client, so values other than the greatest
 	// might be rejected if used.
 	SupportedVersions []uint16
 
 	// Conn is the underlying net.Conn for the connection. Do not read
-	// from, or write to, this connection; that will cause the TLS
+	// from, or write to, this connection; that will cause the TLCP
 	// connection to fail.
 	Conn net.Conn
 
@@ -311,7 +263,7 @@ type CertificateRequestInfo struct {
 	//// willing to verify.
 	//SignatureSchemes []SignatureScheme
 
-	// Version is the TLS version that was negotiated for this connection.
+	// Version is the TLCP version that was negotiated for this connection.
 	Version uint16
 
 	// ctx is the context of the handshake that is in progress.
@@ -325,38 +277,9 @@ func (c *CertificateRequestInfo) Context() context.Context {
 	return c.ctx
 }
 
-// RenegotiationSupport enumerates the different levels of support for TLS
-// renegotiation. TLS renegotiation is the act of performing subsequent
-// handshakes on a connection after the first. This significantly complicates
-// the state machine and has been the source of numerous, subtle security
-// issues. Initiating a renegotiation is not supported, but support for
-// accepting renegotiation requests may be enabled.
-//
-// Even when enabled, the server may not change its identity between handshakes
-// (i.e. the leaf certificate must be the same). Additionally, concurrent
-// handshake and application data flow is not permitted so renegotiation can
-// only be used with protocols that synchronise with the renegotiation, such as
-// HTTPS.
-//
-// Renegotiation is not defined in TLS 1.3.
-type RenegotiationSupport int
-
-const (
-	// RenegotiateNever disables renegotiation.
-	RenegotiateNever RenegotiationSupport = iota
-
-	// RenegotiateOnceAsClient allows a remote server to request
-	// renegotiation once per connection.
-	RenegotiateOnceAsClient
-
-	// RenegotiateFreelyAsClient allows a remote server to repeatedly
-	// request renegotiation.
-	RenegotiateFreelyAsClient
-)
-
-// A Config structure is used to configure a TLS client or server.
-// After one has been passed to a TLS function it must not be
-// modified. A Config may be reused; the tls package will also not
+// A Config structure is used to configure a TLCP client or server.
+// After one has been passed to a TLCP function it must not be
+// modified. A Config may be reused; the tlcp package will also not
 // modify it.
 type Config struct {
 	// Rand 外部随机源，若不配置则默认使用 crypto/rand 作为随机源
@@ -364,7 +287,7 @@ type Config struct {
 	Rand io.Reader
 
 	// Time returns the current time as the number of seconds since the epoch.
-	// If Time is nil, TLS uses time.Now.
+	// If Time is nil, TLCP uses time.Now.
 	Time func() time.Time
 
 	// Certificates TLCP握手过程中的证书密钥对，数组中每一个元素表示一对密钥以及一张证书
@@ -380,13 +303,8 @@ type Config struct {
 	// 客户端需实现： GetClientCertificate
 	Certificates []Certificate
 
-	// GetCertificate returns a Certificate based on the given
-	// ClientHelloInfo. It will only be called if the client supplies SNI
-	// information or if Certificates is empty.
-	//
-	// If GetCertificate is nil or returns nil, then the certificate is
-	// retrieved from NameToCertificate. If NameToCertificate is nil, the
-	// best element of Certificates will be used.
+	// GetCertificate 仅在 Certificates 为空时，
+	// 基于客户端Hello消息返还密钥对和证书
 	GetCertificate func(*ClientHelloInfo) (*Certificate, error)
 
 	// GetKECertificate 获取密钥交换证书（加密证书）
@@ -395,19 +313,10 @@ type Config struct {
 	// 该方法只有TLCP流程中才会调用。
 	GetKECertificate func(*ClientHelloInfo) (*Certificate, error)
 
-	// GetClientCertificate, if not nil, is called when a server requests a
-	// certificate from a client. If set, the contents of Certificates will
-	// be ignored.
+	// GetClientCertificate 根据服务端的证书请求消息，返回客户端用于认证的密钥和证书
 	//
-	// If GetClientCertificate returns an error, the handshake will be
-	// aborted and that error will be returned. Otherwise
-	// GetClientCertificate must return a non-nil Certificate. If
-	// Certificate.Certificate is empty then no certificate will be sent to
-	// the server. If this is unacceptable to the server then it may abort
-	// the handshake.
-	//
-	// GetClientCertificate may be called multiple times for the same
-	// connection if renegotiation occurs or if TLS 1.3 is in use.
+	// 如果 GetClientCertificate 返回空那么连接将会被中断，因此即便没有证书和密钥对
+	// 也需要返回一个空的 Certificate 对象，这样客户端可以发送一个空的证书消息给服务端。
 	GetClientCertificate func(*CertificateRequestInfo) (*Certificate, error)
 
 	// GetConfigForClient, if not nil, is called after a ClientHello is
@@ -426,7 +335,7 @@ type Config struct {
 	GetConfigForClient func(*ClientHelloInfo) (*Config, error)
 
 	// VerifyPeerCertificate, if not nil, is called after normal
-	// certificate verification by either a TLS client or server. It
+	// certificate verification by either a TLCP client or server. It
 	// receives the raw ASN.1 certificates provided by the peer and also
 	// any verified chains that normal processing found. If it returns a
 	// non-nil error, the handshake is aborted and that error results.
@@ -439,7 +348,7 @@ type Config struct {
 	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
 	// VerifyConnection, if not nil, is called after normal certificate
-	// verification and after VerifyPeerCertificate by either a TLS client
+	// verification and after VerifyPeerCertificate by either a TLCP client
 	// or server. If it returns a non-nil error, the handshake is aborted
 	// and that error results.
 	//
@@ -452,10 +361,8 @@ type Config struct {
 	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
 	RootCAs *x509.CertPool
 
-	// ServerName is used to verify the hostname on the returned
-	// certificates unless InsecureSkipVerify is given. It is also included
-	// in the client's handshake to support virtual hosting unless it is
-	// an IP address.
+	// ServerName 用于验证主机名与数字证书中的主机名是否匹配
+	// 如果 InsecureSkipVerify 为 true 则跳过该验证
 	ServerName string
 
 	// ClientAuth 服务端对客户端身份认证策略
@@ -480,11 +387,13 @@ type Config struct {
 	// 如果 CipherSuites 为 nil，那么使用默认的算法套件列表进行握手。
 	CipherSuites []uint16
 
-	// ClientSessionCache is a cache of ClientSessionState entries for TLS
-	// session resumption. It is only used by clients.
-	ClientSessionCache ClientSessionCache
+	// SessionCache 会话状态缓存，用于连接重用
+	//
+	// 若需要开启服务端或客户端的重用握手流程，则请配置该参数。
+	// 若无特殊缓存需要可采用默认的 NewLRUSessionCache 实现会话缓存
+	SessionCache SessionCache
 
-	// MinVersion contains the minimum TLS version that is acceptable.
+	// MinVersion contains the minimum TLCP version that is acceptable.
 	//
 	// By default, TLS 1.2 is currently used as the minimum when acting as a
 	// client, and TLS 1.0 when acting as a server. TLS 1.0 is the minimum
@@ -514,18 +423,6 @@ type Config struct {
 	// improve latency.
 	DynamicRecordSizingDisabled bool
 
-	// Renegotiation controls what types of renegotiation are supported.
-	// The default, none, is correct for the vast majority of applications.
-	Renegotiation RenegotiationSupport
-
-	// KeyLogWriter optionally specifies a destination for TLS master secrets
-	// in NSS key log format that can be used to allow external programs
-	// such as Wireshark to decrypt TLS connections.
-	// See https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format.
-	// Use of KeyLogWriter compromises security and should only be
-	// used for debugging.
-	KeyLogWriter io.Writer
-
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
 }
@@ -553,13 +450,11 @@ func (c *Config) Clone() *Config {
 		ClientCAs:                   c.ClientCAs,
 		InsecureSkipVerify:          c.InsecureSkipVerify,
 		CipherSuites:                c.CipherSuites,
-		ClientSessionCache:          c.ClientSessionCache,
+		SessionCache:                c.SessionCache,
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
 		CurvePreferences:            c.CurvePreferences,
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
-		Renegotiation:               c.Renegotiation,
-		KeyLogWriter:                c.KeyLogWriter,
 	}
 }
 
@@ -632,23 +527,23 @@ func supportedVersionsFromMax(maxVersion uint16) []uint16 {
 	return versions
 }
 
-var defaultCurvePreferences = []CurveID{X25519, CurveP256, CurveP384, CurveP521}
-
-func (c *Config) curvePreferences() []CurveID {
-	if c == nil || len(c.CurvePreferences) == 0 {
-		return defaultCurvePreferences
-	}
-	return c.CurvePreferences
-}
-
-func (c *Config) supportsCurve(curve CurveID) bool {
-	for _, cc := range c.curvePreferences() {
-		if cc == curve {
-			return true
-		}
-	}
-	return false
-}
+//var defaultCurvePreferences = []CurveID{X25519, CurveP256, CurveP384, CurveP521}
+//
+//func (c *Config) curvePreferences() []CurveID {
+//	if c == nil || len(c.CurvePreferences) == 0 {
+//		return defaultCurvePreferences
+//	}
+//	return c.CurvePreferences
+//}
+//
+//func (c *Config) supportsCurve(curve CurveID) bool {
+//	for _, cc := range c.curvePreferences() {
+//		if cc == curve {
+//			return true
+//		}
+//	}
+//	return false
+//}
 
 // mutualVersion returns the protocol version to use given the advertised
 // versions of the peer. Priority is given to the peer preference order.
@@ -781,83 +676,6 @@ func (c *Certificate) leaf() (*x509.Certificate, error) {
 type handshakeMessage interface {
 	marshal() []byte
 	unmarshal([]byte) bool
-}
-
-// lruSessionCache is a ClientSessionCache implementation that uses an LRU
-// caching strategy.
-type lruSessionCache struct {
-	sync.Mutex
-
-	m        map[string]*list.Element
-	q        *list.List
-	capacity int
-}
-
-type lruSessionCacheEntry struct {
-	sessionKey string
-	state      *ClientSessionState
-}
-
-// NewLRUClientSessionCache returns a ClientSessionCache with the given
-// capacity that uses an LRU strategy. If capacity is < 1, a default capacity
-// is used instead.
-func NewLRUClientSessionCache(capacity int) ClientSessionCache {
-	const defaultSessionCacheCapacity = 64
-
-	if capacity < 1 {
-		capacity = defaultSessionCacheCapacity
-	}
-	return &lruSessionCache{
-		m:        make(map[string]*list.Element),
-		q:        list.New(),
-		capacity: capacity,
-	}
-}
-
-// Put adds the provided (sessionKey, cs) pair to the cache. If cs is nil, the entry
-// corresponding to sessionKey is removed from the cache instead.
-func (c *lruSessionCache) Put(sessionKey string, cs *ClientSessionState) {
-	c.Lock()
-	defer c.Unlock()
-
-	if elem, ok := c.m[sessionKey]; ok {
-		if cs == nil {
-			c.q.Remove(elem)
-			delete(c.m, sessionKey)
-		} else {
-			entry := elem.Value.(*lruSessionCacheEntry)
-			entry.state = cs
-			c.q.MoveToFront(elem)
-		}
-		return
-	}
-
-	if c.q.Len() < c.capacity {
-		entry := &lruSessionCacheEntry{sessionKey, cs}
-		c.m[sessionKey] = c.q.PushFront(entry)
-		return
-	}
-
-	elem := c.q.Back()
-	entry := elem.Value.(*lruSessionCacheEntry)
-	delete(c.m, entry.sessionKey)
-	entry.sessionKey = sessionKey
-	entry.state = cs
-	c.q.MoveToFront(elem)
-	c.m[sessionKey] = elem
-}
-
-// Get returns the ClientSessionState value associated with a given key. It
-// returns (nil, false) if no value is found.
-func (c *lruSessionCache) Get(sessionKey string) (*ClientSessionState, bool) {
-	c.Lock()
-	defer c.Unlock()
-
-	if elem, ok := c.m[sessionKey]; ok {
-		c.q.MoveToFront(elem)
-		return elem.Value.(*lruSessionCacheEntry).state, true
-	}
-	return nil, false
 }
 
 var emptyConfig Config

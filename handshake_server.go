@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	x509 "github.com/emmansun/gmsm/smx509"
@@ -33,14 +34,14 @@ type serverHandshakeState struct {
 	ecDecryptOk  bool
 	rsaDecryptOk bool
 	rsaSignOk    bool
-	sessionState *sessionState
+	sessionState *SessionState
 	finishedHash finishedHash
 	masterSecret []byte
 	sigCert      *Certificate // 签名证书
 	encCert      *Certificate // 加密证书
 }
 
-// serverHandshake performs a TLS handshake as a server.
+// serverHandshake performs a TLCP handshake as a server.
 func (c *Conn) serverHandshake(ctx context.Context) error {
 	clientHello, err := c.readClientHello(ctx)
 	if err != nil {
@@ -62,7 +63,7 @@ func (hs *serverHandshakeState) handshake() error {
 		return err
 	}
 
-	// For an overview of TLS handshaking, see RFC 5246, Section 7.3.
+	// TLCP 握手协议见 GB/T 38636-2020
 	c.buffering = true
 	if hs.checkForResumption() {
 		// The client has included a session ticket and so we do an abbreviated handshake.
@@ -73,9 +74,6 @@ func (hs *serverHandshakeState) handshake() error {
 		if err := hs.establishKeys(); err != nil {
 			return err
 		}
-		//if err := hs.sendSessionTicket(); err != nil {
-		//	return err
-		//}
 		if err := hs.sendFinished(c.serverFinished[:]); err != nil {
 			return err
 		}
@@ -87,8 +85,6 @@ func (hs *serverHandshakeState) handshake() error {
 			return err
 		}
 	} else {
-		// The client didn't include a session ticket, or it wasn't
-		// valid so we do a full handshake.
 		if err := hs.pickCipherSuite(); err != nil {
 			return err
 		}
@@ -103,9 +99,8 @@ func (hs *serverHandshakeState) handshake() error {
 		}
 		c.clientFinishedIsFirst = true
 		c.buffering = true
-		//if err := hs.sendSessionTicket(); err != nil {
-		//	return err
-		//}
+		// 创建会话缓存
+		hs.createSessionState()
 		if err := hs.sendFinished(nil); err != nil {
 			return err
 		}
@@ -235,28 +230,6 @@ func (hs *serverHandshakeState) processClientHello() error {
 	return nil
 }
 
-// supportsECDHE returns whether ECDHE key exchanges can be used with this
-// pre-TLS 1.3 client.
-func supportsECDHE(c *Config, supportedCurves []CurveID, supportedPoints []uint8) bool {
-	supportsCurve := false
-	for _, curve := range supportedCurves {
-		if c.supportsCurve(curve) {
-			supportsCurve = true
-			break
-		}
-	}
-
-	supportsPointFormat := false
-	for _, pointFormat := range supportedPoints {
-		if pointFormat == pointFormatUncompressed {
-			supportsPointFormat = true
-			break
-		}
-	}
-
-	return supportsCurve && supportsPointFormat
-}
-
 func (hs *serverHandshakeState) pickCipherSuite() error {
 	c := hs.c
 
@@ -306,64 +279,22 @@ func (hs *serverHandshakeState) cipherSuiteOk(c *cipherSuite) bool {
 	return true
 }
 
-// checkForResumption reports whether we should perform resumption on this connection.
+// checkForResumption 检查是否需要会话重用
 func (hs *serverHandshakeState) checkForResumption() bool {
-	return false
-	//c := hs.c
-	//
-	//if c.config.SessionTicketsDisabled {
-	//	return false
-	//}
-	//
-	//plaintext, usedOldKey := c.decryptTicket(hs.clientHello.sessionTicket)
-	//if plaintext == nil {
-	//	return false
-	//}
-	//hs.sessionState = &sessionState{usedOldKey: usedOldKey}
-	//ok := hs.sessionState.unmarshal(plaintext)
-	//if !ok {
-	//	return false
-	//}
-	//
-	//createdAt := time.Unix(int64(hs.sessionState.createdAt), 0)
-	//if c.config.time().Sub(createdAt) > maxSessionTicketLifetime {
-	//	return false
-	//}
-	//
-	//// Never resume a session for a different TLS version.
-	//if c.vers != hs.sessionState.vers {
-	//	return false
-	//}
-	//
-	//cipherSuiteOk := false
-	//// Check that the client is still offering the ciphersuite in the session.
-	//for _, id := range hs.clientHello.cipherSuites {
-	//	if id == hs.sessionState.cipherSuite {
-	//		cipherSuiteOk = true
-	//		break
-	//	}
-	//}
-	//if !cipherSuiteOk {
-	//	return false
-	//}
-	//
-	//// Check that we also support the ciphersuite from the session.
-	//hs.suite = selectCipherSuite([]uint16{hs.sessionState.cipherSuite},
-	//	c.config.cipherSuites(), hs.cipherSuiteOk)
-	//if hs.suite == nil {
-	//	return false
-	//}
-	//
-	//sessionHasClientCerts := len(hs.sessionState.certificates) != 0
-	//needClientCerts := requiresClientCert(c.config.ClientAuth)
-	//if needClientCerts && !sessionHasClientCerts {
-	//	return false
-	//}
-	//if sessionHasClientCerts && c.config.ClientAuth == NoClientCert {
-	//	return false
-	//}
-	//
-	//return true
+	if hs.c.config.SessionCache == nil {
+		return false
+	}
+	// 客户端hello消息中的会话标识不为空,且服务端存在匹配的会话标识
+	// 则服务端重用与该标识对应的会话建立新连接,并在回应的服务端hello消息中带上
+	// 与客户端一致的会话标识，否则服务端产生一个新的会话标识,用来建立一个新的会话。
+	if len(hs.clientHello.sessionId) == 0 {
+		return false
+	}
+	sessionKey := hex.EncodeToString(hs.clientHello.sessionId)
+	// 检查缓存中是存在
+	_, ok := hs.c.config.SessionCache.Get(sessionKey)
+	return ok
+
 }
 
 func (hs *serverHandshakeState) doResumeHandshake() error {
@@ -371,10 +302,8 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 
 	hs.hello.cipherSuite = hs.suite.id
 	c.cipherSuite = hs.suite.id
-	// We echo the client's session ID in the ServerHello to let it know
-	// that we're doing a resumption.
+	// 回应的服务端hello消息中带上与客户端一致的会话标识
 	hs.hello.sessionId = hs.clientHello.sessionId
-	//hs.hello.ticketSupported = hs.sessionState.usedOldKey
 	hs.finishedHash = newFinishedHash(c.vers, hs.suite)
 	hs.finishedHash.discardHandshakeBuffer()
 	hs.finishedHash.Write(hs.clientHello.marshal())
@@ -383,11 +312,7 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 		return err
 	}
 
-	if err := c.processCertsFromClient(Certificate{
-		Certificate: hs.sessionState.certificates,
-	}); err != nil {
-		return err
-	}
+	c.peerCertificates = hs.sessionState.peerCertificates
 
 	if c.config.VerifyConnection != nil {
 		if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
@@ -640,6 +565,18 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 	copy(out, finished.verifyData)
 
 	return nil
+}
+
+// 创建新的会话缓存
+func (hs *serverHandshakeState) createSessionState() {
+	sessionKey := hex.EncodeToString(hs.hello.sessionId)
+	cs := &SessionState{
+		vers:         hs.hello.vers,
+		cipherSuite:  hs.hello.cipherSuite,
+		masterSecret: hs.masterSecret,
+		createdAt:    time.Now(),
+	}
+	hs.c.config.SessionCache.Put(sessionKey, cs)
 }
 
 // processCertsFromClient takes a chain of client certificates either from a

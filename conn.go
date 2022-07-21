@@ -55,15 +55,17 @@ type Conn struct {
 	verifiedChains [][]*x509.Certificate
 	// serverName contains the server name indicated by the client, if any.
 	serverName string
-	// secureRenegotiation is true if the server echoed the secure
-	// renegotiation extension. (This is meaningless as a server because
-	// renegotiation is not supported in that case.)
-	secureRenegotiation bool
-	//// ekm is a closure for exporting keying material.
-	//ekm func(label string, context []byte, length int) ([]byte, error)
-	// resumptionSecret is the resumption_master_secret for handling
-	// NewSessionTicket messages. nil if config.SessionTicketsDisabled.
-	resumptionSecret []byte
+
+	//// secureRenegotiation is true if the server echoed the secure
+	//// renegotiation extension. (This is meaningless as a server because
+	//// renegotiation is not supported in that case.)
+	//secureRenegotiation bool
+
+	////// ekm is a closure for exporting keying material.
+	////ekm func(label string, context []byte, length int) ([]byte, error)
+	//// resumptionSecret is the resumption_master_secret for handling
+	//// NewSessionTicket messages. nil if config.SessionTicketsDisabled.
+	//resumptionSecret []byte
 
 	//// ticketKeys is the set of active session ticket keys for this
 	//// connection. The first one is used to encrypt new tickets and
@@ -1357,13 +1359,13 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	//state.SignedCertificateTimestamps = c.scts
 	//state.OCSPResponse = c.ocspResponse
 	//if !c.didResume && c.vers != VersionTLS13 {
-	if !c.didResume {
-		if c.clientFinishedIsFirst {
-			state.TLSUnique = c.clientFinished[:]
-		} else {
-			state.TLSUnique = c.serverFinished[:]
-		}
-	}
+	//if !c.didResume {
+	//	if c.clientFinishedIsFirst {
+	//		state.TLSUnique = c.clientFinished[:]
+	//	} else {
+	//		state.TLSUnique = c.serverFinished[:]
+	//	}
+	//}
 	return state
 }
 
