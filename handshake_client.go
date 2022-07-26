@@ -577,25 +577,6 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 		c.sendAlert(alertUnexpectedMessage)
 		return false, errors.New("tlcp: server selected unsupported compression format")
 	}
-
-	//if c.handshakes == 0 && hs.serverHello.secureRenegotiationSupported {
-	//	c.secureRenegotiation = true
-	//	if len(hs.serverHello.secureRenegotiation) != 0 {
-	//		c.sendAlert(alertHandshakeFailure)
-	//		return false, errors.New("tlcp: initial handshake had non-empty renegotiation extension")
-	//	}
-	//}
-
-	//if c.handshakes > 0 && c.secureRenegotiation {
-	//	var expectedSecureRenegotiation [24]byte
-	//	copy(expectedSecureRenegotiation[:], c.clientFinished[:])
-	//	copy(expectedSecureRenegotiation[12:], c.serverFinished[:])
-	//	if !bytes.Equal(hs.serverHello.secureRenegotiation, expectedSecureRenegotiation[:]) {
-	//		c.sendAlert(alertHandshakeFailure)
-	//		return false, errors.New("tlcp: incorrect renegotiation extension contents")
-	//	}
-	//}
-
 	if !hs.serverResumedSession() {
 		return false, nil
 	}
@@ -613,13 +594,6 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	// Restore masterSecret, peerCerts, and ocspResponse from previous state
 	hs.masterSecret = hs.session.masterSecret
 	c.peerCertificates = hs.session.peerCertificates
-	//c.verifiedChains = hs.session.verifiedChains
-	//c.ocspResponse = hs.session.ocspResponse
-	//// Let the ServerHello SCTs override the session SCTs from the original
-	//// connection, if any are provided
-	//if len(c.scts) == 0 && len(hs.session.scts) != 0 {
-	//	c.scts = hs.session.scts
-	//}
 	return true, nil
 }
 

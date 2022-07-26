@@ -513,11 +513,13 @@ func (c *Config) maxSupportedVersion(isClient bool) uint16 {
 	return supportedVersions[0]
 }
 
-// supportedVersionsFromMax returns a list of supported versions derived from a
-// legacy maximum version value. Note that only versions supported by this
-// library are returned. Any newer peer will use supportedVersions anyway.
+// supportedVersionsFromMax 返回最大支持的TLCP协议版本号列表
 func supportedVersionsFromMax(maxVersion uint16) []uint16 {
 	versions := make([]uint16, 0, len(supportedVersions))
+	// 不支持TLS 以及 SSL协议版本号
+	if maxVersion&0x0300 > 0 {
+		return versions
+	}
 	for _, v := range supportedVersions {
 		if v > maxVersion {
 			continue
@@ -526,24 +528,6 @@ func supportedVersionsFromMax(maxVersion uint16) []uint16 {
 	}
 	return versions
 }
-
-//var defaultCurvePreferences = []CurveID{X25519, CurveP256, CurveP384, CurveP521}
-//
-//func (c *Config) curvePreferences() []CurveID {
-//	if c == nil || len(c.CurvePreferences) == 0 {
-//		return defaultCurvePreferences
-//	}
-//	return c.CurvePreferences
-//}
-//
-//func (c *Config) supportsCurve(curve CurveID) bool {
-//	for _, cc := range c.curvePreferences() {
-//		if cc == curve {
-//			return true
-//		}
-//	}
-//	return false
-//}
 
 // mutualVersion returns the protocol version to use given the advertised
 // versions of the peer. Priority is given to the peer preference order.
