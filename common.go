@@ -517,7 +517,7 @@ func (c *Config) maxSupportedVersion(isClient bool) uint16 {
 func supportedVersionsFromMax(maxVersion uint16) []uint16 {
 	versions := make([]uint16, 0, len(supportedVersions))
 	// 不支持TLS 以及 SSL协议版本号
-	if maxVersion&0x0300 > 0 {
+	if (maxVersion & 0xFF00) == 0x0300 {
 		return versions
 	}
 	for _, v := range supportedVersions {
