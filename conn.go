@@ -1154,6 +1154,11 @@ func (c *Conn) Read(b []byte) (int, error) {
 	c.in.Lock()
 	defer c.in.Unlock()
 
+	for c.input.Len() == 0 {
+		if err := c.readRecord(); err != nil {
+			return 0, err
+		}
+	}
 	n, _ := c.input.Read(b)
 
 	// If a close-notify alert is waiting, read it so that we can return (n,

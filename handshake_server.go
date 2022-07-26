@@ -569,6 +569,10 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 
 // 创建新的会话缓存
 func (hs *serverHandshakeState) createSessionState() {
+	if hs.c.config.SessionCache == nil {
+		return
+	}
+
 	sessionKey := hex.EncodeToString(hs.hello.sessionId)
 	cs := &SessionState{
 		vers:         hs.hello.vers,

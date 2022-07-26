@@ -623,23 +623,6 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	return true, nil
 }
 
-// checkALPN ensure that the server's choice of ALPN protocol is compatible with
-// the protocols that we advertised in the Client Hello.
-func checkALPN(clientProtos []string, serverProto string) error {
-	if serverProto == "" {
-		return nil
-	}
-	if len(clientProtos) == 0 {
-		return errors.New("tlcp: server advertised unrequested ALPN extension")
-	}
-	for _, proto := range clientProtos {
-		if proto == serverProto {
-			return nil
-		}
-	}
-	return errors.New("tlcp: server selected unadvertised ALPN protocol")
-}
-
 func (hs *clientHandshakeState) readFinished(out []byte) error {
 	c := hs.c
 

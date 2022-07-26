@@ -2,14 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// package tlcp partially implements TLS 1.2, as specified in RFC 5246,
-// and TLS 1.3, as specified in RFC 8446.
 package tlcp
-
-// BUG(agl): The crypto/tls package only implements some countermeasures
-// against Lucky13 attacks on CBC-mode encryption, and only on SHA1
-// variants. See http://www.isg.rhul.ac.uk/tls/TLStiming.pdf and
-// https://www.imperialviolet.org/2013/02/04/luckythirteen.html.
 
 import (
 	"bytes"

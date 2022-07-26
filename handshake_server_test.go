@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/emmansun/gmsm/smx509"
 	"net"
+	"net/http"
 	"testing"
 )
 
@@ -105,6 +106,30 @@ func Test_serverHandshake_auth(t *testing.T) {
 	}
 }
 
+// 重用握手测试
+func Test_doResumeHandshake(t *testing.T) {
+	var err error
+
+	config := &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		SessionCache: NewLRUSessionCache(2),
+	}
+
+	ln, err := Listen("tcp", fmt.Sprintf(":%d", 8447), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "hello tlcp!")
+	})
+	svr := http.Server{}
+	err = svr.Serve(ln)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+}
+
 // 启动TLCP服务端
 func server(port int) error {
 	var err error
@@ -122,13 +147,13 @@ func server(port int) error {
 			return err
 		}
 
-		server := Server(conn, config)
-		err = server.Handshake()
+		tlcpConn := Server(conn, config)
+		err = tlcpConn.Handshake()
 		if err != nil {
 			_ = conn.Close()
 			return err
 		}
-		_ = server.Close()
+		_ = tlcpConn.Close()
 	}
 }
 
@@ -153,12 +178,12 @@ func serverNeedAuth(port int) error {
 			return err
 		}
 
-		server := Server(conn, config)
-		err = server.Handshake()
+		tlcpConn := Server(conn, config)
+		err = tlcpConn.Handshake()
 		if err != nil {
 			_ = conn.Close()
 			return err
 		}
-		_ = server.Close()
+		_ = tlcpConn.Close()
 	}
 }
