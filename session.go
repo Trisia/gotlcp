@@ -13,6 +13,7 @@ import (
 
 // SessionState 包含了TLCP会话相关的密码参数，用于会话重用
 type SessionState struct {
+	sessionId        []byte              // 会话ID
 	vers             uint16              // TLCP 版本号
 	cipherSuite      uint16              // 握手使用的密码套件ID
 	masterSecret     []byte              // 握手协议协商得到的主密钥
@@ -27,6 +28,8 @@ type SessionState struct {
 type SessionCache interface {
 
 	// Get 缓存中 sessionKey 的 SessionState，若不存在则 返回 ok  false
+	//
+	// 特殊的若 sessionKey 为 "" 空串时，返回最近一个会话
 	Get(sessionKey string) (session *SessionState, ok bool)
 
 	// Put 添加一个会话对象到缓存中
@@ -101,6 +104,14 @@ func (c *lruSessionCache) Put(sessionKey string, cs *SessionState) {
 func (c *lruSessionCache) Get(sessionKey string) (*SessionState, bool) {
 	c.Lock()
 	defer c.Unlock()
+
+	if sessionKey == "" {
+		elem := c.q.Front()
+		if elem == nil {
+			return nil, false
+		}
+		return elem.Value.(*lruSessionCacheEntry).state, true
+	}
 
 	if elem, ok := c.m[sessionKey]; ok {
 		c.q.MoveToFront(elem)

@@ -80,7 +80,6 @@ func (hs *serverHandshakeState) handshake() error {
 		if _, err := c.flush(); err != nil {
 			return err
 		}
-		c.clientFinishedIsFirst = false
 		if err := hs.readFinished(nil); err != nil {
 			return err
 		}
@@ -97,7 +96,6 @@ func (hs *serverHandshakeState) handshake() error {
 		if err := hs.readFinished(c.clientFinished[:]); err != nil {
 			return err
 		}
-		c.clientFinishedIsFirst = true
 		c.buffering = true
 		// 创建会话缓存
 		hs.createSessionState()
@@ -575,6 +573,7 @@ func (hs *serverHandshakeState) createSessionState() {
 
 	sessionKey := hex.EncodeToString(hs.hello.sessionId)
 	cs := &SessionState{
+		sessionId:    hs.hello.sessionId,
 		vers:         hs.hello.vers,
 		cipherSuite:  hs.hello.cipherSuite,
 		masterSecret: hs.masterSecret,

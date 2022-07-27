@@ -127,27 +127,7 @@ type ConnectionState struct {
 	// the server side, it's set if Config.ClientAuth is VerifyClientCertIfGiven
 	// (and the peer provided a certificate) or RequireAndVerifyClientCert.
 	VerifiedChains [][]*x509.Certificate
-
-	//// TLSUnique contains the "tls-unique" channel binding value (see RFC 5929,
-	//// Section 3). This value will be nil for TLS 1.3 connections and for all
-	//// resumed connections.
-	////
-	//// Deprecated: there are conditions in which this value might not be unique
-	//// to a connection. See the Security Considerations sections of RFC 5705 and
-	//// RFC 7627, and https://mitls.org/pages/attacks/3SHAKE#channelbindings.
-	//TLSUnique []byte
-
-	// ekm is a closure exposed via ExportKeyingMaterial.
-	ekm func(label string, context []byte, length int) ([]byte, error)
 }
-
-//// ExportKeyingMaterial returns length bytes of exported key material in a new
-//// slice as defined in RFC 5705. If context is nil, it is not used as part of
-//// the seed. If the connection was set to allow renegotiation via
-//// Config.Renegotiation, this function will return an error.
-//func (cs *ConnectionState) ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
-//	return cs.ekm(label, context, length)
-//}
 
 // ClientAuthType declares the policy the server will follow for
 // TLCP Client Authentication.
