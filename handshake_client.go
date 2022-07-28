@@ -141,14 +141,14 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string, session *Ses
 	var ok = false
 	// 获取最近一个会话
 	session, ok = c.config.SessionCache.Get("")
-	if ok && session != nil {
-		// 设置客户端Hello 会话ID
-		hello.sessionId = session.sessionId
-		cacheKey = hex.EncodeToString(session.sessionId)
-		return
+	if !ok || session == nil {
+		return cacheKey, nil
 	}
-	// 无会话
-	return "", nil
+	// 设置客户端Hello 会话ID
+	hello.sessionId = session.sessionId
+	cacheKey = hex.EncodeToString(session.sessionId)
+
+	return cacheKey, session
 }
 
 // 根据服务端消息选择客户端协议版本
@@ -233,7 +233,6 @@ func (hs *clientHandshakeState) handshake() error {
 		}
 	}
 
-	//c.ekm = ekmFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.hello.random, hs.serverHello.random)
 	atomic.StoreUint32(&c.handshakeStatus, 1)
 
 	return nil
@@ -440,7 +439,7 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 		return false, errors.New("tlcp: server resumed a session with a different cipher suite")
 	}
 
-	// Restore masterSecret, peerCerts, and ocspResponse from previous state
+	// 根据会话恢复 会话密钥 以及 证书
 	hs.masterSecret = hs.session.masterSecret
 	c.peerCertificates = hs.session.peerCertificates
 	return true, nil

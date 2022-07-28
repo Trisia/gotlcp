@@ -187,3 +187,39 @@ func serverNeedAuth(port int) error {
 		_ = tlcpConn.Close()
 	}
 }
+
+// 启用支持握手重用的服务端
+func serverResumeSession(port int) error {
+	var err error
+	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	config := &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		SessionCache: NewLRUSessionCache(10),
+	}
+	data := []byte{
+		0, 1, 2, 3,
+		0, 1, 2, 3,
+		0, 1, 2, 3,
+		0, 1, 2, 3,
+	}
+	var conn net.Conn
+	for {
+		conn, err = tcpLn.Accept()
+		if err != nil {
+			return err
+		}
+
+		tlcpConn := Server(conn, config)
+		err = tlcpConn.Handshake()
+		if err != nil {
+			_ = conn.Close()
+			return err
+		}
+		_, _ = tlcpConn.Write(data)
+
+		_ = tlcpConn.Close()
+	}
+}

@@ -57,43 +57,43 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 }
 
 func (hs *serverHandshakeState) handshake() error {
+	var err error
 	c := hs.c
 
-	if err := hs.processClientHello(); err != nil {
+	if err = hs.processClientHello(); err != nil {
 		return err
 	}
 
 	// TLCP 握手协议见 GB/T 38636-2020
 	c.buffering = true
 	if hs.checkForResumption() {
-		// The client has included a session ticket and so we do an abbreviated handshake.
 		c.didResume = true
-		if err := hs.doResumeHandshake(); err != nil {
+		if err = hs.doResumeHandshake(); err != nil {
 			return err
 		}
-		if err := hs.establishKeys(); err != nil {
+		if err = hs.establishKeys(); err != nil {
 			return err
 		}
-		if err := hs.sendFinished(c.serverFinished[:]); err != nil {
+		if err = hs.sendFinished(c.serverFinished[:]); err != nil {
 			return err
 		}
-		if _, err := c.flush(); err != nil {
+		if _, err = c.flush(); err != nil {
 			return err
 		}
-		if err := hs.readFinished(nil); err != nil {
+		if err = hs.readFinished(nil); err != nil {
 			return err
 		}
 	} else {
-		if err := hs.pickCipherSuite(); err != nil {
+		if err = hs.pickCipherSuite(); err != nil {
 			return err
 		}
-		if err := hs.doFullHandshake(); err != nil {
+		if err = hs.doFullHandshake(); err != nil {
 			return err
 		}
-		if err := hs.establishKeys(); err != nil {
+		if err = hs.establishKeys(); err != nil {
 			return err
 		}
-		if err := hs.readFinished(c.clientFinished[:]); err != nil {
+		if err = hs.readFinished(c.clientFinished[:]); err != nil {
 			return err
 		}
 		c.buffering = true
@@ -279,6 +279,7 @@ func (hs *serverHandshakeState) cipherSuiteOk(c *cipherSuite) bool {
 
 // checkForResumption 检查是否需要会话重用
 func (hs *serverHandshakeState) checkForResumption() bool {
+	c := hs.c
 	if hs.c.config.SessionCache == nil {
 		return false
 	}
@@ -290,9 +291,33 @@ func (hs *serverHandshakeState) checkForResumption() bool {
 	}
 	sessionKey := hex.EncodeToString(hs.clientHello.sessionId)
 	// 检查缓存中是存在
-	_, ok := hs.c.config.SessionCache.Get(sessionKey)
-	return ok
+	var ok bool
+	hs.sessionState, ok = hs.c.config.SessionCache.Get(sessionKey)
+	if !ok {
+		return false
+	}
 
+	if c.vers != hs.sessionState.vers {
+		return false
+	}
+	cipherSuiteOk := false
+	// 检查客户端的密码套件是否任然提供会话中的套件。
+	for _, id := range hs.clientHello.cipherSuites {
+		if id == hs.sessionState.cipherSuite {
+			cipherSuiteOk = true
+			break
+		}
+	}
+	if !cipherSuiteOk {
+		return false
+	}
+	// 通过套件的ID从配置和预设的密码套件中选出密码套件实现
+	hs.suite = selectCipherSuite([]uint16{hs.sessionState.cipherSuite},
+		c.config.cipherSuites(), hs.cipherSuiteOk)
+	if hs.suite == nil {
+		return false
+	}
+	return true
 }
 
 func (hs *serverHandshakeState) doResumeHandshake() error {
