@@ -6,6 +6,8 @@ GoTLCP采用Go语言实现的传输层密码协议(TLCP)，TLCP协议遵循《GB
 
 **在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
 
+*若clone和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
+
 > 致谢！项目中涉及的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集提升了算法效率。
 
 
