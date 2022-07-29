@@ -1,4 +1,4 @@
-module github.com/Trisia/tlcp
+module github.com/Trisia/gotlcp
 
 go 1.15
 
