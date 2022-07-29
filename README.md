@@ -106,4 +106,4 @@ func main() {
 
 ## 进展
 
-[>> 项目进展](releasenotes.md)
+[>> 项目进展](./releasenote.md)
