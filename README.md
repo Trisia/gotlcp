@@ -16,7 +16,7 @@ GoTLCP采用Go语言实现的传输层密码协议(TLCP)，TLCP协议遵循《GB
 通过下面命令就可以安装 GoTLCP:
 
 ```
-go get -u 
+go get -u gitee.com/Trisia/gotlcp
 ```
 
 > GoTLCP 将持续保证API的向下兼容，您可以放心的升级GoTLCP库至最新版本。
