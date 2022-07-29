@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/Trisia/gotlcp/tlcp"
+	"gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {

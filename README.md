@@ -31,7 +31,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/Trisia/gotlcp/tlcp"
+	"gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {
@@ -60,7 +60,7 @@ func main() {
 package main
 
 import (
-	"github.com/Trisia/gotlcp/tlcp"
+	"gitee.com/Trisia/gotlcp/tlcp"
 	"net"
 )
 
