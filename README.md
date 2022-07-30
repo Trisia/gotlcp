@@ -4,6 +4,13 @@ Information security technology **T**ransport **L**ayer **C**ryptography **P**ro
 
 GoTLCP采用Go语言实现的传输层密码协议(TLCP)，TLCP协议遵循《GB/T 38636-2020 信息安全技术 传输层密码协议》。
 
+GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计算，支持完整TLCP握手、会话重用、传输保护、单向身份认证（认证服务端）双向身份认证。
+
+密码套件支持：
+
+- ECC_SM4_CBC_SM3
+- ECC_SM4_GCM_SM3
+
 **在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
 
 *若clone和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
@@ -91,20 +98,13 @@ func main() {
 
 - 完整代码见 [quickstart/server/main.go](./example/quickstart/server/main.go)
 
-## TLCP协议实现
+## 文档
 
-实现了：
-
-- TLCP握手
-- 会话重用
-- 传输保护
-- 单向身份认证
-- 双向身份认证
-
-已实现的密码套件：
-
-- ECC_SM4_CBC_SM3
-- ECC_SM4_GCM_SM3
+- [《关于 TLCP》](./doc/AbortTLCP.md)
+- [《GoTLCP 证书以及密钥》]() // TODO
+- [《GoTLCP 客户端 配置》]()  // TODO
+- [《GoTLCP 服务端 配置》]()  // TODO
+- [《GoTLCP 国密HTTPS》]()   // TODO
 
 ## 进展
 
