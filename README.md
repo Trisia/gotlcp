@@ -100,7 +100,7 @@ func main() {
 
 ## 文档
 
-- [《关于 TLCP》](./doc/AbortTLCP.md)
+- [《关于 TLCP》](./doc/AboutTLCP.md)
 - [《GoTLCP 证书以及密钥》]() // TODO
 - [《GoTLCP 客户端 配置》]()  // TODO
 - [《GoTLCP 服务端 配置》]()  // TODO
