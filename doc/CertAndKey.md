@@ -90,7 +90,7 @@ type Certificate struct {
 关于密钥目前GoTLCP模块，支持对PKCS#8格式的SM2密钥解析，您可以按照下面方式解析密钥对及证书：
 
 ```go
-keycert, err := LoadX509KeyPair(certFile, keyFile)
+keycert, err := tlcp.LoadX509KeyPair(certFile, keyFile)
 if err != nil {
     panic(err)
 }
