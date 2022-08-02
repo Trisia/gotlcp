@@ -15,7 +15,10 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 
 *若clone和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
-> 致谢！项目中涉及的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集提升了算法效率。
+> 致谢：
+> 
+> - 项目中涉及的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集提升了算法效率。
+> - 项目TLCP协议代码裁剪自 go 1.19版本 crypto/tls模块。
 
 
 ## 安装

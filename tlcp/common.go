@@ -263,17 +263,16 @@ func (c *CertificateRequestInfo) Context() context.Context {
 	return c.ctx
 }
 
-// A Config structure is used to configure a TLCP client or server.
-// After one has been passed to a TLCP function it must not be
-// modified. A Config may be reused; the tlcp package will also not
-// modify it.
+// Config TLCP配置对象，用于配置TLCP客户端或服务端，一旦该参数被TLCP使用，那么
+// 该参数内部的值不应在改变。
+//
+// Config 根据情况可以复用。
 type Config struct {
 	// Rand 外部随机源，若不配置则默认使用 crypto/rand 作为随机源
 	// 随机源必须线程安全，能够被多goroutines访问。
 	Rand io.Reader
 
-	// Time returns the current time as the number of seconds since the epoch.
-	// If Time is nil, TLCP uses time.Now.
+	// Time 外部时间源，返回当前的时间
 	Time func() time.Time
 
 	// Certificates TLCP握手过程中的证书密钥对，数组中每一个元素表示一对密钥以及一张证书
@@ -305,42 +304,28 @@ type Config struct {
 	// 也需要返回一个空的 Certificate 对象，这样客户端可以发送一个空的证书消息给服务端。
 	GetClientCertificate func(*CertificateRequestInfo) (*Certificate, error)
 
-	// GetConfigForClient, if not nil, is called after a ClientHello is
-	// received from a client. It may return a non-nil Config in order to
-	// change the Config that will be used to handle this connection. If
-	// the returned Config is nil, the original Config will be used. The
-	// Config returned by this callback may not be subsequently modified.
+	// GetConfigForClient 【可选】 根据客户端Hello消息，生成TLCP配置对象
+	// 如果该方法不为空，将会在接受到客户端的 ClientHello 消息后调用。
 	//
-	// If GetConfigForClient is nil, the Config passed to Server() will be
-	// used for all connections.
-	//
-	// If SessionTicketKey was explicitly set on the returned Config, or if
-	// SetSessionTicketKeys was called on the returned Config, those keys will
-	// be used. Otherwise, the original Config keys will be used (and possibly
-	// rotated if they are automatically managed).
+	// 通过该方法你可以在针对该次连接生成自定义的配置对象来完成特殊的应用需要。
 	GetConfigForClient func(*ClientHelloInfo) (*Config, error)
 
-	// VerifyPeerCertificate, if not nil, is called after normal
-	// certificate verification by either a TLCP client or server. It
-	// receives the raw ASN.1 certificates provided by the peer and also
-	// any verified chains that normal processing found. If it returns a
-	// non-nil error, the handshake is aborted and that error results.
+	// VerifyPeerCertificate 【可选】 验证对端证书
+	// 若改参数不为空，将会在客户端或服务端的证书验证结束阶段后被调用。
 	//
-	// If normal verification fails then the handshake will abort before
-	// considering this callback. If normal verification is disabled by
-	// setting InsecureSkipVerify, or (for a server) when ClientAuth is
-	// RequestClientCert or RequireAnyClientCert, then this callback will
-	// be considered but the verifiedChains argument will always be nil.
+	// 该方法接收 rawCerts 对端发来的 原始的 ASN.1（DER） 的证书序列
+	// 以及 verifiedChains 验证该证书相关的根证书链序列
+	//
+	// InsecureSkipVerify 与 ClientAuth 参数不会影响该函数运行。
 	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
-	// VerifyConnection, if not nil, is called after normal certificate
-	// verification and after VerifyPeerCertificate by either a TLCP client
-	// or server. If it returns a non-nil error, the handshake is aborted
-	// and that error results.
+	// VerifyConnection 【可选】如果该方法不会空，那么将会在证书验证完成后，
+	// 如果 VerifyPeerCertificate 存在则会在其后运行
+	// 在该方法中您可以对连接上下文中的相关参数进行校验 如提取对端数字证书信息、所使用的密码套件等。
 	//
-	// If normal verification fails then the handshake will abort before
-	// considering this callback. This callback will run for all connections
-	// regardless of InsecureSkipVerify or ClientAuth settings.
+	// 如果该方法返回值不为空，将会终止握手。
+	//
+	// InsecureSkipVerify 与 ClientAuth 的设置不会影响该方法的运行。
 	VerifyConnection func(ConnectionState) error
 
 	// RootCAs 根证书列表，客户端使用该列表的证书验证服务端证书是否有效
@@ -379,29 +364,11 @@ type Config struct {
 	// 若无特殊缓存需要可采用默认的 NewLRUSessionCache 实现会话缓存
 	SessionCache SessionCache
 
-	// MinVersion contains the minimum TLCP version that is acceptable.
-	//
-	// By default, TLS 1.2 is currently used as the minimum when acting as a
-	// client, and TLS 1.0 when acting as a server. TLS 1.0 is the minimum
-	// supported by this package, both as a client and as a server.
-	//
-	// The client-side default can temporarily be reverted to TLS 1.0 by
-	// including the value "x509sha1=1" in the GODEBUG environment variable.
-	// Note that this option will be removed in Go 1.19 (but it will still be
-	// possible to set this field to VersionTLS10 explicitly).
+	// MinVersion 最低支持的TLCP协议版本，目前TLCP只有一个版本
 	MinVersion uint16
 
-	// MaxVersion contains the maximum TLS version that is acceptable.
-	//
-	// By default, the maximum version supported by this package is used,
-	// which is currently TLS 1.3.
+	// MaxVersion 最高支持的TLCP协议版本，目前TLCP只有一个版本
 	MaxVersion uint16
-
-	// CurvePreferences contains the elliptic curves that will be used in
-	// an ECDHE handshake, in preference order. If empty, the default will
-	// be used. The client will use the first preference as the type for
-	// its key share in TLS 1.3. This may change in the future.
-	CurvePreferences []CurveID
 
 	// DynamicRecordSizingDisabled disables adaptive sizing of TLS records.
 	// When true, the largest possible TLS record size is always used. When
@@ -439,7 +406,6 @@ func (c *Config) Clone() *Config {
 		SessionCache:                c.SessionCache,
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
-		CurvePreferences:            c.CurvePreferences,
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 	}
 }
@@ -592,32 +558,6 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	}
 	return errors.New("chain is not signed by an acceptable CA")
 }
-
-//const (
-//	keyLogLabelTLS12           = "CLIENT_RANDOM"
-//	keyLogLabelClientHandshake = "CLIENT_HANDSHAKE_TRAFFIC_SECRET"
-//	keyLogLabelServerHandshake = "SERVER_HANDSHAKE_TRAFFIC_SECRET"
-//	keyLogLabelClientTraffic   = "CLIENT_TRAFFIC_SECRET_0"
-//	keyLogLabelServerTraffic   = "SERVER_TRAFFIC_SECRET_0"
-//)
-
-//func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
-//	if c.KeyLogWriter == nil {
-//		return nil
-//	}
-//
-//	logLine := []byte(fmt.Sprintf("%s %x %x\n", label, clientRandom, secret))
-//
-//	writerMutex.Lock()
-//	_, err := c.KeyLogWriter.Write(logLine)
-//	writerMutex.Unlock()
-//
-//	return err
-//}
-
-//// writerMutex protects all KeyLogWriters globally. It is rarely enabled,
-//// and is only for debugging, so a global mutex saves space.
-//var writerMutex sync.Mutex
 
 // A Certificate is a chain of one or more certificates, leaf first.
 type Certificate struct {

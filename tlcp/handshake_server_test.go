@@ -81,7 +81,6 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
 	sigCert, err = X509KeyPair([]byte(SIG_CERT_PEM), []byte(SIG_KEY_PEM))
 	if err != nil {
 		panic(err)

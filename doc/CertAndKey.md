@@ -59,9 +59,11 @@ TLCP协议以CS（Client and Server）的架构实现通信：
 
 ## 2. Go TLCP证书及密钥
 
+### 2.1 数字证书解析
+
 目前Go TLCP通过`emmansun/gmsm`的`smx.509`模块，目前数字证书解析支持数字证书的PEM格式，您可以通过下面这个方式解析证书：
 ````go
-rootCert, err := smx509.ParseCertificatePEM([]byte(ROOT_PEM))
+cert, err := smx509.ParseCertificatePEM([]byte(ROOT_PEM))
 if err != nil {
     panic(err)
 }
@@ -69,25 +71,86 @@ if err != nil {
 
 - ROOT_PEM：x.509 ASN1.1 DER编码的PEM格式字符串。
 
+示例见 [cert_parse/main.go](../example/certkey/cert_parse/main.go)
 
+### 2.2 GoTLCP 证书密钥对
 
 GoTLCP修改自golang `1.19`的`crypto/tls`，采用了`tlcp.Certificate`的对象作为证书和密钥证书密钥对，`tlcp.Certificate`结构下：
 
 ```go
 package tlcp
 
-// 数字证书及密钥对
+// Certificate 数字证书及密钥对
 type Certificate struct {
 	Certificate [][]byte          // 数字证书DER二进制编码数组
 	PrivateKey crypto.PrivateKey  // 密钥对接口
-	Leaf *smx509.Certificate        // X509证书对象缓存
 }
 ```
 
+您需要提供以下参数构造该对象：
 
+- **Certificate**：数字证书DER二进制编码数组，TLCP只要求提供1张与该密钥有关的数字证书，不需要而外提供证书链。
+- **PrivateKey**：密钥对，实现了`crypto.PrivateKey`接口的都可以作为密钥对。
 
+#### 2.2.1 数字证书
 
-关于密钥目前GoTLCP模块，支持对PKCS#8格式的SM2密钥解析，您可以按照下面方式解析密钥对及证书：
+关于 `Certificate [][]byte ` 您可以通过，`smx509.Certificate`对象的`Raw`字段获取数字证书的DER编码，如下：
+
+```go
+cert, _ := smx509.ParseCertificatePEM(CERT_PEM_CODE)
+var certKey = tlcp.Certificate{}
+certKey.Certificate = [][]byte{cert.Raw}
+```
+
+#### 2.2.2 密钥对
+
+<b style="color:red">警告：请在确保密钥符合国家密码管理要求前提下，管理使用非对称密钥对。</b>
+
+GoTLCP根据密钥的用途，要求密钥的实现相应的Go标准接口：
+
+- 数字签名，实现`crypto.Signer`
+- 数据解密，实现`crypto.Decrypter`
+
+相关接口定义如下：
+
+```go
+package crypto
+
+type Signer interface {
+	// Public 公钥
+	Public() PublicKey
+	// Sign 数字签名
+	Sign(rand io.Reader, digest []byte, opts SignerOpts) (signature []byte, err error)
+}
+
+type Decrypter interface {
+	// Public 公钥
+	Public() PublicKey
+	// Decrypt 私钥解密
+	Decrypt(rand io.Reader, msg []byte, opts DecrypterOpts) (plaintext []byte, err error)
+}
+```
+
+> 关于`crypto.Signer`、`crypto.Decrypter`更多信息见 [src/crypto/crypto.go](https://github.com/golang/go/blob/master/src/crypto/crypto.go)
+
+服务端密钥对：
+
+- 签名密钥对需要实现`crypto.Signer`
+- 加密密钥对需要实现`crypto.Decrypter`
+
+客户端密钥对：
+
+- 认证密钥对需要实现`crypto.Signer`
+
+通过上述接口抽象与解耦，可以实现与SDF、SKF接口对接，通过密码硬件设备实现相应的密码功能。
+
+示例见 [custom_key_cert/main.go](../example/certkey/custom_key_cert/main.go)
+
+#### 2.2.3 测试密钥对构造
+
+若您正处于测试与调试阶段，您可以实现目前GoTLCP提供的接口来实现证书、密钥的解析，构造`tlcp.Certificate`。
+
+目前仅支持对 X509 DER PEM编码的证书证书 与 PKCS#8格式（未加密）PEM编码的SM2密钥解析，您可以按照下面方式解析密钥对及证书：
 
 ```go
 keycert, err := tlcp.LoadX509KeyPair(certFile, keyFile)
@@ -95,6 +158,9 @@ if err != nil {
     panic(err)
 }
 ```
+- certFile: X509 DER PEM编码的数字证书文件路径。
+- keyFile: PKCS#8格式PEM编码证书文件路径。
 
+或使用`tlcp.X509KeyPair`从PEM的字节码中解析。
 
-
+示例见 [testuse_keypair/main.go](../example/certkey/testuse_keypair/main.go)
