@@ -60,7 +60,7 @@ const (
 	typeFinished           uint8 = 20
 )
 
-// TLCP compression types.
+// TLCP 压缩类型
 const (
 	compressionNone uint8 = 0
 )
@@ -90,48 +90,38 @@ const (
 const (
 	certTypeRSASign   = 1
 	certTypeECDSASign = 64 // ECDSA or EdDSA keys, see RFC 8422, Section 3.
-	certTypeIbcParams = 80 //
+	certTypeIbcParams = 80
 )
 
-// ConnectionState records basic TLS details about the connection.
+// ConnectionState 关于TLCP连接的详细信息
 type ConnectionState struct {
-	// Version is the TLS version used by the connection (e.g. VersionTLS12).
+	// Version 连接的TLCP协议版本号
 	Version uint16
 
-	// HandshakeComplete is true if the handshake has concluded.
+	// HandshakeComplete true 表示完成握手
 	HandshakeComplete bool
 
-	// DidResume is true if this connection was successfully resumed from a
-	// previous session with a session ticket or similar mechanism.
+	// DidResume true 表示这个连接是从之前的会话中重用了会话密钥
 	DidResume bool
 
-	// CipherSuite is the cipher suite negotiated for the connection (e.g.
-	// TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_AES_128_GCM_SHA256).
+	// CipherSuite 该连接所使用的密码套件ID
 	CipherSuite uint16
 
-	//// NegotiatedProtocol is the application protocol negotiated with ALPN.
-	//NegotiatedProtocol string
-
-	// ServerName is the value of the Server Name Indication extension sent by
-	// the client. It's available both on the server and on the client side.
+	// ServerName 服务端端名称
 	ServerName string
 
-	// PeerCertificates are the parsed certificates sent by the peer, in the
-	// order in which they were sent. The first element is the leaf certificate
-	// that the connection is verified against.
+	// PeerCertificates 对端数字证书对象
 	//
-	// On the client side, it can't be empty. On the server side, it can be
-	// empty if Config.ClientAuth is not RequireAnyClientCert or
-	// RequireAndVerifyClientCert.
+	// 在客户端侧，改参数不会为空，表示服务端的签名证书和加密证书
+	// 在服务端侧，若  Config.ClientAuth 不为 RequireAnyClientCert 或 RequireAndVerifyClientCert 那么则可能为空。
 	PeerCertificates []*x509.Certificate
 
-	// VerifiedChains is a list of one or more chains where the first element is
-	// PeerCertificates[0] and the last element is from Config.RootCAs (on the
-	// client side) or Config.ClientCAs (on the server side).
+	// VerifiedChains 验证对端证书的证书链
 	//
-	// On the client side, it's set if Config.InsecureSkipVerify is false. On
-	// the server side, it's set if Config.ClientAuth is VerifyClientCertIfGiven
-	// (and the peer provided a certificate) or RequireAndVerifyClientCert.
+	// 在客户端侧证书链中的证书来自于 Config.RootCAs
+	// 在服务端侧证书链中的证书来自于 Config.ClientCAs
+	//
+	// 若启用了 Config.InsecureSkipVerify 参数则不会存在改参数。
 	VerifiedChains [][]*x509.Certificate
 }
 
@@ -185,29 +175,6 @@ type ClientHelloInfo struct {
 	// in order to support virtual hosting. ServerName is only set if the
 	// client is using SNI (see RFC 4366, Section 3.1).
 	ServerName string
-
-	//// SupportedCurves lists the elliptic curves supported by the client.
-	//// SupportedCurves is set only if the Supported Elliptic Curves
-	//// Extension is being used (see RFC 4492, Section 5.1.1).
-	//SupportedCurves []CurveID
-
-	//// SupportedPoints lists the point formats supported by the client.
-	//// SupportedPoints is set only if the Supported Point Formats Extension
-	//// is being used (see RFC 4492, Section 5.1.2).
-	//SupportedPoints []uint8
-
-	//// SignatureSchemes lists the signature and hash schemes that the client
-	//// is willing to verify. SignatureSchemes is set only if the Signature
-	//// Algorithms Extension is being used (see RFC 5246, Section 7.4.1.4.1).
-	//SignatureSchemes []SignatureScheme
-
-	//// SupportedProtos lists the application protocols supported by the client.
-	//// SupportedProtos is set only if the Application-Layer Protocol
-	//// Negotiation Extension is being used (see RFC 7301, Section 3.1).
-	////
-	//// Servers can select a protocol by setting Config.NextProtos in a
-	//// GetConfigForClient return value.
-	//SupportedProtos []string
 
 	// SupportedVersions lists the TLCP versions supported by the client.
 	// For TLCP versions less than 1.3, this is extrapolated from the max

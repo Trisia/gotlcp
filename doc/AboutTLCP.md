@@ -12,8 +12,7 @@ TLCP协议被定义于《GB/T 38636-2020 信息安全技术 传输层密码协�
 
 ![img.png](img/38636.png)
 
-在此之前TLCP的前身 SSL VPN（国密）早已经在密码行业使用多年，这里就需要提及《GM/T 0024-2014 SSL VPN技术规范》，也就是
-也就是GMSSL（国产密码算法的SSL），以下简称 **GMSSL**。
+在此之前TLCP的前身 SSL（国密）虚拟私有网络已经在行业使用多年，这里就需要提及《GM/T 0024-2014》也就是GMSSL（基于国密算法的SSL），以下简称 **GMSSL**。
 
 ![img.png](img/0024.png)
 
@@ -23,8 +22,8 @@ TLCP协议被定义于《GB/T 38636-2020 信息安全技术 传输层密码协�
 
 | 对比项 | GM/T 0024-2014（GMSSL） | GB/T 38636-2020（TLCP）|
 | :-- | :-- | :-- |
-| 区别 | 密码行业标准 | 国家标准 |
-| 用途 | 主要用于SSL VPN产品的研制，也可以指导SSL VPN产品的监测、管理和使用。 | 适用于传输层密码协议相关产品（如SSL VPN网关、浏览器等）的研制，也可以用于指导传输层密码协议相关产品的监测、管理和使用。 |
+| 区别 | 密码行标 | 国标 |
+| 用途 | 主要用于SSL 虚拟私有网络产品的研制，也可以指导SSL虚拟私有网络产品的监测、管理和使用。 | 适用于传输层密码协议相关产品（如SSL虚拟私有网络网关、浏览器等）的研制，也可以用于指导传输层密码协议相关产品的监测、管理和使用。 |
 | 算法 | 支持国密SM1、SM2、SM3、SM4、SM9，对称加密加密模式仅支持CBC模式 | 支持国密SM1、SM2、SM3、SM4、SM9，对称加密加密模式仅支持GCM、CBC模式 |
 | 协议 | 记录层协议、握手协议族、密钥计算、网关-网关协议 | 记录层协议、握手协议族、密钥计算 |
 
@@ -68,19 +67,19 @@ TLCP协议被定义于《GB/T 38636-2020 信息安全技术 传输层密码协�
 GB/T 38636-2020 6.4.5.2.1 定义了目前TLCP协议支持所有密码套件如下所示：
 
 
-| 名称                | 密钥交换  | 加密     | 效验   | 值            |
-| ------------------ | -------- | ------- | ------ | ------------ |
-| ECDHE_SM4_CBC_SM3  | ECDHE    | SM4_CBC | SM3    | {0xe0,0x11}  |
-| ECDHE_SM4_GCM_SM3  | ECDHE    | SM4_GCM | SM3    | {0xe0,0x51}  |
-| ECC_SM4_CBC_SM3    | ECC      | SM4_CBC | SM3    | {0xc0,0x13}  |
-| ECC_SM4_GCM_SM3    | ECC      | SM4_GCM | SM3    | {0xc0,0x53}  |
-| IBSDH_SM4_CBC_SM3  | IBSDH    | SM4_CBC | SM3    | {0xe0,0x15}  |
-| IBSDH_SM4_GCM_SM3  | IBSDH    | SM4_GCM | SM3    | {0xe0,0x55}  |
-| IBC_SM4_CBC_SM3    | IBC      | SM4_CBC | SM3    | {0xe0,0x17}  |
-| lBC_SM4_GCM_SM3    | lBC      | SM4_GCM | SM3    | {0xe0,0x57}  |
-| RSA_SM4_CBC_SM3    | RSA      | SM4_CBC | SM3    | {0xc0,0x19}  |
-| RSA_SM4_GCM_SM3    | RSA      | SM4_GCM | SM3    | {0xe0,0x59}  |
-| RSA_SM4_CBC_SHA256 | RSA      | SM4_CBC | SHA256 | {0xe0,0xlc}  |
-| RSA_SM4_GCM_SHA256 | RSA      | SM4_GCM | SHA256 | {0xe0,0x5a}  |
+| 名称                 | 密钥交换  | 加密     | 效验   | 值            |
+|--------------------|-------| ------- | ------ | ------------ |
+| ECDHE_SM4_CBC_SM3  | ECDHE | SM4_CBC | SM3    | {0xe0,0x11}  |
+| ECDHE_SM4_GCM_SM3  | ECDHE | SM4_GCM | SM3    | {0xe0,0x51}  |
+| ECC_SM4_CBC_SM3    | ECC   | SM4_CBC | SM3    | {0xc0,0x13}  |
+| ECC_SM4_GCM_SM3    | ECC   | SM4_GCM | SM3    | {0xc0,0x53}  |
+| IBSDH_SM4_CBC_SM3  | IBSDH | SM4_CBC | SM3    | {0xe0,0x15}  |
+| IBSDH_SM4_GCM_SM3  | IBSDH | SM4_GCM | SM3    | {0xe0,0x55}  |
+| IBC_SM4_CBC_SM3    | IBC   | SM4_CBC | SM3    | {0xe0,0x17}  |
+| IBC_SM4_GCM_SM3    | IBC   | SM4_GCM | SM3    | {0xe0,0x57}  |
+| RSA_SM4_CBC_SM3    | RSA   | SM4_CBC | SM3    | {0xc0,0x19}  |
+| RSA_SM4_GCM_SM3    | RSA   | SM4_GCM | SM3    | {0xe0,0x59}  |
+| RSA_SM4_CBC_SHA256 | RSA   | SM4_CBC | SHA256 | {0xe0,0xlc}  |
+| RSA_SM4_GCM_SHA256 | RSA   | SM4_GCM | SHA256 | {0xe0,0x5a}  |
 
 **GB/T 38636-2020：本标准实现ECC和ECDHE的算法为SM2；实现IBC和IBSDH的算法为SM9。**

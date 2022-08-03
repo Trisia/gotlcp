@@ -54,12 +54,13 @@ const (
 	alertUnknownPSKIdentity           alert = 115
 	alertCertificateRequired          alert = 116
 	alertNoApplicationProtocol        alert = 120
-	alertUnsupportedSite2site         alert = 200 // 不支持site2site
-	alertNoArea                       alert = 201 // 没有保护域
-	alertUnsupportedAreatype          alert = 202 // 不支持的保护域类型
-	alertBadIbcparam                  alert = 203 // 接收到一个无效的ibc公共参数
-	alertUnsupportedIbcparam          alert = 204 // 不支持的 ibc公共参数中定义的信息
-	alertIdentityNeed                 alert = 205 // 缺少对方的ibc标识
+	// GM/T 0024 网关-网关协议 错误码
+	alertUnsupportedSite2site alert = 200 // 不支持site2site
+	alertNoArea               alert = 201 // 没有保护域
+	alertUnsupportedAreatype  alert = 202 // 不支持的保护域类型
+	alertBadIbcparam          alert = 203 // 接收到一个无效的ibc公共参数
+	alertUnsupportedIbcparam  alert = 204 // 不支持的 ibc公共参数中定义的信息
+	alertIdentityNeed         alert = 205 // 缺少对方的ibc标识
 )
 
 var alertText = map[alert]string{

@@ -19,18 +19,16 @@ import (
 	"hash"
 )
 
-// CipherSuite is a TLS cipher suite. Note that most functions in this package
-// accept and expose cipher suite IDs instead of this type.
+// CipherSuite 密码套件
+//
+// 在该程序库中大部分方法都只接受密码套件的ID而不是该对象
 type CipherSuite struct {
 	ID   uint16
 	Name string
 
-	// Supported versions is the list of TLS protocol versions that can
-	// negotiate this cipher suite.
+	// 该套件支持的TLCP协议版本
 	SupportedVersions []uint16
-
-	// Insecure is true if the cipher suite has known security issues
-	// due to its primitives, design, or implementation.
+	// Insecure 为true表示该套件是已经具有安全问题的密码套件
 	Insecure bool
 }
 
@@ -41,23 +39,18 @@ var (
 // CipherSuites 返回支持的密码算法套件列表
 func CipherSuites() []*CipherSuite {
 	return []*CipherSuite{
-		{TLCP_ECC_SM4_CBC_SM3, "TLCP_ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
-		{TLCP_ECC_SM4_GCM_SM3, "TLCP_ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{TLCP_ECC_SM4_CBC_SM3, "ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
+		{TLCP_ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
 	}
 }
 
-// InsecureCipherSuites returns a list of cipher suites currently implemented by
-// this package and which have security issues.
-//
-// Most applications should not use the cipher suites in this list, and should
-// only use those returned by CipherSuites.
+// InsecureCipherSuites 已知的不安全的密码套件列表
 func InsecureCipherSuites() []*CipherSuite {
 	return []*CipherSuite{}
 }
 
-// CipherSuiteName returns the standard name for the passed cipher suite ID
-// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), or a fallback representation
-// of the ID value if the cipher suite is not implemented by this package.
+// CipherSuiteName 通过密码套件ID返还密码套件的标准名称。
+// （如： "ECC_SM4_CBC_SM3"）
 func CipherSuiteName(id uint16) string {
 	for _, c := range CipherSuites() {
 		if c.ID == id {
@@ -150,24 +143,16 @@ func tls10MAC(h hash.Hash, out, seq, header, data, extra []byte) []byte {
 	return res
 }
 
-// mutualCipherSuite returns a cipherSuite given a list of supported
-// ciphersuites and the id requested by the peer.
+// mutualCipherSuite 通过密码套件ID，从所有的 密码套件ID列表中，
+// 返回期待的密码套件对象。
 func mutualCipherSuite(have []uint16, want uint16) *cipherSuite {
 	for _, id := range have {
 		if id == want {
-			//return cipherSuiteByID(id)
 			return cipherSuites[id]
 		}
 	}
 	return nil
 }
-
-//func cipherSuiteByID(id uint16) *cipherSuite {
-//	if suite, ok := cipherSuites[id]; ok {
-//		return suite
-//	}
-//	return nil
-//}
 
 // 密码套件ID，见 GB/T 38636-2016 6.4.5.2.1  表 2 密码套件列表
 const (

@@ -8,7 +8,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-// TLS low level connection and record layer
+// TLCP 底层连接对象 以及 记录层对象
 
 package tlcp
 
@@ -32,9 +32,9 @@ import (
 // It implements the net.Conn interface.
 type Conn struct {
 	// constant
-	conn        net.Conn
-	isClient    bool
-	handshakeFn func(context.Context) error // clientHandshake or serverHandshake
+	conn        net.Conn                    // 原始连接对象
+	isClient    bool                        // 是否是客户端
+	handshakeFn func(context.Context) error // 握手实现 clientHandshake or serverHandshake
 
 	// handshakeStatus is 1 if the connection is currently transferring
 	// application data (i.e. is not currently processing a handshake).
@@ -44,20 +44,17 @@ type Conn struct {
 	// constant after handshake; protected by handshakeMutex
 	handshakeMutex sync.Mutex
 	handshakeErr   error   // error resulting from handshake
-	vers           uint16  // TLS version
-	haveVers       bool    // version has been negotiated
-	config         *Config // configuration passed to constructor
+	vers           uint16  // TLCP 版本号
+	haveVers       bool    // 被协商出的TLCP版本号
+	config         *Config // TLCP连接配置
 	// handshakes counts the number of handshakes performed on the
 	// connection so far. If renegotiation is disabled then this is either
 	// zero or one.
-	handshakes  int
-	didResume   bool // whether this connection was a session resumption
-	cipherSuite uint16
-	//ocspResponse     []byte   // stapled OCSP response
-	//scts             [][]byte // signed certificate timestamps from server
-	peerCertificates []*x509.Certificate
-	// verifiedChains contains the certificate chains that we built, as
-	// opposed to the ones presented by the server.
+	handshakes       int
+	didResume        bool                // 表示是否为会话重用
+	cipherSuite      uint16              // 密码套件ID
+	peerCertificates []*x509.Certificate // 对端数字证书列表
+	// verifiedChains 用于验证对端证书的根证书链
 	verifiedChains [][]*x509.Certificate
 	// serverName contains the server name indicated by the client, if any.
 	serverName string
@@ -68,17 +65,11 @@ type Conn struct {
 	// alertCloseNotify record.
 	closeNotifySent bool
 
-	// clientFinished and serverFinished contain the Finished message sent
-	// by the client or server in the most recent handshake. This is
-	// retained to support the renegotiation extension and tls-unique
-	// channel-binding.
+	// clientFinished 和 serverFinished 包含了客户端或服务端最近一次握手发送的 Finished 消息。
 	clientFinished [12]byte
 	serverFinished [12]byte
 
-	//// clientProtocol is the negotiated ALPN protocol.
-	//clientProtocol string
-
-	// input/output
+	// 连接 输入/输出
 	in, out   halfConn
 	rawInput  bytes.Buffer // raw input, starting with a record header
 	input     bytes.Reader // application data waiting to be read, from rawInput.Next
@@ -103,10 +94,6 @@ type Conn struct {
 
 	tmp [16]byte
 }
-
-// Access to net.Conn methods.
-// Cannot just embed net.Conn because that would
-// export the struct field too.
 
 // LocalAddr returns the local network address.
 func (c *Conn) LocalAddr() net.Addr {
@@ -145,8 +132,7 @@ func (c *Conn) NetConn() net.Conn {
 	return c.conn
 }
 
-// A halfConn represents one direction of the record layer
-// connection, either sending or receiving.
+// halfConn 代表一个传输方向(发送/接收) 的记录层协议连接
 type halfConn struct {
 	sync.Mutex
 
