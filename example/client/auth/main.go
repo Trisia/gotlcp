@@ -6,6 +6,7 @@ import (
 	"github.com/emmansun/gmsm/smx509"
 )
 
+// 客户端单向身份认证
 func main() {
 	loadCert()
 	// 构造根证书列表

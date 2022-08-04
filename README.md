@@ -106,7 +106,7 @@ func main() {
 - [《关于 TLCP协议》](./doc/AboutTLCP.md)
 - [《GoTLCP 数字证书及密钥》](./doc/CertAndKey.md)
 - [《GoTLCP 客户端 配置》](./doc/ClientConfig.md) 
-- [《GoTLCP 服务端 配置》]()  // TODO
+- [《GoTLCP 服务端 配置》](./doc/ServerConfig.md)
 - [《GoTLCP 国密HTTPS》]()   // TODO
 
 ## 进展

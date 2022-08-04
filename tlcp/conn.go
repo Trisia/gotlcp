@@ -69,16 +69,16 @@ type Conn struct {
 	clientFinished [12]byte
 	serverFinished [12]byte
 
-	// 连接 输入/输出
+	// 单向连接 输入/输出 （加密/解密）
 	in, out   halfConn
-	rawInput  bytes.Buffer // raw input, starting with a record header
+	rawInput  bytes.Buffer // 原始输入数据，以记录层(record)的头开始
 	input     bytes.Reader // application data waiting to be read, from rawInput.Next
 	hand      bytes.Buffer // handshake data waiting to be read
 	buffering bool         // whether records are buffered in sendBuf
 	sendBuf   []byte       // a buffer of records waiting to be sent
 
-	// bytesSent counts the bytes of application data sent.
-	// packetsSent counts packets.
+	// bytesSent 连接总共发送数据字节数(byte)
+	// packetsSent counts packets. 连接总共发送数据包数量
 	bytesSent   int64
 	packetsSent int64
 
@@ -95,19 +95,19 @@ type Conn struct {
 	tmp [16]byte
 }
 
-// LocalAddr returns the local network address.
+// LocalAddr 返回连接本地的网络地址
 func (c *Conn) LocalAddr() net.Addr {
 	return c.conn.LocalAddr()
 }
 
-// RemoteAddr returns the remote network address.
+// RemoteAddr 返回连接对端的网络地址
 func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
-// SetDeadline sets the read and write deadlines associated with the connection.
-// A zero value for t means Read and Write will not time out.
-// After a Write has timed out, the TLS state is corrupt and all future writes will return the same error.
+// SetDeadline 设置对连接 读取或写入 终止时间。
+// 若 t 为0表示不会超时。
+// 在超时后将会导致TLCP中断，后续的写入都将会返回同样的错误。
 func (c *Conn) SetDeadline(t time.Time) error {
 	return c.conn.SetDeadline(t)
 }
@@ -125,9 +125,8 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return c.conn.SetWriteDeadline(t)
 }
 
-// NetConn returns the underlying connection that is wrapped by c.
-// Note that writing to or reading from this connection directly will corrupt the
-// TLS session.
+// NetConn 返回被TLCP包装的原始的网络连接对象，如：TCP连接对象。
+// 注意直接读写该连接对象将会导致会话终止。
 func (c *Conn) NetConn() net.Conn {
 	return c.conn
 }
@@ -192,16 +191,7 @@ func (hc *halfConn) changeCipherSpec() error {
 	return nil
 }
 
-//func (hc *halfConn) setTrafficSecret(suite *cipherSuiteTLS13, secret []byte) {
-//	hc.trafficSecret = secret
-//	key, iv := suite.trafficKey(secret)
-//	hc.cipher = suite.aead(key, iv)
-//	for i := range hc.seq {
-//		hc.seq[i] = 0
-//	}
-//}
-
-// incSeq increments the sequence number.
+// incSeq 递增TLCP包序列号
 func (hc *halfConn) incSeq() {
 	for i := 7; i >= 0; i-- {
 		hc.seq[i]++
@@ -376,26 +366,6 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 		default:
 			panic("unknown cipher type")
 		}
-
-		//if hc.version == VersionTLS13 {
-		//	if typ != recordTypeApplicationData {
-		//		return nil, 0, alertUnexpectedMessage
-		//	}
-		//	if len(plaintext) > maxPlaintext+1 {
-		//		return nil, 0, alertRecordOverflow
-		//	}
-		//	// Remove padding and find the ContentType scanning from the end.
-		//	for i := len(plaintext) - 1; i >= 0; i-- {
-		//		if plaintext[i] != 0 {
-		//			typ = recordType(plaintext[i])
-		//			plaintext = plaintext[:i]
-		//			break
-		//		}
-		//		if i == 0 {
-		//			return nil, 0, alertUnexpectedMessage
-		//		}
-		//	}
-		//}
 	} else {
 		plaintext = payload
 	}
@@ -486,25 +456,6 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 		if len(nonce) == 0 {
 			nonce = hc.seq[:]
 		}
-
-		//if hc.version == VersionTLS13 {
-		//	record = append(record, payload...)
-		//
-		//	// Encrypt the actual ContentType and replace the plaintext one.
-		//	record = append(record, record[0])
-		//	record[0] = byte(recordTypeApplicationData)
-		//
-		//	n := len(payload) + 1 + c.Overhead()
-		//	record[3] = byte(n >> 8)
-		//	record[4] = byte(n)
-		//
-		//	record = c.Seal(record[:recordHeaderLen],
-		//		nonce, record[recordHeaderLen:], record[:recordHeaderLen])
-		//} else {
-		//	additionalData := append(hc.scratchBuf[:0], hc.seq[:]...)
-		//	additionalData = append(additionalData, record[:recordHeaderLen]...)
-		//	record = c.Seal(record, nonce, payload, additionalData)
-		//}
 		additionalData := append(hc.scratchBuf[:0], hc.seq[:]...)
 		additionalData = append(additionalData, record[:recordHeaderLen]...)
 		record = c.Seal(record, nonce, payload, additionalData)
@@ -536,17 +487,15 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 	return record, nil
 }
 
-// RecordHeaderError is returned when a TLS record header is invalid.
+// RecordHeaderError 当TLCP记录层协议(record)的头非法时返回该错误。
 type RecordHeaderError struct {
-	// Msg contains a human readable string that describes the error.
+	// Msg 包含了人可读的错误描述信息
 	Msg string
-	// RecordHeader contains the five bytes of TLS record header that
-	// triggered the error.
+	// RecordHeader 包含导致了该错误的 TLCP记录层头 5字节(byte)
 	RecordHeader [5]byte
-	// Conn provides the underlying net.Conn in the case that a client
-	// sent an initial handshake that didn't look like TLS.
-	// It is nil if there's already been a handshake or a TLS alert has
-	// been written to the connection.
+
+	// Conn 底层的连接对象
+	// 若已经有过一次握手或发送了报警消息，那么该参数可能为空。
 	Conn net.Conn
 }
 

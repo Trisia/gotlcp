@@ -1,6 +1,6 @@
 # GoTLCP 客户端配置
 
-TLCP的客户端配置主要是对`tlcp.Config`对象进行配置。
+TLCP的客户端配置主要对`tlcp.Config`对象进行配置。
 
 TLCP协议服务端对客户端有如下认证类型：
 
@@ -51,7 +51,7 @@ func main() {
 }
 ```
 
-示例见 [auth/main.go](../example/client/auth/main.go)
+示例见 [client/auth/main.go](../example/client/auth/main.go)
 
 ### 1.2 双向身份认证
 
@@ -90,7 +90,7 @@ func main() {
 }
 ```
 
-示例见 [mutual_auth/main.go](../example/client/mutual_auth/main.go)
+示例见 [client/mutual_auth/main.go](../example/client/mutual_auth/main.go)
 
 
 ### 1.3 忽略认证 用于测试 
@@ -120,7 +120,7 @@ func main() {
 
 ```
 
-示例见 [no_auth/main.go](../example/client/no_auth/main.go)
+示例见 [client/no_auth/main.go](../example/client/no_auth/main.go)
 
 ## 2. 高级配置
 
@@ -139,11 +139,15 @@ TLCP协议支持两种握手握手方式：
 
 - 服务端支持握手重用。
 - 客户端支持握手重用。
-- 客户端已经成功完成过一次完整握手，并且客户端缓存该会话。
+- 客户端已经完成与服务端的完整握手，并且服务端与客户端都缓存该会话。
+- 客户端Hello使用同样的会话ID。
 - 重用握手时，服务端上的会话缓存未过期。
 - 重用握手时，客户端上的会话缓存未过期。
 
 客户端配置如下：
+
+1. 根据单向身份认证或双向身份认证完成`tlcp.Config`相关参数，见基础配置部分。
+2. 提供会话缓冲器。
 
 ```go
 package main
@@ -184,6 +188,8 @@ func main() {
 }
 ```
 
-注：目前GoTLCP基于LRU策略实现了会话缓存器，如您有自己的缓存策略可以通过实现 [tlcp.SessionCache](../tlcp/session.go) 接口来解决。
+目前GoTLCP基于LRU策略实现了会话缓存器。 
 
-示例见 [resume/main.go](../example/client/resume/main.go)
+如您有自己的缓存策略请在 **保证密钥安全的前提下** 根据 [tlcp.SessionCache](../tlcp/session.go) 接口实现属于您自己的缓存器。
+
+示例见 [client/resume/main.go](../example/client/resume/main.go)

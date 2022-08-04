@@ -5,6 +5,7 @@ import (
 	"gitee.com/Trisia/gotlcp/tlcp"
 )
 
+// 无身份认证 仅用于测试
 func main() {
 	config := &tlcp.Config{InsecureSkipVerify: true}
 	conn, err := tlcp.Dial("tcp", "127.0.0.1:8444", config)
