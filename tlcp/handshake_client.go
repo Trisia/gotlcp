@@ -38,9 +38,6 @@ type clientHandshakeState struct {
 
 func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 	config := c.config
-	if len(config.ServerName) == 0 && !config.InsecureSkipVerify {
-		return nil, errors.New("tlcp: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
-	}
 
 	supportVers := config.supportedVersions(roleClient)
 	if len(supportVers) == 0 {

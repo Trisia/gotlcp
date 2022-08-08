@@ -27,10 +27,9 @@ import (
 	"strings"
 )
 
-// Server returns a new TLS server side connection
-// using conn as the underlying transport.
-// The configuration config must be non-nil and must include
-// at least one certificate or else set GetCertificate.
+// Server 使用现有连接对象构造一个新的TLCP服务端连接对象
+// 配置参数对象 config 不能为空，且至少提供签名密钥对和加密密钥以及签名证书和加密证书
+// 当然也可以通过 Config.GetCertificate与 Config.GetKECertificate以动态的方式获取相应密钥对于证书。
 func Server(conn net.Conn, config *Config) *Conn {
 	c := &Conn{
 		conn:   conn,
@@ -40,10 +39,7 @@ func Server(conn net.Conn, config *Config) *Conn {
 	return c
 }
 
-// Client returns a new TLS client side connection
-// using conn as the underlying transport.
-// The config cannot be nil: users must set either ServerName or
-// InsecureSkipVerify in the config.
+// Client 使用现有连接对象构造一个新的TLCP客户端连接对象
 func Client(conn net.Conn, config *Config) *Conn {
 	c := &Conn{
 		conn:     conn,
@@ -54,14 +50,14 @@ func Client(conn net.Conn, config *Config) *Conn {
 	return c
 }
 
-// A listener implements a network listener (net.Listener) for TLS connections.
+// listener 实现了 net.Listener 接口，用于表示 TLCP的Listener
 type listener struct {
 	net.Listener
 	config *Config
 }
 
-// Accept waits for and returns the next incoming TLS connection.
-// The returned connection is of type *Conn.
+// Accept 等待并返还一个TLCP连接对象
+// 返回的连接对象为 net.Conn 类型
 func (l *listener) Accept() (net.Conn, error) {
 	c, err := l.Listener.Accept()
 	if err != nil {
@@ -70,10 +66,9 @@ func (l *listener) Accept() (net.Conn, error) {
 	return Server(c, l.config), nil
 }
 
-// NewListener creates a Listener which accepts connections from an inner
-// Listener and wraps each connection with Server.
-// The configuration config must be non-nil and must include
-// at least one certificate or else set GetCertificate.
+// NewListener 基于现有的一个可靠连接的 net.Listener 创建TLCP的Listener对象
+// 配置参数对象 config 不能为空，且至少提供签名密钥对和加密密钥以及签名证书和加密证书
+// 当然也可以通过 Config.GetCertificate 与 Config.GetKECertificate 以动态的方式获取相应密钥对于证书。
 func NewListener(inner net.Listener, config *Config) net.Listener {
 	l := new(listener)
 	l.Listener = inner
@@ -81,10 +76,9 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 	return l
 }
 
-// Listen creates a TLS listener accepting connections on the
-// given network address using net.Listen.
-// The configuration config must be non-nil and must include
-// at least one certificate or else set GetCertificate.
+// Listen 在指定的网络协议上，监听指定地址的端口 创建一个 TLCP的listener接受TLCP客户端连接
+// 配置参数对象 config 不能为空，且至少提供签名密钥对和加密密钥以及签名证书和加密证书
+// 当然也可以通过 Config.GetCertificate 与 Config.GetKECertificate 以动态的方式获取相应密钥对于证书。
 func Listen(network, laddr string, config *Config) (net.Listener, error) {
 	if config == nil || len(config.Certificates) == 0 &&
 		config.GetCertificate == nil && config.GetConfigForClient == nil {
@@ -103,16 +97,10 @@ func (timeoutError) Error() string   { return "tlcp: DialWithDialer timed out" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 
-// DialWithDialer connects to the given network address using dialer.Dial and
-// then initiates a TLS handshake, returning the resulting TLS connection. Any
-// timeout or deadline given in the dialer apply to connection and TLS
-// handshake as a whole.
+// DialWithDialer 使用提供的 net.Dialer 对象，实现TLCP客户端握手，建立TLCP连接。
 //
-// DialWithDialer interprets a nil configuration as equivalent to the zero
-// configuration; see the documentation of Config for the defaults.
-//
-// DialWithDialer uses context.Background internally; to specify the context,
-// use Dialer.DialContext with NetDialer set to the desired dialer.
+// DialWithDialer 内使用 context.Background 上下文，若您需要指定自定义的上下文。
+// 请在构造 Dialer 然后调用 Dialer.DialContext 方法设置。
 func DialWithDialer(dialer *net.Dialer, network, addr string, config *Config) (*Conn, error) {
 	return dial(context.Background(), dialer, network, addr, config)
 }
@@ -135,22 +123,8 @@ func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, conf
 		return nil, err
 	}
 
-	colonPos := strings.LastIndex(addr, ":")
-	if colonPos == -1 {
-		colonPos = len(addr)
-	}
-	hostname := addr[:colonPos]
-
 	if config == nil {
 		config = defaultConfig()
-	}
-	// If no ServerName is set, infer the ServerName
-	// from the hostname we're connecting to.
-	if config.ServerName == "" {
-		// Make a copy to avoid polluting argument or default.
-		c := config.Clone()
-		c.ServerName = hostname
-		config = c
 	}
 
 	conn := Client(rawConn, config)
@@ -171,8 +145,7 @@ func Dial(network, addr string, config *Config) (*Conn, error) {
 	return DialWithDialer(new(net.Dialer), network, addr, config)
 }
 
-// Dialer dials TLS connections given a configuration and a Dialer for the
-// underlying connection.
+// Dialer 通过所给的 net.Dialer 和 Config 配置信息，实现TLCP客户端握手的Dialer对象。
 type Dialer struct {
 	// NetDialer is the optional dialer to use for the TLS connections'
 	// underlying TCP connections.

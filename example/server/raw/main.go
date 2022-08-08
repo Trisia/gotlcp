@@ -6,23 +6,23 @@ import (
 	"net"
 )
 
-// 服务端单向身份认证
 func main() {
-	loadCert()
-	config := &tlcp.Config{
-		Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
-	}
-	listen, err := tlcp.Listen("tcp", ":8447", config)
+	load()
+	config := &tlcp.Config{Certificates: []tlcp.Certificate{sigCertKey, encCertKey}}
+
+	listen, err := net.Listen("tcp", ":8450")
 	if err != nil {
 		panic(err)
 	}
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			panic(err)
-		}
-		go echo(conn)
+	raw, err := listen.Accept()
+	if err != nil {
+		panic(err)
 	}
+
+	conn := tlcp.Server(raw, config)
+	defer conn.Close()
+
+	echo(conn)
 }
 
 func echo(conn net.Conn) {
@@ -30,7 +30,7 @@ func echo(conn net.Conn) {
 	_, _ = io.Copy(conn, conn)
 }
 
-func loadCert() {
+func load() {
 	var err error
 	sigCertKey, err = tlcp.X509KeyPair([]byte(SIG_CERT_PEM), []byte(SIG_KEY_PEM))
 	if err != nil {

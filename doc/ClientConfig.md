@@ -193,3 +193,43 @@ func main() {
 如您有自己的缓存策略请在 **保证密钥安全的前提下** 根据 [tlcp.SessionCache](../tlcp/session.go) 接口实现属于您自己的缓存器。
 
 示例见 [client/resume/main.go](../example/client/resume/main.go)
+
+
+
+### 2.2 使用现有连接
+
+理论上来说TLCP协议能够工作任何可靠连接的协议之上，在Go中只要是实现了`net.Conn`接口的可靠连接都可以承载TLCP协议，下面以TCP连接示例：
+
+1. 创建一个可靠连接对象，如TCP连接。
+2. 通过`tlcp.Client(conn net.Conn, config *Config)` 构造TLCP连接对象。
+3. 使用连接通信。
+
+```go
+package main
+
+import (
+	"net"
+	"gitee.com/Trisia/gotlcp/tlcp"
+)
+
+func main() {
+    
+	// 创建TCP连接
+	raw, err := net.Dial("tcp", "127.0.0.1:8447")
+	if err != nil {
+		panic(err)
+	}
+	// 使用TCP连接，运行TLCP协议，构造TLCP连接
+	conn := tlcp.Client(raw, config)
+	defer conn.Close()
+
+    // use conn do something...
+}
+```
+
+`tlcp.Client(conn net.Conn, config *Config)`接口只要求连接对象实现了`net.Conn`接口，并且提供TLCP相关配置参数就可以作为TLCP客户端使用TLCP协议通信。
+
+可以使用`tlcp.DialWithDialer(dialer *net.Dialer, network, addr string, config *Config) (*Conn, error)`方法来复用现有可靠连接的Dialer对象来创建TLCP Dialer。
+
+完整示例见 [client/raw/main.go](../example/client/raw/main.go)
+

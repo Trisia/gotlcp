@@ -157,3 +157,44 @@ func main() {
 如您有自己的缓存策略请在 **保证密钥安全的前提下** 根据 [tlcp.SessionCache](../tlcp/session.go) 接口实现属于您自己的缓存器。
 
 示例见 [server/resume/main.go](../example/server/resume/main.go)
+
+
+### 2.2 使用现有连接
+
+理论上来说TLCP协议能够工作任何可靠连接的协议之上，在Go中只要是实现了`net.Conn`接口的可靠连接都可以承载TLCP协议，下面以TCP连接示例：
+
+1. 创建一个可靠连接对象，如TCP连接。
+2. 通过`tlcp.Server(conn net.Conn, config *Config)` 构造TLCP连接对象。
+3. 使用连接通信。
+
+```go
+package main
+
+import (
+	"gitee.com/Trisia/gotlcp/tlcp"
+	"net"
+)
+
+func main() {
+	listen, err := net.Listen("tcp", ":8450")
+	if err != nil {
+		panic(err)
+	}
+	raw, err := listen.Accept()
+	if err != nil {
+		panic(err)
+	}
+
+	conn := tlcp.Server(raw, config)
+	defer conn.Close()
+
+	// use conn do something...
+}
+```
+
+`tlcp.Server(conn net.Conn, config *Config)`接口只要求连接对象实现了`net.Conn`接口，并且提供TLCP相关配置参数就可以作为TLCP服务端使用TLCP协议通信。
+
+可以使用`tlcp.NewListener(inner net.Listener, config *Config) net.Listener`方法来复用现有可靠连接的Listener对象来创建TLCP Listener。
+
+完整示例见 [server/raw/main.go](../example/server/raw/main.go)
+

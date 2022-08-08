@@ -299,7 +299,8 @@ type Config struct {
 	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
 	RootCAs *x509.CertPool
 
-	// ServerName 用于验证主机名与数字证书中的主机名是否匹配
+	// ServerName 【可选】如果不为空，则强制校验证书中的DNS或IP是否存在。
+	// 用于验证主机名与数字证书中的主机名是否匹配
 	// 如果 InsecureSkipVerify 为 true 则跳过该验证
 	ServerName string
 
