@@ -12,6 +12,8 @@ TLCP协议作为传输层密码协议，在握手完成后认为建立TLCP连接
 
 ## 2. 服务端
 
+> 若您需要配置双向身份认证请参考 [《GoTLCP 服务端配置》](./ServerConfig.md)
+
 ### 2.1 Go标准库 HTTPS
 
 标准库实现TLCP HTTPS流程如下：
@@ -144,6 +146,8 @@ func main() {
 
 - `https.NewHTTPSClientDialer(dialer *net.Dialer, config *tlcp.Config) *http.Client`
 
+
+> 若您需要配置双向身份认证请参考 [《GoTLCP 客户端配置》](./ClientConfig.md)
 
 完整示例见 [server/raw/main.go](../example/https/client/main.go)
 
