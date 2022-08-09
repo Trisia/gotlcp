@@ -55,7 +55,7 @@ func main() {
 }
 ```
 
-完整示例见 [server/raw/main.go](../example/https/server/std/main.go)
+完整示例见 [https/server/std/main.go](../example/https/server/std/main.go)
 
 ## 2.2 Gin 配置
 
@@ -100,7 +100,7 @@ func main() {
 }
 ```
 
-完整示例见 [server/raw/main.go](../example/https/server/gin_demo/main.go)
+完整示例见 [https/server/gin_demo/main.go](../example/https/server/gin_demo/main.go)
 
 ## 3. 客户端
 
@@ -149,5 +149,5 @@ func main() {
 
 > 若您需要配置双向身份认证请参考 [《GoTLCP 客户端配置》](./ClientConfig.md)
 
-完整示例见 [server/raw/main.go](../example/https/client/main.go)
+完整示例见 [https/client/main.go](../example/https/client/main.go)
 
