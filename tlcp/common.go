@@ -465,8 +465,8 @@ func (c *Config) mutualVersion(isClient bool, peerVersions []uint16) (uint16, bo
 
 var errNoCertificates = errors.New("tlcp: no certificates configured")
 
-// getCertificate returns the best certificate for the given ClientHelloInfo,
-// defaulting to the first element of c.Certificates.
+// getCertificate 根据 客户端Hello消息中的信息选择最佳的数字证书
+// 默认返还 Config.Certificates[0] 的数字证书
 func (c *Config) getCertificate(clientHello *ClientHelloInfo) (*Certificate, error) {
 	if c.GetCertificate != nil &&
 		(len(c.Certificates) == 0 || len(clientHello.ServerName) > 0) {
@@ -527,23 +527,25 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	return errors.New("chain is not signed by an acceptable CA")
 }
 
-// A Certificate is a chain of one or more certificates, leaf first.
+// Certificate 密钥对以及相关的数字证书
 type Certificate struct {
+	// Certificate DER编码的X.509数字证书，在TLCP协议中该数组只会存在1张证书。（无证书链）
+	// Certificate 中的元素可以使用 smx509.ParseCertificate 方法解析为 *smx509.Certificate
 	Certificate [][]byte
-	// PrivateKey contains the private key corresponding to the public key in
-	// Leaf. This must implement crypto.Signer with an RSA, ECDSA or Ed25519 PublicKey.
-	// For a server up to TLS 1.2, it can also implement crypto.Decrypter with
-	// an RSA PublicKey.
+
+	// PrivateKey 私钥实现，根据密钥用法的不同
+	// 签名密钥对需要实现 crypto.Signer 接口
+	// 加密密钥对需要实现 crypto.Decrypter 接口
 	PrivateKey crypto.PrivateKey
 
-	// Leaf is the parsed form of the leaf certificate, which may be initialized
-	// using x509.ParseCertificate to reduce per-handshake processing. If nil,
-	// the leaf certificate will be parsed as needed.
+	// Leaf 握手x509证书对象，默认为空
+	//
+	// 可以通过 smx509.ParseCertificate 解析 Certificate.Certificate 中的第一个元素解析设置，
+	// 通过该种方式可以减少在握手环节的证书解析的时间。
 	Leaf *x509.Certificate
 }
 
-// leaf returns the parsed leaf certificate, either from c.Leaf or by parsing
-// the corresponding c.Certificate[0].
+// leaf 返还 Certificate.Certificate[0] 的解析结果。
 func (c *Certificate) leaf() (*x509.Certificate, error) {
 	if c.Leaf != nil {
 		return c.Leaf, nil
@@ -556,8 +558,10 @@ type handshakeMessage interface {
 	unmarshal([]byte) bool
 }
 
+// emptyConfig 默认的空配置对象
 var emptyConfig Config
 
+// 返回默认的空配置对象
 func defaultConfig() *Config {
 	return &emptyConfig
 }

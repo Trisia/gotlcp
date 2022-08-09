@@ -67,19 +67,19 @@ TLCP协议被定义于《GB/T 38636-2020 信息安全技术 传输层密码协�
 GB/T 38636-2020 6.4.5.2.1 定义了目前TLCP协议支持所有密码套件如下所示：
 
 
-| 名称                 | 密钥交换  | 加密     | 效验   | 值            |
-|--------------------|-------| ------- | ------ | ------------ |
-| ECDHE_SM4_CBC_SM3  | ECDHE | SM4_CBC | SM3    | {0xe0,0x11}  |
-| ECDHE_SM4_GCM_SM3  | ECDHE | SM4_GCM | SM3    | {0xe0,0x51}  |
-| ECC_SM4_CBC_SM3    | ECC   | SM4_CBC | SM3    | {0xc0,0x13}  |
-| ECC_SM4_GCM_SM3    | ECC   | SM4_GCM | SM3    | {0xc0,0x53}  |
-| IBSDH_SM4_CBC_SM3  | IBSDH | SM4_CBC | SM3    | {0xe0,0x15}  |
-| IBSDH_SM4_GCM_SM3  | IBSDH | SM4_GCM | SM3    | {0xe0,0x55}  |
-| IBC_SM4_CBC_SM3    | IBC   | SM4_CBC | SM3    | {0xe0,0x17}  |
-| IBC_SM4_GCM_SM3    | IBC   | SM4_GCM | SM3    | {0xe0,0x57}  |
-| RSA_SM4_CBC_SM3    | RSA   | SM4_CBC | SM3    | {0xc0,0x19}  |
-| RSA_SM4_GCM_SM3    | RSA   | SM4_GCM | SM3    | {0xe0,0x59}  |
-| RSA_SM4_CBC_SHA256 | RSA   | SM4_CBC | SHA256 | {0xe0,0xlc}  |
-| RSA_SM4_GCM_SHA256 | RSA   | SM4_GCM | SHA256 | {0xe0,0x5a}  |
+| 名称                 | 密钥交换  | 加密     | 效验   | 值           |
+|--------------------|-------| ------- | ------ |-------------|
+| ECDHE_SM4_CBC_SM3  | ECDHE | SM4_CBC | SM3    | {0xe0,0x11} |
+| ECDHE_SM4_GCM_SM3  | ECDHE | SM4_GCM | SM3    | {0xe0,0x51} |
+| ECC_SM4_CBC_SM3    | ECC   | SM4_CBC | SM3    | {0xc0,0x13} |
+| ECC_SM4_GCM_SM3    | ECC   | SM4_GCM | SM3    | {0xc0,0x53} |
+| IBSDH_SM4_CBC_SM3  | IBSDH | SM4_CBC | SM3    | {0xe0,0x15} |
+| IBSDH_SM4_GCM_SM3  | IBSDH | SM4_GCM | SM3    | {0xe0,0x55} |
+| IBC_SM4_CBC_SM3    | IBC   | SM4_CBC | SM3    | {0xe0,0x17} |
+| IBC_SM4_GCM_SM3    | IBC   | SM4_GCM | SM3    | {0xe0,0x57} |
+| RSA_SM4_CBC_SM3    | RSA   | SM4_CBC | SM3    | {0xc0,0x19} |
+| RSA_SM4_GCM_SM3    | RSA   | SM4_GCM | SM3    | {0xe0,0x59} |
+| RSA_SM4_CBC_SHA256 | RSA   | SM4_CBC | SHA256 | {0xe0,0x1c} |
+| RSA_SM4_GCM_SHA256 | RSA   | SM4_GCM | SHA256 | {0xe0,0x5a} |
 
 **GB/T 38636-2020：本标准实现ECC和ECDHE的算法为SM2；实现IBC和IBSDH的算法为SM9。**

@@ -168,6 +168,22 @@ const (
 	TLCP_RSA_SM4_GCM_SM3    uint16 = 0xe059
 	TLCP_RSA_SM4_CBC_SHA256 uint16 = 0xe01e
 	TLCP_RSA_SM4_GCM_SHA256 uint16 = 0xe05a
+
+	//
+	// 常量命名与 GBT 38636-2020 6.4.5.2.1 保持一致
+	//
+	ECDHE_SM4_CBC_SM3  uint16 = 0xe011
+	ECDHE_SM4_GCM_SM3  uint16 = 0xe051
+	ECC_SM4_CBC_SM3    uint16 = 0xe013
+	ECC_SM4_GCM_SM3    uint16 = 0xe053
+	IBSDH_SM4_CBC_SM3  uint16 = 0xe015
+	IBSDH_SM4_GCM_SM3  uint16 = 0xe055
+	IBC_SM4_CBC_SM3    uint16 = 0xe017
+	IBC_SM4_GCM_SM3    uint16 = 0xe057
+	RSA_SM4_CBC_SM3    uint16 = 0xe019
+	RSA_SM4_GCM_SM3    uint16 = 0xe059
+	RSA_SM4_CBC_SHA256 uint16 = 0xe01e
+	RSA_SM4_GCM_SHA256 uint16 = 0xe05a
 )
 
 // SignatureAlgorithm 签名算法 见 GB/T 38636-2016 6.4.5.9 Certificate Verify 消息

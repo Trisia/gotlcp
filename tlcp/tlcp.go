@@ -135,37 +135,26 @@ func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, conf
 	return conn, nil
 }
 
-// Dial connects to the given network address using net.Dial
-// and then initiates a TLS handshake, returning the resulting
-// TLS connection.
-// Dial interprets a nil configuration as equivalent to
-// the zero configuration; see the documentation of Config
-// for the defaults.
+// Dial 使用指定类型的网络与目标地址进行TLCP客户端侧握手，建立TLCP连接。
 func Dial(network, addr string, config *Config) (*Conn, error) {
 	return DialWithDialer(new(net.Dialer), network, addr, config)
 }
 
 // Dialer 通过所给的 net.Dialer 和 Config 配置信息，实现TLCP客户端握手的Dialer对象。
 type Dialer struct {
-	// NetDialer is the optional dialer to use for the TLS connections'
-	// underlying TCP connections.
-	// A nil NetDialer is equivalent to the net.Dialer zero value.
+	// NetDialer 可选择 可靠连接的拨号器，用于创建承载TLCP协议的底层连接对象。
+	// 若 NetDialer 为空，使用默认的 new(et.Dialer) 创建拨号器
 	NetDialer *net.Dialer
 
-	// Config is the TLS configuration to use for new connections.
-	// A nil configuration is equivalent to the zero
-	// configuration; see the documentation of Config for the
-	// defaults.
+	// Config TLCP 配置信息，若为空则使用 空值的 Config{}
 	Config *Config
 }
 
-// Dial connects to the given network address and initiates a TLS
-// handshake, returning the resulting TLS connection.
+// Dial 使用指定类型的网络与目标地址进行TLCP客户端侧握手，建立TLCP连接。
 //
-// The returned Conn, if any, will always be of type *Conn.
+// Dial 方法仅在握手成功时返还 net.Conn对象，其实现为 *Conn。
 //
-// Dial uses context.Background internally; to specify the context,
-// use DialContext.
+// Dial 内部使用 context.Background 作为上下文，如果需要指定上下文，请使用 DialContext 方法
 func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
 	return d.DialContext(context.Background(), network, addr)
 }
@@ -177,15 +166,12 @@ func (d *Dialer) netDialer() *net.Dialer {
 	return new(net.Dialer)
 }
 
-// DialContext connects to the given network address and initiates a TLS
-// handshake, returning the resulting TLS connection.
+// DialContext 在指定上下中，使用指定类型的网络与目标地址进行TLCP客户端侧握手，建立TLCP连接。
 //
-// The provided Context must be non-nil. If the context expires before
-// the connection is complete, an error is returned. Once successfully
-// connected, any expiration of the context will not affect the
-// connection.
+// 注意该方法的 ctx 参数不能为空，如果在连接完成之前上下文过期了，将会返还一个错误。
+// 一旦连接完成，上下文的过期不会影响到已经连接完成的连接。
 //
-// The returned Conn, if any, will always be of type *Conn.
+// Dial 方法仅在握手成功时返还 net.Conn 对象，其实现为 *Conn
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	c, err := dial(ctx, d.netDialer(), network, addr, d.Config)
 	if err != nil {
@@ -195,11 +181,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	return c, nil
 }
 
-// LoadX509KeyPair reads and parses a public/private key pair from a pair
-// of files. The files must contain PEM encoded data. The certificate file
-// may contain intermediate certificates following the leaf certificate to
-// form a certificate chain. On successful return, Certificate.Leaf will
-// be nil because the parsed form of the certificate is not retained.
+// LoadX509KeyPair 从文件中读取证书和密钥对，并解析 PEM编码的数字证书、公私钥对。
 func LoadX509KeyPair(certFile, keyFile string) (Certificate, error) {
 	certPEMBlock, err := os.ReadFile(certFile)
 	if err != nil {
@@ -212,9 +194,7 @@ func LoadX509KeyPair(certFile, keyFile string) (Certificate, error) {
 	return X509KeyPair(certPEMBlock, keyPEMBlock)
 }
 
-// X509KeyPair parses a public/private key pair from a pair of
-// PEM encoded data. On successful return, Certificate.Leaf will be nil because
-// the parsed form of the certificate is not retained.
+// X509KeyPair 解析 PEM编码的数字证书、公私钥对。
 func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	fail := func(err error) (Certificate, error) { return Certificate{}, err }
 
@@ -268,12 +248,12 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 	if err != nil {
 		return fail(err)
 	}
+	cert.Leaf = x509Cert
 
 	cert.PrivateKey, err = parsePrivateKey(keyDERBlock.Bytes)
 	if err != nil {
 		return fail(err)
 	}
-
 	switch pub := x509Cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		priv, ok := cert.PrivateKey.(*rsa.PrivateKey)

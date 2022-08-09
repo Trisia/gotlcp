@@ -90,8 +90,9 @@ func prfForVersion(version uint16, suite *cipherSuite) func(result, secret, labe
 	return prf
 }
 
-// masterFromPreMasterSecret generates the master secret from the pre-master
-// secret. See RFC 5246, Section 8.1.
+// masterFromPreMasterSecret 生成 主密钥
+// 主密钥由 48个字节组成，由预主密钥、客户端随机数、服务端随机数、常量字符串，经PRF计算生成。
+// 详见 GBT 38636-2020 6.5.1
 func masterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecret, clientRandom, serverRandom []byte) []byte {
 	seed := make([]byte, 0, len(clientRandom)+len(serverRandom))
 	seed = append(seed, clientRandom...)
@@ -102,9 +103,9 @@ func masterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecr
 	return masterSecret
 }
 
-// keysFromMasterSecret generates the connection keys from the master
-// secret, given the lengths of the MAC key, cipher key and IV, as defined in
-// RFC 2246, Section 6.3.
+// keysFromMasterSecret 生成 工作密钥
+// 工作密钥包括校验密钥和加密秘钥，具体长度由选用的密码算法决定。由主密钥、客户端随机数、服务端随机数、字符串常量，经PRF计算生成。
+// 详见 GBT 38636-2020 6.5.2
 func keysFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clientRandom, serverRandom []byte, macLen, keyLen, ivLen int) (clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV []byte) {
 	seed := make([]byte, 0, len(serverRandom)+len(clientRandom))
 	seed = append(seed, serverRandom...)

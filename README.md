@@ -27,7 +27,7 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 
 通过下面命令就可以安装 GoTLCP:
 
-```
+```bash
 go get -u gitee.com/Trisia/gotlcp
 ```
 
@@ -107,7 +107,7 @@ func main() {
 - [《GoTLCP 数字证书及密钥》](./doc/CertAndKey.md)
 - [《GoTLCP 客户端 配置》](./doc/ClientConfig.md) 
 - [《GoTLCP 服务端 配置》](./doc/ServerConfig.md)
-- [《GoTLCP 国密HTTPS》]()   // TODO
+- [《GoTLCP HTTPS 配置》](./doc/HTTPsConfig.md)
 
 ## 进展
 
