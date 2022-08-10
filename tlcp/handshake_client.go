@@ -595,23 +595,3 @@ func (c *Conn) getClientCertificate(cri *CertificateRequestInfo) (*Certificate, 
 	// No acceptable certificate found. Don't send a certificate.
 	return new(Certificate), nil
 }
-
-//// hostnameInSNI converts name into an appropriate hostname for SNI.
-//// Literal IP addresses and absolute FQDNs are not permitted as SNI values.
-//// See RFC 6066, Section 3.
-//func hostnameInSNI(name string) string {
-//	host := name
-//	if len(host) > 0 && host[0] == '[' && host[len(host)-1] == ']' {
-//		host = host[1 : len(host)-1]
-//	}
-//	if i := strings.LastIndex(host, "%"); i > 0 {
-//		host = host[:i]
-//	}
-//	if net.ParseIP(host) != nil {
-//		return ""
-//	}
-//	for len(name) > 0 && name[len(name)-1] == '.' {
-//		name = name[:len(name)-1]
-//	}
-//	return name
-//}

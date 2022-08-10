@@ -167,8 +167,8 @@ func requiresClientCert(c ClientAuthType) bool {
 // ClientHelloInfo contains information from a ClientHello message in order to
 // guide application logic in the GetCertificate and GetConfigForClient callbacks.
 type ClientHelloInfo struct {
-	// CipherSuites lists the CipherSuites supported by the client (e.g.
-	// TLS_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256).
+
+	// CipherSuites 客户端支持的密码套件ID列表
 	CipherSuites []uint16
 
 	// ServerName indicates the name of the server requested by the client
@@ -176,56 +176,39 @@ type ClientHelloInfo struct {
 	// client is using SNI (see RFC 4366, Section 3.1).
 	ServerName string
 
-	// SupportedVersions lists the TLCP versions supported by the client.
-	// For TLCP versions less than 1.3, this is extrapolated from the max
-	// version advertised by the client, so values other than the greatest
-	// might be rejected if used.
+	// SupportedVersions 客户端支持的TLCP版本，目前只有 0x0101
 	SupportedVersions []uint16
 
-	// Conn is the underlying net.Conn for the connection. Do not read
-	// from, or write to, this connection; that will cause the TLCP
-	// connection to fail.
+	// Conn 底层连接对象，请不要读写该对象，否则会导致TLCP连接异常
 	Conn net.Conn
 
-	// config is embedded by the GetCertificate or GetConfigForClient caller,
-	// for use with SupportsCertificate.
+	// config TLCP配置参数
 	config *Config
 
-	// ctx is the context of the handshake that is in progress.
+	// ctx 握手过程中的上下文
 	ctx context.Context
 }
 
-// Context returns the context of the handshake that is in progress.
-// This context is a child of the context passed to HandshakeContext,
-// if any, and is canceled when the handshake concludes.
+// Context 返回握手过程中的上下文
 func (c *ClientHelloInfo) Context() context.Context {
 	return c.ctx
 }
 
-// CertificateRequestInfo contains information from a server's
-// CertificateRequest message, which is used to demand a certificate and proof
-// of control from a client.
+// CertificateRequestInfo 服务端的证书请求信息
 type CertificateRequestInfo struct {
-	// AcceptableCAs contains zero or more, DER-encoded, X.501
-	// Distinguished Names. These are the names of root or intermediate CAs
-	// that the server wishes the returned certificate to be signed by. An
-	// empty slice indicates that the server has no preference.
+
+	// AcceptableCAs 包含0或多个的 DER编码的 X.509 DN名称
+	// 这些DN名称来自于服务端信任的根证书列表，客户端应根据这些DN名称选择合适的数字证书
 	AcceptableCAs [][]byte
 
-	//// SignatureSchemes lists the signature schemes that the server is
-	//// willing to verify.
-	//SignatureSchemes []SignatureScheme
-
-	// Version is the TLCP version that was negotiated for this connection.
+	// Version TLCP协议版本
 	Version uint16
 
-	// ctx is the context of the handshake that is in progress.
+	// ctx 握手过程中的上下文
 	ctx context.Context
 }
 
-// Context returns the context of the handshake that is in progress.
-// This context is a child of the context passed to HandshakeContext,
-// if any, and is canceled when the handshake concludes.
+// Context 返回握手过程中的上下文
 func (c *CertificateRequestInfo) Context() context.Context {
 	return c.ctx
 }
@@ -348,8 +331,8 @@ type Config struct {
 	mutex sync.RWMutex
 }
 
-// Clone returns a shallow clone of c or nil if c is nil. It is safe to clone a Config that is
-// being used concurrently by a TLS client or server.
+// Clone 复制一个新的连接配置对象
+// 复制配置信息时，您任然可以客户端或服务器同时使用 Config 对象。
 func (c *Config) Clone() *Config {
 	if c == nil {
 		return nil

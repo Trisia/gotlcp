@@ -28,8 +28,7 @@ import (
 	"time"
 )
 
-// A Conn represents a secured connection.
-// It implements the net.Conn interface.
+// Conn 表示一个TLCP连接，实现了 net.Conn 接口
 type Conn struct {
 	// constant
 	conn        net.Conn                    // 原始连接对象
@@ -220,11 +219,6 @@ func (hc *halfConn) explicitNonceLen() int {
 	case aead:
 		return c.explicitNonceLen()
 	case cbcMode:
-		//// TLS 1.1 introduced a per-record explicit IV to fix the BEAST attack.
-		//if hc.version >= VersionTLS11 {
-		//	return c.BlockSize()
-		//}
-		//return 0
 		return c.BlockSize()
 	default:
 		panic("unknown cipher type")
@@ -298,12 +292,6 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 	typ := recordType(record[0])
 	payload := record[recordHeaderLen:]
 
-	//// In TLS 1.3, change_cipher_spec messages are to be ignored without being
-	//// decrypted. See RFC 8446, Appendix D.4.
-	//if hc.version == VersionTLS13 && typ == recordTypeChangeCipherSpec {
-	//	return payload, typ, nil
-	//}
-
 	paddingGood := byte(255)
 	paddingLen := 0
 
@@ -323,15 +311,6 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 			}
 			payload = payload[explicitNonceLen:]
 
-			//var additionalData []byte
-			//if hc.version == VersionTLS13 {
-			//	additionalData = record[:recordHeaderLen]
-			//} else {
-			//	additionalData = append(hc.scratchBuf[:0], hc.seq[:]...)
-			//	additionalData = append(additionalData, record[:3]...)
-			//	n := len(payload) - c.Overhead()
-			//	additionalData = append(additionalData, byte(n>>8), byte(n))
-			//}
 			var additionalData []byte
 			additionalData = append(hc.scratchBuf[:0], hc.seq[:]...)
 			additionalData = append(additionalData, record[:3]...)
@@ -658,14 +637,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 		if c.hand.Len() > 0 {
 			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 		}
-		//// In TLS 1.3, change_cipher_spec records are ignored until the
-		//// Finished. See RFC 8446, Appendix D.4. Note that according to Section
-		//// 5, a server can send a ChangeCipherSpec before its ServerHello, when
-		//// c.vers is still unset. That's not useful though and suspicious if the
-		//// server then selects a lower protocol version, so don't allow that.
-		//if c.vers == VersionTLS13 {
-		//	return c.retryReadRecord(expectChangeCipherSpec)
-		//}
+
 		if !expectChangeCipherSpec {
 			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 		}
@@ -831,9 +803,6 @@ func (c *Conn) maxPayloadSizeForWrite(typ recordType) int {
 			panic("unknown cipher type")
 		}
 	}
-	//if c.vers == VersionTLS13 {
-	//	payloadBytes-- // encrypted ContentType
-	//}
 
 	// Allow packet growth in arithmetic progression up to max.
 	pkt := c.packetsSent
@@ -907,14 +876,9 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 		if vers == 0 {
 			// Some TLS servers fail if the record version is
 			// greater than TLS 1.0 for the initial ClientHello.
-			//vers = VersionTLS10
 			vers = VersionTLCP
 		}
-		//else if vers == VersionTLS13 {
-		//	// TLS 1.3 froze the record layer version to 1.2.
-		//	// See RFC 8446, Section 5.1.
-		//	vers = VersionTLS12
-		//}
+
 		outBuf[1] = byte(vers >> 8)
 		outBuf[2] = byte(vers)
 		outBuf[3] = byte(m >> 8)

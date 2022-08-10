@@ -1,5 +1,7 @@
 # Go TLCP
 
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/Trisia/gotlcp)](https://pkg.go.dev/github.com/Trisia/gotlcp)
+
 Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
 
 GoTLCP采用Go语言实现的传输层密码协议(TLCP)，TLCP协议遵循《GB/T 38636-2020 信息安全技术 传输层密码协议》。
