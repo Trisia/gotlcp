@@ -39,8 +39,8 @@ var (
 // CipherSuites 返回支持的密码算法套件列表
 func CipherSuites() []*CipherSuite {
 	return []*CipherSuite{
-		{TLCP_ECC_SM4_CBC_SM3, "ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
-		{TLCP_ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{ECC_SM4_CBC_SM3, "ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
 	}
 }
 
@@ -95,8 +95,8 @@ type cipherSuite struct {
 }
 
 var cipherSuites = map[uint16]*cipherSuite{
-	TLCP_ECC_SM4_CBC_SM3: {TLCP_ECC_SM4_CBC_SM3, 16, 32, 16, eccKA, suiteECSign, cipherSM4, macSM3, nil},
-	TLCP_ECC_SM4_GCM_SM3: {TLCP_ECC_SM4_GCM_SM3, 16, 0, 4, eccKA, suiteECSign, nil, nil, aeadSM4GCM},
+	TLCP_ECC_SM4_GCM_SM3: {ECC_SM4_GCM_SM3, 16, 0, 4, eccKA, suiteECSign, nil, nil, aeadSM4GCM},
+	TLCP_ECC_SM4_CBC_SM3: {ECC_SM4_CBC_SM3, 16, 32, 16, eccKA, suiteECSign, cipherSM4, macSM3, nil},
 }
 
 // selectCipherSuite 从推荐ID和候选ID中选择出符合条件的密钥套件
