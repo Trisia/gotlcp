@@ -1,6 +1,6 @@
 # Go TLCP
 
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/Trisia/gotlcp)](https://pkg.go.dev/github.com/Trisia/gotlcp)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/Trisia/gotlcp)](https://pkg.go.dev/github.com/Trisia/gotlcp) ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/Trisia/gotlcp) ![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/Trisia/gotlcp)
 
 Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
 
