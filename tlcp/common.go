@@ -36,7 +36,7 @@ const (
 	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
 )
 
-// TLCP record types.
+// TLCP record 类型
 type recordType uint8
 
 // TLCP GB/T 38636-2016 6.3.3.2 a) Type
@@ -65,24 +65,14 @@ const (
 	compressionNone uint8 = 0
 )
 
-// CurveID is the type of a TLS identifier for an elliptic curve. See
+// CurveID 命名曲线ID，ID由 IANA分配，详见
 // https://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-8.
-//
-// In TLS 1.3, this type is called NamedGroup, but at this time this library
-// only supports Elliptic Curve based groups. See RFC 8446, Section 4.2.7.
 type CurveID uint16
 
 const (
-	CurveP256 CurveID = 23
-	CurveP384 CurveID = 24
-	CurveP521 CurveID = 25
-	X25519    CurveID = 29
-)
-
-// TLS Elliptic Curve Point Formats
-// https://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-9
-const (
-	pointFormatUncompressed uint8 = 0
+	// CurveSM2 命名曲线ID  见 RFC 8998 第2章
+	// https://www.rfc-editor.org/rfc/rfc8998.html
+	CurveSM2 CurveID = 41
 )
 
 // Certificate types (for certificateRequestMsg)
@@ -125,8 +115,7 @@ type ConnectionState struct {
 	VerifiedChains [][]*x509.Certificate
 }
 
-// ClientAuthType declares the policy the server will follow for
-// TLCP Client Authentication.
+// ClientAuthType 服务端对客户单的认证策略，用于客户端身份认证配置
 type ClientAuthType int
 
 const (
