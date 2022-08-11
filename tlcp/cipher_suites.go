@@ -118,8 +118,8 @@ func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *
 
 // 推荐的密码套件列表（顺序表示优先级）
 var cipherSuitesPreferenceOrder = []uint16{
-	TLCP_ECC_SM4_CBC_SM3,
 	TLCP_ECC_SM4_GCM_SM3,
+	TLCP_ECC_SM4_CBC_SM3,
 }
 
 // disabledCipherSuites 禁用的密码套件

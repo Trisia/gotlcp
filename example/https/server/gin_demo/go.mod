@@ -3,7 +3,7 @@ module gin_demo
 go 1.15
 
 require (
-	gitee.com/Trisia/gotlcp v1.0.2
+	gitee.com/Trisia/gotlcp v1.0.4
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-playground/validator/v10 v10.11.0 // indirect
 	github.com/goccy/go-json v0.9.10 // indirect

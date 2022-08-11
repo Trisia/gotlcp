@@ -102,6 +102,45 @@ func main() {
 
 完整示例见 [https/server/gin_demo/main.go](../example/https/server/gin_demo/main.go)
 
+### 2.3 Fiber
+
+> [Fiber](https://github.com/gofiber/fiber)
+
+与标准Go的HTTPS配置类似的，Fiber的HTTPS配置方式如下：
+
+1. 创建 `fiber.App` 对象，注册路由。
+2. 通过 `tlcp.Listen` 方法，配置并启动TLCP Listener。
+3. `fiber.App` 对象的`Listener` 方法传入TLCP Listener对象。
+
+```go
+package main
+
+import (
+	"gitee.com/Trisia/gotlcp/tlcp"
+	"github.com/gofiber/fiber/v2"
+)
+
+func main() {
+	config := &tlcp.Config{Certificates: load()}
+	// 1. 创建Fiber应用， 注册路由
+	app := fiber.New()
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello GoTLCP Fiber")
+	})
+	// 2. 创建 TLCP Listen
+	ln, err := tlcp.Listen("tcp", ":3000", config)
+	if err != nil {
+		panic(err)
+	}
+	err = app.Listener(ln)
+	if err != nil {
+		panic(err)
+	}
+}
+```
+
+完整示例见 [https/server/fiber_demo/main.go](../example/https/server/fiber_demo/main.go)
+
 ## 3. 客户端
 
 GoTLCP提供了简单的方法来构造HTTPS客户端，构造的HTTP客户端您可以和普通的HTTP客户端一样使用没有差别。
