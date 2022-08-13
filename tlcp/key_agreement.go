@@ -103,9 +103,6 @@ func (e *eccKeyAgreement) generateServerKeyExchange(config *Config, certs []*Cer
 		return nil, err
 	}
 
-	//fmt.Printf("server [src]>> %02X\n", msg)
-	//fmt.Printf("server [sig]>> %02X\n", sig)
-
 	ske := new(serverKeyExchangeMsg)
 	size := len(sig)
 	ske.key = make([]byte, size+2)
@@ -175,10 +172,8 @@ func (e *eccKeyAgreement) processServerKeyExchange(config *Config, clientHello *
 	}
 
 	// 组装签名数据
-	tbs := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Raw)
 
-	//fmt.Printf("client [src]>> %02X\n", tbs)
-	//fmt.Printf("client [sig]>> %02X\n", sig)
+	tbs := e.hashForServerKeyExchange(clientHello.random, serverHello.random, encCert.Raw)
 
 	if !sm2.VerifyASN1WithSM2(pub, nil, tbs, sig) {
 		return errors.New("tlcp: processServerKeyExchange: sm2 verification failure")
@@ -237,4 +232,208 @@ func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, c
 	buffer.Write(cert)
 
 	return buffer.Bytes()
+}
+
+// ecdheKeyAgreement 实现了基于SM2椭圆曲线的ECHD密钥交换算法。
+type ecdheKeyAgreement struct {
+	version uint16          // 协议版本号
+	params  ecdheParameters // ECDHE交换参数实现
+
+	// 预主秘钥 于 processServerKeyExchange 处生成
+	preMasterSecret []byte
+}
+
+// generateServerKeyExchange 生成服务端ECDHE密钥交换消息
+func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, certs []*Certificate, clientHello *clientHelloMsg, serverHello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+	if len(certs) < 2 {
+		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
+	}
+	sigkey := certs[0]
+
+	curveID := CurveSM2
+	// 生成服务端ECDHE参数
+	params, err := generateECDHEParameters(config.rand(), curveID)
+	if err != nil {
+		return nil, err
+	}
+	ka.params = params
+	ka.version = serverHello.vers
+
+	/*
+				See RFC 4492, Section 5.4.
+				struct {
+				 	ECCurveType    curve_type;
+				 	select (curve_type) {
+				 	    case named_curve:
+				 	        NamedCurve namedcurve;
+				 	};
+				} ECParameters;
+
+				struct {
+		            opaque point <1..2^8-1>;
+		        } ECPoint;
+
+				struct {
+			    	ECParameters    curve_params;
+			    	ECPoint         public;
+			    } ServerECDHParams;
+	*/
+	ecdhePublic := params.PublicKey()
+	serverECDHEParams := make([]byte, 1+2+1+len(ecdhePublic))
+	serverECDHEParams[0] = 3 // named curve
+	serverECDHEParams[1] = byte(curveID >> 8)
+	serverECDHEParams[2] = byte(curveID)
+	serverECDHEParams[3] = byte(len(ecdhePublic))
+	copy(serverECDHEParams[4:], ecdhePublic)
+
+	/*
+		  case ECDHE:
+			ServerECDHParams params;
+			digitally-signed struct {
+				opaque client_random[32];
+				opaque server_random[32];
+				ServerECDHParams params;
+			}signed_params
+
+			GM/T 38636-2016 6.4.5.4 Server Key Exchange消息
+		 	e) signed_params
+		 		当密钥交换方式为ECDHE和IBSDH和IBC时，signed_params是服务端对双方
+		 		随机数和服务端密钥交换参数的签名。
+	*/
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientHello.random)
+	buffer.Write(serverHello.random)
+	buffer.Write(serverECDHEParams)
+	tbs := buffer.Bytes()
+
+	priv, ok := sigkey.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
+	}
+	sig, err := priv.Sign(config.rand(), tbs, &sm2.SM2SignerOption{ForceGMSign: true})
+	if err != nil {
+		return nil, err
+	}
+
+	skx := new(serverKeyExchangeMsg)
+	/*
+		struct{
+			ServerECDHParams params;
+			opaque           signed_params<1..2^16>;
+		}
+	*/
+	skx.key = make([]byte, len(serverECDHEParams)+2+len(sig))
+	copy(skx.key, serverECDHEParams)
+	k := skx.key[len(serverECDHEParams):]
+	k[0] = byte(len(sig) >> 8)
+	k[1] = byte(len(sig) & 0xFF)
+	copy(k[2:], sig)
+
+	return skx, nil
+}
+
+func (ka *ecdheKeyAgreement) processClientKeyExchange(config *Config, certs []*Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+	/*
+		struct {
+		    opaque point <1..2^8-1>;
+		} ECPoint;
+
+		GM/T 38636-2016  6.4.5.8 如果密钥算法使用ECDHE算法或IBSDH算法，本消息包括计算预主秘钥的客户端密钥交换参数。
+		使用ECDHE算法时，要求客户端发送证书。密钥交换参数，当使用SM2算法时，交换参数间 GB/T 35276
+			struct {
+		    	ECParameters    curve_params;  // 3 byte See RFC 4492, Section 5.4.
+		    	ECPoint         public;        // 1 byte of vector len
+		    } ClientECDHParams;
+		如果使用SM2算法时，第一个参数不校验
+	*/
+	preMasterSecret := ka.params.SharedKey(ckx.ciphertext[4:])
+	if preMasterSecret == nil {
+		return nil, errClientKeyExchange
+	}
+	return preMasterSecret, nil
+}
+
+func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, certs []*x509.Certificate, skx *serverKeyExchangeMsg) error {
+	sigCert := certs[0]
+
+	if len(skx.key) < 4 {
+		return errServerKeyExchange
+	}
+	// 特别的根据 GM/T 38636-2016 6.4.5.4
+	// a) 如果使用SM2算法时忽略第一个参数 ECParameters。
+	curveID := CurveSM2
+	publicLen := int(skx.key[3])
+	if publicLen+4 > len(skx.key) {
+		return errServerKeyExchange
+	}
+	serverECDHEParams := skx.key[:4+publicLen]
+	publicKey := serverECDHEParams[4:] // 服务端ECDHE公钥
+
+	// 验证签名值，认证对端身份
+	signedParams := skx.key[4+publicLen:]
+	sigLen := int(signedParams[0]) << 8
+	sigLen |= int(signedParams[1])
+	if sigLen+2 > len(signedParams) {
+		return errServerKeyExchange
+	}
+
+	sig := skx.key[2:]
+	pub, ok := sigCert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return errors.New("tlcp: sm2 signing requires a sm2 public key")
+	}
+
+	// 组装签名数据，见 GM/T 38636-2016 6.4.5.4
+	buffer := new(bytes.Buffer)
+	buffer.Write(clientHello.random)
+	buffer.Write(serverHello.random)
+	buffer.Write(serverECDHEParams)
+	tbs := buffer.Bytes()
+	if !sm2.VerifyASN1WithSM2(pub, nil, tbs, sig) {
+		return errors.New("tlcp: processServerKeyExchange: sm2 verification failure")
+	}
+
+	// 生成客户端密钥交换参数
+	params, err := generateECDHEParameters(config.rand(), curveID)
+	if err != nil {
+		return err
+	}
+	ka.params = params
+	ka.version = serverHello.vers
+
+	// 根据对端公钥计算预主密钥
+	ka.preMasterSecret = params.SharedKey(publicKey)
+	if ka.preMasterSecret == nil {
+		return errServerKeyExchange
+	}
+	return nil
+}
+
+func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, certs []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+	if ka.params == nil || ka.preMasterSecret == nil {
+		return nil, nil, errServerKeyExchange
+	}
+	/*
+		GM/T 38636-2016 6.4.5.4
+		case ECDHE:
+			opaque ClientECDHEParams<1..2^16-1>;
+
+		struct {
+			ECParameters    curve_params;
+			ECPoint         public;
+		} ClientECDHParams;
+	*/
+	curveID := CurveSM2
+	ecdhePublic := ka.params.PublicKey()
+	clientECDHEParams := make([]byte, 1+2+1+len(ecdhePublic))
+	clientECDHEParams[0] = 3 // named curve
+	clientECDHEParams[1] = byte(curveID >> 8)
+	clientECDHEParams[2] = byte(curveID)
+	clientECDHEParams[3] = byte(len(ecdhePublic))
+	copy(clientECDHEParams[4:], ecdhePublic)
+
+	ckx := new(clientKeyExchangeMsg)
+	ckx.ciphertext = clientECDHEParams
+	// 预主密钥已经在 服务端密钥交换消息时计算，见 ecdheKeyAgreement.processServerKeyExchange
+	return ka.preMasterSecret, ckx, nil
 }

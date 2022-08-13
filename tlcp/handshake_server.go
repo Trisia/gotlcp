@@ -364,9 +364,18 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	if _, err := io.ReadFull(c.config.rand(), hs.hello.sessionId); err != nil {
 		return errors.New("tlcp: error in generate server side session id, " + err.Error())
 	}
+	// 客户端认证策略
+	authPolice := c.config.ClientAuth
+	// 特别的根据  GM/T 38636-2016  6.4.5.8 要求：使用ECDHE算法时，要求客户端发送证书。
+	if hs.suite.id == ECDHE_SM4_CBC_SM3 || hs.suite.id == ECDHE_SM4_GCM_SM3 {
+		if authPolice != RequestClientCert {
+			authPolice = RequireAndVerifyClientCert
+		}
+	}
 
 	hs.finishedHash = newFinishedHash(hs.c.vers, hs.suite)
-	if c.config.ClientAuth == NoClientCert {
+
+	if authPolice == NoClientCert {
 		// No need to keep a full record of the handshake if client
 		// certificates won't be used.
 		hs.finishedHash.discardHandshakeBuffer()
@@ -400,7 +409,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	var certReq *certificateRequestMsg
-	if c.config.ClientAuth >= RequestClientCert {
+	if authPolice >= RequestClientCert {
 		// Request a client certificate
 		certReq = new(certificateRequestMsg)
 		certReq.certificateTypes = []byte{
@@ -440,7 +449,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 
 	// If we requested a client certificate, then the client must send a
 	// certificate message, even if it's empty.
-	if c.config.ClientAuth >= RequestClientCert {
+	if authPolice >= RequestClientCert {
 		certMsg, ok := msg.(*certificateMsg)
 		if !ok {
 			c.sendAlert(alertUnexpectedMessage)

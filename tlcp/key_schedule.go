@@ -28,13 +28,10 @@ type ecdheParameters interface {
 
 // generateECDHEParameters 生成 ECDHE 参数
 func generateECDHEParameters(rand io.Reader, curveID CurveID) (ecdheParameters, error) {
-	if curveID != CurveSM2 {
+	curve, ok := curveForCurveID(curveID)
+	if !ok {
 		return nil, errors.New("tlcp: internal error unsupported curve")
 	}
-
-	// SM2曲线
-	curve := sm2.P256()
-
 	p := &eccParameters{curveID: curveID}
 	var err error
 	// 生成DHE的私钥 d1 并使用 d1*G 客户端公钥点 p1
@@ -67,7 +64,7 @@ func (p *eccParameters) CurveID() CurveID {
 	return p.curveID
 }
 
-// PublicKey 计算临时公钥 d*G
+// PublicKey 返回临时公钥 d*G
 func (p *eccParameters) PublicKey() []byte {
 	curve, _ := curveForCurveID(p.curveID)
 	return elliptic.Marshal(curve, p.x, p.y)
@@ -80,7 +77,7 @@ func (p *eccParameters) PublicKey() []byte {
 // return: 共享密钥
 func (p *eccParameters) SharedKey(peerPublicKey []byte) []byte {
 	curve, _ := curveForCurveID(p.curveID)
-	// Unmarshal also checks whether the given point is on the curve.
+	// 解析对端密钥为点坐标，并校验该点是否在曲线域内
 	x, y := elliptic.Unmarshal(curve, peerPublicKey)
 	if x == nil {
 		return nil

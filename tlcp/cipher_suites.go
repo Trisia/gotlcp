@@ -39,8 +39,10 @@ var (
 // CipherSuites 返回支持的密码算法套件列表
 func CipherSuites() []*CipherSuite {
 	return []*CipherSuite{
-		{ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{ECDHE_SM4_CBC_SM3, "ECDHE_SM4_CBC_SM3", supportedOnlyTLCP, false},
+		{ECDHE_SM4_GCM_SM3, "ECDHE_SM4_GCM_SM3", supportedOnlyTLCP, false},
 		{ECC_SM4_CBC_SM3, "ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
+		{ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
 	}
 }
 
@@ -118,8 +120,11 @@ func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *
 
 // 推荐的密码套件列表（顺序表示优先级）
 var cipherSuitesPreferenceOrder = []uint16{
-	TLCP_ECC_SM4_GCM_SM3,
-	TLCP_ECC_SM4_CBC_SM3,
+	ECC_SM4_GCM_SM3,
+	ECC_SM4_CBC_SM3,
+	//// 根据 GM/T 38636-2016  6.4.5.8 要求：使用ECDHE算法时，要求客户端发送证书。
+	//ECDHE_SM4_GCM_SM3,
+	//ECDHE_SM4_CBC_SM3,
 }
 
 // disabledCipherSuites 禁用的密码套件
