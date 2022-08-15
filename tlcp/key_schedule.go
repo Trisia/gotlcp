@@ -11,79 +11,60 @@
 package tlcp
 
 import (
-	"crypto/elliptic"
-	"errors"
+	"crypto/ecdsa"
+	"fmt"
 	"github.com/emmansun/gmsm/sm2"
 	"io"
-	"math/big"
 )
 
-// ecdheParameters implements Diffie-Hellman with either NIST curves or X25519,
-// according to RFC 8446, Section 4.2.8.2.
-type ecdheParameters interface {
-	CurveID() CurveID
-	PublicKey() []byte
-	SharedKey(peerPublicKey []byte) []byte
+// SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 3622-2018
+type SM2KeyAgreement interface {
+	// GenerateAgreementData 发起方生成临时公钥，接口设计参考 GB/T 3622-2018 6.3.15
+	GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, err error)
+	// GenerateKey 发起方计算会话密钥，接口设计参考 GB/T 3622-2018 6.3.16
+	GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdsa.PublicKey) ([]byte, error)
+	// GenerateAgreementDataAndKey 响应方计算会话密钥并返回临时公钥，接口设计参考 GB/T 3622-2018 6.3.17
+	GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, kenLen int) (*ecdsa.PublicKey, []byte, error)
 }
 
-// generateECDHEParameters 生成 ECDHE 参数
-func generateECDHEParameters(rand io.Reader, curveID CurveID) (ecdheParameters, error) {
-	curve, ok := curveForCurveID(curveID)
-	if !ok {
-		return nil, errors.New("tlcp: internal error unsupported curve")
+type sm2ke struct {
+	rd     io.Reader
+	prv    *sm2.PrivateKey
+	ke     *sm2.KeyExchange
+	keyLen int
+}
+
+func newSM2Key(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {
+	return &sm2ke{rd: rd, prv: prv}
+}
+
+func (s *sm2ke) GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, err error) {
+	s.ke, err = sm2.NewKeyExchange(s.prv, nil, sponsorId, nil, keyLen, false)
+	if err != nil {
+		return
 	}
-	p := &eccParameters{curveID: curveID}
-	var err error
-	// 生成DHE的私钥 d1 并使用 d1*G 客户端公钥点 p1
-	p.privateKey, p.x, p.y, err = elliptic.GenerateKey(curve, rand)
+	sponsorPubKey = &s.prv.PublicKey
+	// 计算发起方临时公钥
+	sponsorTmpPubKey, err = s.ke.InitKeyExchange(s.rd)
+	return
+}
+
+func (s *sm2ke) GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdsa.PublicKey) ([]byte, error) {
+	if s.ke == nil {
+		return nil, fmt.Errorf("sm2ke: should call GenerateAgreementData frist")
+	}
+	err := s.ke.SetPeerParameters(responsePubKey, responseId)
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return s.ke.ConfirmResponder(responseTmpPubKey, nil)
 }
 
-// curveForCurveID 通过曲线ID获取曲线
-func curveForCurveID(id CurveID) (elliptic.Curve, bool) {
-	switch id {
-	case CurveSM2:
-		return sm2.P256(), true
-	default:
-		return nil, false
+func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, kenLen int) (*ecdsa.PublicKey, []byte, error) {
+	var err error
+	s.ke, err = sm2.NewKeyExchange(s.prv, sponsorPubKey, responseId, sponsorId, kenLen, false)
+	if err != nil {
+		return nil, nil, err
 	}
-}
-
-// eccParameters SM2密钥交换传输
-type eccParameters struct {
-	privateKey []byte
-	x, y       *big.Int // public key
-	curveID    CurveID
-}
-
-// CurveID 获取椭圆曲线ID
-func (p *eccParameters) CurveID() CurveID {
-	return p.curveID
-}
-
-// PublicKey 返回临时公钥 d*G
-func (p *eccParameters) PublicKey() []byte {
-	curve, _ := curveForCurveID(p.curveID)
-	return elliptic.Marshal(curve, p.x, p.y)
-}
-
-// SharedKey 计算DH的共享密钥 (d1*d2*G)
-//
-// peerPublicKey: 对端临时公钥
-//
-// return: 共享密钥
-func (p *eccParameters) SharedKey(peerPublicKey []byte) []byte {
-	curve, _ := curveForCurveID(p.curveID)
-	// 解析对端密钥为点坐标，并校验该点是否在曲线域内
-	x, y := elliptic.Unmarshal(curve, peerPublicKey)
-	if x == nil {
-		return nil
-	}
-
-	xShared, _ := curve.ScalarMult(x, y, p.privateKey)
-	sharedKey := make([]byte, (curve.Params().BitSize+7)/8)
-	return xShared.FillBytes(sharedKey)
+	return s.ke.RepondKeyExchange(s.rd, sponsorTmpPubKey)
 }
