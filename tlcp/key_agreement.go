@@ -14,7 +14,9 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"errors"
+	"fmt"
 	"github.com/emmansun/gmsm/sm2"
 	x509 "github.com/emmansun/gmsm/smx509"
 	"io"
@@ -234,29 +236,36 @@ func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, c
 	return buffer.Bytes()
 }
 
-// ecdheKeyAgreement 实现了基于SM2椭圆曲线的ECHD密钥交换算法。
-type ecdheKeyAgreement struct {
+// sm2KeyAgreement 实现了基于SM2密钥交换算法的ECHD密钥交换，SM2密钥交换算法详见 GT/T GBT 35276-2017 9.6
+type sm2KeyAgreement struct {
 	version uint16          // 协议版本号
-	params  ecdheParameters // ECDHE交换参数实现
+	ke      SM2KeyAgreement // SM2密钥交换
 
 	// 预主秘钥 于 processServerKeyExchange 处生成
 	preMasterSecret []byte
 }
 
 // generateServerKeyExchange 生成服务端ECDHE密钥交换消息
-func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, certs []*Certificate, clientHello *clientHelloMsg, serverHello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+func (ka *sm2KeyAgreement) generateServerKeyExchange(config *Config, certs []*Certificate, clientHello *clientHelloMsg, serverHello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
 	if len(certs) < 2 {
 		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
 	}
 	sigkey := certs[0]
+	prv := sigkey.PrivateKey
+	switch prv.(type) {
+	case *sm2.PrivateKey:
+		ka.ke = newSM2Key(config.Rand, prv.(*sm2.PrivateKey))
+	case SM2KeyAgreement:
+		ka.ke = prv.(SM2KeyAgreement)
+	default:
+		return nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
+	}
 
-	curveID := CurveSM2
-	// 生成服务端ECDHE参数
-	params, err := generateECDHEParameters(config.rand(), curveID)
+	// 由于TLCP标准并未明确提及密钥长度，因此次数与ECC密钥交换类型保持一致48字节。
+	_, sponsorTmpPubKey, err := ka.ke.GenerateAgreementData(nil, 48)
 	if err != nil {
 		return nil, err
 	}
-	ka.params = params
 	ka.version = serverHello.vers
 
 	/*
@@ -278,11 +287,14 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, certs []*
 			    	ECPoint         public;
 			    } ServerECDHParams;
 	*/
-	ecdhePublic := params.PublicKey()
+	ecdhePublic := elliptic.Marshal(sm2.P256(), sponsorTmpPubKey.X, sponsorTmpPubKey.Y)
+	if err != nil {
+		return nil, err
+	}
 	serverECDHEParams := make([]byte, 1+2+1+len(ecdhePublic))
 	serverECDHEParams[0] = 3 // named curve
-	serverECDHEParams[1] = byte(curveID >> 8)
-	serverECDHEParams[2] = byte(curveID)
+	serverECDHEParams[1] = byte(CurveSM2 >> 8)
+	serverECDHEParams[2] = byte(CurveSM2)
 	serverECDHEParams[3] = byte(len(ecdhePublic))
 	copy(serverECDHEParams[4:], ecdhePublic)
 
@@ -332,7 +344,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, certs []*
 	return skx, nil
 }
 
-func (ka *ecdheKeyAgreement) processClientKeyExchange(config *Config, certs []*Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+func (ka *sm2KeyAgreement) processClientKeyExchange(config *Config, certs []*Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
 	/*
 		struct {
 		    opaque point <1..2^8-1>;
@@ -353,7 +365,7 @@ func (ka *ecdheKeyAgreement) processClientKeyExchange(config *Config, certs []*C
 	return preMasterSecret, nil
 }
 
-func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, certs []*x509.Certificate, skx *serverKeyExchangeMsg) error {
+func (ka *sm2KeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, certs []*x509.Certificate, skx *serverKeyExchangeMsg) error {
 	sigCert := certs[0]
 
 	if len(skx.key) < 4 {
@@ -409,7 +421,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 	return nil
 }
 
-func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, certs []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+func (ka *sm2KeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, certs []*x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
 	if ka.params == nil || ka.preMasterSecret == nil {
 		return nil, nil, errServerKeyExchange
 	}
@@ -434,6 +446,6 @@ func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHel
 
 	ckx := new(clientKeyExchangeMsg)
 	ckx.ciphertext = clientECDHEParams
-	// 预主密钥已经在 服务端密钥交换消息时计算，见 ecdheKeyAgreement.processServerKeyExchange
+	// 预主密钥已经在 服务端密钥交换消息时计算，见 sm2KeyAgreement.processServerKeyExchange
 	return ka.preMasterSecret, ckx, nil
 }
