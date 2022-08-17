@@ -27,24 +27,25 @@ import (
 	"time"
 )
 
-// serverHandshakeState contains details of a server handshake in progress.
-// It's discarded once the handshake has completed.
+// serverHandshakeState 服务端握手上下文，包含了服务端握手过程中需要的上下文参数
+// 在握手结束后上下文参数应该被弃用。
 type serverHandshakeState struct {
-	c            *Conn
-	ctx          context.Context
-	clientHello  *clientHelloMsg
-	hello        *serverHelloMsg
-	suite        *cipherSuite
-	ecdheOk      bool
-	ecSignOk     bool
-	ecDecryptOk  bool
-	rsaDecryptOk bool
-	rsaSignOk    bool
-	sessionState *SessionState
-	finishedHash finishedHash
-	masterSecret []byte
-	sigCert      *Certificate // 签名证书
-	encCert      *Certificate // 加密证书
+	c                *Conn
+	ctx              context.Context
+	clientHello      *clientHelloMsg
+	hello            *serverHelloMsg
+	suite            *cipherSuite
+	ecdheOk          bool
+	ecSignOk         bool
+	ecDecryptOk      bool
+	rsaDecryptOk     bool
+	rsaSignOk        bool
+	sessionState     *SessionState
+	finishedHash     finishedHash
+	masterSecret     []byte
+	sigCert          *Certificate        // 签名证书
+	encCert          *Certificate        // 加密证书
+	peerCertificates []*x509.Certificate // 客户端证书，可能为空
 }
 
 // serverHandshake performs a TLCP handshake as a server.
@@ -396,7 +397,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	keyAgreement := hs.suite.ka(c.vers)
-	skx, err := keyAgreement.generateServerKeyExchange(c.config, []*Certificate{hs.sigCert, hs.encCert}, hs.clientHello, hs.hello)
+	skx, err := keyAgreement.generateServerKeyExchange(hs)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err
@@ -450,20 +451,20 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	// If we requested a client certificate, then the client must send a
 	// certificate message, even if it's empty.
 	if authPolice >= RequestClientCert {
-		certMsg, ok := msg.(*certificateMsg)
+		clientCertMsg, ok := msg.(*certificateMsg)
 		if !ok {
 			c.sendAlert(alertUnexpectedMessage)
-			return unexpectedMessageError(certMsg, msg)
+			return unexpectedMessageError(clientCertMsg, msg)
 		}
-		hs.finishedHash.Write(certMsg.marshal())
+		hs.finishedHash.Write(clientCertMsg.marshal())
 
-		if err := c.processCertsFromClient(Certificate{Certificate: certMsg.certificates}); err != nil {
+		if err := c.processCertsFromClient(Certificate{Certificate: clientCertMsg.certificates}); err != nil {
 			return err
 		}
-		if len(certMsg.certificates) != 0 {
+		if len(clientCertMsg.certificates) != 0 {
 			pub = c.peerCertificates[0].PublicKey
 		}
-
+		hs.peerCertificates = c.peerCertificates
 		msg, err = c.readHandshake()
 		if err != nil {
 			return err
@@ -484,7 +485,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	hs.finishedHash.Write(ckx.marshal())
 
-	preMasterSecret, err := keyAgreement.processClientKeyExchange(c.config, []*Certificate{hs.sigCert, hs.encCert}, ckx, c.vers)
+	preMasterSecret, err := keyAgreement.processClientKeyExchange(hs, ckx)
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err

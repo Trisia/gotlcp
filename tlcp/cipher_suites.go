@@ -88,7 +88,7 @@ type cipherSuite struct {
 	keyLen int
 	macLen int
 	ivLen  int
-	ka     func(version uint16) keyAgreement
+	ka     func(version uint16) keyAgreementProtocol
 	// flags is a bitmask of the suite* values, above.
 	flags  int
 	cipher func(key, iv []byte, isRead bool) interface{}
@@ -238,7 +238,7 @@ func (f *prefixNonceAEAD) Open(out, nonce, ciphertext, additionalData []byte) ([
 	return f.aead.Open(out, f.nonce[:], ciphertext, additionalData)
 }
 
-func eccKA(version uint16) keyAgreement {
+func eccKA(version uint16) keyAgreementProtocol {
 	return &eccKeyAgreement{
 		version: version,
 	}

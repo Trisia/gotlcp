@@ -25,15 +25,18 @@ import (
 	"time"
 )
 
+// clientHandshakeState 客户端握手上下文参数
+// 包含了客户端在握手过程需要的上下文，在握手结束该参数应该被舍弃。
 type clientHandshakeState struct {
-	c            *Conn
-	ctx          context.Context
-	serverHello  *serverHelloMsg
-	hello        *clientHelloMsg
-	suite        *cipherSuite
-	finishedHash finishedHash
-	masterSecret []byte
-	session      *SessionState
+	c                *Conn
+	ctx              context.Context
+	serverHello      *serverHelloMsg
+	hello            *clientHelloMsg
+	suite            *cipherSuite
+	finishedHash     finishedHash
+	masterSecret     []byte
+	session          *SessionState
+	peerCertificates []*x509.Certificate // 服务端证书，依次为签名证书、加密证书
 }
 
 func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
@@ -288,13 +291,14 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 			return errors.New("tlcp: server's identity changed during renegotiation")
 		}
 	}
+	hs.peerCertificates = c.peerCertificates
 
 	keyAgreement := hs.suite.ka(c.vers)
 
 	skx, ok := msg.(*serverKeyExchangeMsg)
 	if ok {
 		hs.finishedHash.Write(skx.marshal())
-		err = keyAgreement.processServerKeyExchange(c.config, hs.hello, hs.serverHello, c.peerCertificates, skx)
+		err = keyAgreement.processServerKeyExchange(hs, skx)
 		if err != nil {
 			c.sendAlert(alertUnexpectedMessage)
 			return err
@@ -343,7 +347,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 	}
 
-	preMasterSecret, ckx, err := keyAgreement.generateClientKeyExchange(c.config, hs.hello, c.peerCertificates)
+	preMasterSecret, ckx, err := keyAgreement.generateClientKeyExchange(hs)
 	if err != nil {
 		c.sendAlert(alertInternalError)
 		return err
