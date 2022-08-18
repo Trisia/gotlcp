@@ -30,19 +30,19 @@ import (
 // serverHandshakeState 服务端握手上下文，包含了服务端握手过程中需要的上下文参数
 // 在握手结束后上下文参数应该被弃用。
 type serverHandshakeState struct {
-	c                *Conn
-	ctx              context.Context
-	clientHello      *clientHelloMsg
-	hello            *serverHelloMsg
-	suite            *cipherSuite
-	ecdheOk          bool
-	ecSignOk         bool
-	ecDecryptOk      bool
-	rsaDecryptOk     bool
-	rsaSignOk        bool
-	sessionState     *SessionState
-	finishedHash     finishedHash
-	masterSecret     []byte
+	c                *Conn               // 连接对象
+	ctx              context.Context     // 上下文
+	clientHello      *clientHelloMsg     // 服务端 Hello消息
+	hello            *serverHelloMsg     // 客户端 Hello消息
+	suite            *cipherSuite        // 密码套件实现
+	ecdheOk          bool                // 密钥状态 支持SM2密钥交换
+	ecSignOk         bool                // 密钥状态 支持SM2签名
+	ecDecryptOk      bool                // 密钥状态 支持SM2解密
+	rsaDecryptOk     bool                // 密钥状态 支持RSA解密
+	rsaSignOk        bool                // 密钥状态 支持RSA签名
+	sessionState     *SessionState       // 会话状态
+	finishedHash     finishedHash        // 生成结束验证消息
+	masterSecret     []byte              // 主密钥
 	sigCert          *Certificate        // 签名证书
 	encCert          *Certificate        // 加密证书
 	peerCertificates []*x509.Certificate // 客户端证书，可能为空

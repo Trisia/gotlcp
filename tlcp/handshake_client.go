@@ -28,14 +28,15 @@ import (
 // clientHandshakeState 客户端握手上下文参数
 // 包含了客户端在握手过程需要的上下文，在握手结束该参数应该被舍弃。
 type clientHandshakeState struct {
-	c                *Conn
-	ctx              context.Context
-	serverHello      *serverHelloMsg
-	hello            *clientHelloMsg
-	suite            *cipherSuite
-	finishedHash     finishedHash
-	masterSecret     []byte
-	session          *SessionState
+	c                *Conn               // 连接对象
+	ctx              context.Context     // 上下文
+	serverHello      *serverHelloMsg     // 服务端 Hello消息
+	hello            *clientHelloMsg     // 客户端 Hello消息
+	suite            *cipherSuite        // 密码套件实现
+	finishedHash     finishedHash        // 生成结束验证消息
+	masterSecret     []byte              // 主密钥
+	session          *SessionState       // 会话状态
+	authCert         *Certificate        // 客户端认证密钥对
 	peerCertificates []*x509.Certificate // 服务端证书，依次为签名证书、加密证书
 }
 
@@ -310,7 +311,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 	}
 
-	var chainToSend *Certificate
+	var clientAuthCert *Certificate
 	var certRequested bool
 	certReq, ok := msg.(*certificateRequestMsg)
 	if ok {
@@ -318,10 +319,11 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		hs.finishedHash.Write(certReq.marshal())
 
 		cri := &CertificateRequestInfo{AcceptableCAs: certReq.certificateAuthorities, Version: c.vers, ctx: hs.ctx}
-		if chainToSend, err = c.getClientCertificate(cri); err != nil {
+		if clientAuthCert, err = c.getClientCertificate(cri); err != nil {
 			c.sendAlert(alertInternalError)
 			return err
 		}
+		hs.authCert = clientAuthCert
 
 		msg, err = c.readHandshake()
 		if err != nil {
@@ -340,7 +342,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	// 即便客户端没有证书，也需要发一条空证书的证书消息到服务端。
 	if certRequested {
 		certMsg = new(certificateMsg)
-		certMsg.certificates = chainToSend.Certificate
+		certMsg.certificates = clientAuthCert.Certificate
 		hs.finishedHash.Write(certMsg.marshal())
 		if _, err := c.writeRecord(recordTypeHandshake, certMsg.marshal()); err != nil {
 			return err
@@ -360,19 +362,19 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 
 	// 准备 客户端证书验证消息
-	if chainToSend != nil && len(chainToSend.Certificate) > 0 {
+	if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
 		certVerify := &certificateVerifyMsg{}
 
 		// 根据算法套件获取签名算法类型
 		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
 		if !ok {
 			c.sendAlert(alertInternalError)
-			return fmt.Errorf("tlcp: client certificate private key of type %T does not implement crypto.Signer", chainToSend.PrivateKey)
+			return fmt.Errorf("tlcp: client certificate private key of type %T does not implement crypto.Signer", clientAuthCert.PrivateKey)
 		}
 		// 计算从Hello开始至今的握手消息Hash
 		signed := hs.finishedHash.Sum()
 		// 根据算法套件使用密钥签名
-		certVerify.signature, err = signHandshake(c, sigType, chainToSend.PrivateKey, newHash, signed)
+		certVerify.signature, err = signHandshake(c, sigType, clientAuthCert.PrivateKey, newHash, signed)
 		if err != nil {
 			c.sendAlert(alertInternalError)
 			return err
