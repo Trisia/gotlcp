@@ -57,7 +57,11 @@ func (s *sm2ke) GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey
 	if err != nil {
 		return nil, err
 	}
-	return s.ke.ConfirmResponder(responseTmpPubKey, nil)
+	_, err = s.ke.ConfirmResponder(responseTmpPubKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	return s.ke.GetSharedKey(), nil
 }
 
 func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, kenLen int) (*ecdsa.PublicKey, []byte, error) {
@@ -66,5 +70,9 @@ func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponso
 	if err != nil {
 		return nil, nil, err
 	}
-	return s.ke.RepondKeyExchange(s.rd, sponsorTmpPubKey)
+	tmpPub, _, err := s.ke.RepondKeyExchange(s.rd, sponsorTmpPubKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tmpPub, s.ke.GetSharedKey(), nil
 }
