@@ -260,7 +260,7 @@ func (ka *sm2KeyAgreement) generateServerKeyExchange(hs *serverHandshakeState) (
 	case SM2KeyAgreement:
 		ka.ke = encPrv.(SM2KeyAgreement)
 	case *sm2.PrivateKey:
-		ka.ke = newSM2Key(config.Rand, encPrv.(*sm2.PrivateKey))
+		ka.ke = newSM2KeyKE(config.Rand, encPrv.(*sm2.PrivateKey))
 	default:
 		return nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}
@@ -463,7 +463,7 @@ func (ka *sm2KeyAgreement) generateClientKeyExchange(hs *clientHandshakeState) (
 	case SM2KeyAgreement:
 		ka.ke = authPrv.(SM2KeyAgreement)
 	case *sm2.PrivateKey:
-		ka.ke = newSM2Key(hs.c.config.Rand, authPrv.(*sm2.PrivateKey))
+		ka.ke = newSM2KeyKE(hs.c.config.Rand, authPrv.(*sm2.PrivateKey))
 	default:
 		return nil, nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}

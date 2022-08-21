@@ -20,12 +20,12 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 > 致谢：
 > 
 > - 项目中涉及的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集提升了算法效率。
-> - 项目TLCP协议代码裁剪自 go 1.19版本 crypto/tls模块。
+> - 项目TLCP协议代码裁剪自 go 1.19版本 [golang/src/crypto/tls](https://github.com/golang/go/tree/go1.19/src/crypto/tls) 模块。
 
 
 ## 安装
 
-为了安装使用GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的Go环境，GoTLCP至少需要您的Go版本在 **1.15以上**。
+为了安装使用GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的Go环境，GoTLCP至少需要您的Go版本在 **1.16以上**。
 
 通过下面命令就可以安装 GoTLCP:
 

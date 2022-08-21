@@ -34,7 +34,7 @@ type sm2ke struct {
 	keyLen int
 }
 
-func newSM2Key(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {
+func newSM2KeyKE(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {
 	return &sm2ke{rd: rd, prv: prv}
 }
 
