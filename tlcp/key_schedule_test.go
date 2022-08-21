@@ -3,6 +3,7 @@ package tlcp
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"github.com/emmansun/gmsm/sm2"
 	"testing"
 )
@@ -38,6 +39,7 @@ func Test_sm2ke_GenerateAgreementData(t *testing.T) {
 	if bytes.Compare(preMasterSecretClient, preMasterSecretServer) != 0 {
 		t.Fatalf("Session key should same but not,\n"+
 			"Client key: %02X\n"+
-			"Server key: %02X", preMasterSecretClient, preMasterSecretServer)
+			"Server key: %02X\n", preMasterSecretClient, preMasterSecretServer)
 	}
+	fmt.Printf("Session Key: %02X\n", preMasterSecretClient)
 }
