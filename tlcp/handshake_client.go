@@ -56,6 +56,11 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		random:             make([]byte, 32),
 	}
 
+	hasAuthKeyPair := false
+	if len(config.Certificates) > 0 || config.GetClientCertificate != nil {
+		hasAuthKeyPair = true
+	}
+
 	preferenceOrder := cipherSuitesPreferenceOrder
 	configCipherSuites := config.cipherSuites()
 	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
@@ -64,6 +69,12 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		suite := mutualCipherSuite(configCipherSuites, suiteId)
 		if suite == nil {
 			continue
+		}
+		// SM2 ECDHE 必须要求客户端具有认证密钥对
+		if suiteId == ECDHE_SM4_GCM_SM3 || suiteId == ECDHE_SM4_CBC_SM3 {
+			if !hasAuthKeyPair {
+				continue
+			}
 		}
 		hello.cipherSuites = append(hello.cipherSuites, suiteId)
 	}

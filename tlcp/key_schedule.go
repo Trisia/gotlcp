@@ -12,6 +12,7 @@ package tlcp
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"fmt"
 	"github.com/emmansun/gmsm/sm2"
 	"io"
@@ -35,6 +36,9 @@ type sm2ke struct {
 }
 
 func newSM2KeyKE(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {
+	if rd == nil {
+		rd = rand.Reader
+	}
 	return &sm2ke{rd: rd, prv: prv}
 }
 

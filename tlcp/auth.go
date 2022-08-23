@@ -25,20 +25,18 @@ import (
 // 根据算法套件获取 签名算法 和对应的Hash函数
 func typeAndHashFrom(suite uint16) (SignatureAlgorithm, func() hash.Hash, error) {
 	switch suite {
-	case TLCP_ECC_SM4_CBC_SM3, TLCP_ECC_SM4_GCM_SM3:
+	case ECC_SM4_CBC_SM3, ECC_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3, ECDHE_SM4_GCM_SM3:
 		return ECC_SM3, sm3.New, nil
-	case TLCP_IBC_SM4_CBC_SM3, TLCP_IBC_SM4_GCM_SM3:
+	case IBC_SM4_CBC_SM3, IBC_SM4_GCM_SM3:
 		return IBS_SM3, sm3.New, nil
-	case TLCP_RSA_SM4_CBC_SM3, TLCP_RSA_SM4_GCM_SM3:
+	case RSA_SM4_CBC_SM3, RSA_SM4_GCM_SM3:
 		return RSA_SM3, sm3.New, nil
-	case TLCP_RSA_SM4_CBC_SHA256, TLCP_RSA_SM4_GCM_SHA256:
+	case RSA_SM4_CBC_SHA256, RSA_SM4_GCM_SHA256:
 		return RSA_SHA256, sha256.New, nil
-	case TLCP_ECDHE_SM4_CBC_SM3, TLCP_ECDHE_SM4_GCM_SM3:
-		fallthrough
-	case TLCP_IBSDH_SM4_CBC_SM3, TLCP_IBSDH_SM4_GCM_SM3:
+	case IBSDH_SM4_CBC_SM3, IBSDH_SM4_GCM_SM3:
 		fallthrough
 	default:
-		return NONE, nil, fmt.Errorf("tlcp: unsupported certificate verify alg: %d", suite)
+		return NONE, nil, fmt.Errorf("tlcp: unsupported certificate verify alg: %s", CipherSuiteName(suite))
 	}
 }
 

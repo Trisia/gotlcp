@@ -97,8 +97,11 @@ type cipherSuite struct {
 }
 
 var cipherSuites = map[uint16]*cipherSuite{
-	TLCP_ECC_SM4_GCM_SM3: {ECC_SM4_GCM_SM3, 16, 0, 4, eccKA, suiteECSign, nil, nil, aeadSM4GCM},
-	TLCP_ECC_SM4_CBC_SM3: {ECC_SM4_CBC_SM3, 16, 32, 16, eccKA, suiteECSign, cipherSM4, macSM3, nil},
+	ECC_SM4_GCM_SM3: {ECC_SM4_GCM_SM3, 16, 0, 4, eccKA, suiteECSign, nil, nil, aeadSM4GCM},
+	ECC_SM4_CBC_SM3: {ECC_SM4_CBC_SM3, 16, 32, 16, eccKA, suiteECSign, cipherSM4, macSM3, nil},
+
+	ECDHE_SM4_GCM_SM3: {ECDHE_SM4_GCM_SM3, 16, 0, 4, ecdheKA, suiteECSign | suiteECDHE, nil, nil, aeadSM4GCM},
+	ECDHE_SM4_CBC_SM3: {ECDHE_SM4_CBC_SM3, 16, 32, 16, ecdheKA, suiteECSign | suiteECDHE, cipherSM4, macSM3, nil},
 }
 
 // selectCipherSuite 从推荐ID和候选ID中选择出符合条件的密钥套件
@@ -122,9 +125,9 @@ func selectCipherSuite(ids, supportedIDs []uint16, ok func(*cipherSuite) bool) *
 var cipherSuitesPreferenceOrder = []uint16{
 	ECC_SM4_GCM_SM3,
 	ECC_SM4_CBC_SM3,
-	//// 根据 GM/T 38636-2016  6.4.5.8 要求：使用ECDHE算法时，要求客户端发送证书。
-	//ECDHE_SM4_GCM_SM3,
-	//ECDHE_SM4_CBC_SM3,
+	// 根据 GM/T 38636-2016  6.4.5.8 要求：使用ECDHE算法时，要求客户端发送证书。
+	ECDHE_SM4_GCM_SM3,
+	ECDHE_SM4_CBC_SM3,
 }
 
 // disabledCipherSuites 禁用的密码套件
@@ -238,10 +241,16 @@ func (f *prefixNonceAEAD) Open(out, nonce, ciphertext, additionalData []byte) ([
 	return f.aead.Open(out, f.nonce[:], ciphertext, additionalData)
 }
 
+// SM2 加密证书密钥交换
 func eccKA(version uint16) keyAgreementProtocol {
 	return &eccKeyAgreement{
 		version: version,
 	}
+}
+
+// SM2 ECDHE 密钥协商协议
+func ecdheKA(version uint16) keyAgreementProtocol {
+	return &sm2ECDHEKeyAgreement{}
 }
 
 func cipherSM4(key, iv []byte, isRead bool) interface{} {

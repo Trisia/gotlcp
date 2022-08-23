@@ -174,5 +174,31 @@ func Test_resumedSession(t *testing.T) {
 		fmt.Printf(">> %02X\n", buff[:n])
 		_ = conn.Close()
 	}
+}
+
+func Test_clientHandshake_ECDHE(t *testing.T) {
+	go func() {
+		if err := server(8451); err != nil {
+			panic(err)
+		}
+	}()
+	time.Sleep(time.Millisecond * 300)
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+	config := &Config{
+		RootCAs:      pool,
+		Certificates: []Certificate{authCert},
+		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
+	}
+	conn, err := Dial("tcp", "127.0.0.1:8451", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conn.Handshake()
+	if err != nil {
+		_ = conn.Close()
+		t.Fatal(err)
+	}
+	_ = conn.Close()
 
 }

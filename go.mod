@@ -1,6 +1,6 @@
 module gitee.com/Trisia/gotlcp
 
-go 1.15
+go 1.16
 
 require (
 	github.com/emmansun/gmsm v0.13.8

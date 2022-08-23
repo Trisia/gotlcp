@@ -233,3 +233,29 @@ func main() {
 
 完整示例见 [client/raw/main.go](../example/client/raw/main.go)
 
+### 2.3 密码套件选择
+
+默认情况下 Go TLCP 启用如下密码套件，按照优先级如下：
+
+1. `ECC_SM4_CBC_SM3`
+2. `ECC_SM4_GCM_SM3`
+3. `ECDHE_SM4_GCM_SM3`
+4. `ECDHE_SM4_CBC_SM3`
+
+注意： ECDHE基于SM2密钥交换实现，需要客户端具有认证密钥才启用。
+
+可以通过下面方式手动指定握手使用的密码条件和顺序：
+
+```go
+config := &tlcp.Config{
+    // 省略其它无关配置项...
+	Certificates: []tlcp.Certificate{authCertKeypair},
+	CipherSuites: []uint16{
+		tlcp.ECDHE_SM4_GCM_SM3, // 最高优先级
+		tlcp.ECC_SM4_GCM_SM3,	
+		tlcp.ECC_SM4_CBC_SM3,   // 最低优先级
+	},
+}
+```
+
+完整示例见 [client/mutual_auth_spec/main.go](../example/client/mutual_auth_spec/main.go)
