@@ -10,10 +10,10 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 
 密码套件支持以及优先级如下：
 
-1. `ECC_SM4_CBC_SM3`
-2. `ECC_SM4_GCM_SM3`
-3. `ECDHE_SM4_GCM_SM3`
-4. `ECDHE_SM4_CBC_SM3`
+1. `ECC_SM4_GCM_SM3`
+2. `ECC_SM4_CBC_SM3`
+3. `ECDHE_SM4_GCM_SM3`  (试验性)
+4. `ECDHE_SM4_CBC_SM3`  (试验性)
 
 **在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
 

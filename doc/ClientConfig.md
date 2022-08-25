@@ -237,10 +237,10 @@ func main() {
 
 默认情况下 Go TLCP 启用如下密码套件，按照优先级如下：
 
-1. `ECC_SM4_CBC_SM3`
-2. `ECC_SM4_GCM_SM3`
-3. `ECDHE_SM4_GCM_SM3`
-4. `ECDHE_SM4_CBC_SM3`
+1. `ECC_SM4_GCM_SM3`
+2. `ECC_SM4_CBC_SM3`
+3. `ECDHE_SM4_GCM_SM3` (试验性)
+4. `ECDHE_SM4_CBC_SM3` (试验性)
 
 注意： ECDHE基于SM2密钥交换实现，需要客户端具有认证密钥才启用。
 
