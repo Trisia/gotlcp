@@ -140,13 +140,14 @@ const (
 	// during the handshake, and that at least one valid certificate is required
 	// to be sent by the client.
 	RequireAndVerifyClientCert
+	// RequireAndVerifyAnyKeyUsageClientCert 要求客户端提供客户端数字证书，并且验证数字证书，但是忽略客户端数字证书的密钥用法。
+	RequireAndVerifyAnyKeyUsageClientCert
 )
 
-// requiresClientCert reports whether the ClientAuthType requires a client
-// certificate to be provided.
+// requiresClientCert 判断 ClientAuthType 是否需要客户端提供客户端证书
 func requiresClientCert(c ClientAuthType) bool {
 	switch c {
-	case RequireAnyClientCert, RequireAndVerifyClientCert:
+	case RequireAnyClientCert, RequireAndVerifyClientCert, RequireAndVerifyAnyKeyUsageClientCert:
 		return true
 	default:
 		return false

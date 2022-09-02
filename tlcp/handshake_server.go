@@ -643,11 +643,15 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	}
 
 	if c.config.ClientAuth >= VerifyClientCertIfGiven && len(certs) > 0 {
+		keyUsages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+		if c.config.ClientAuth == RequireAndVerifyAnyKeyUsageClientCert {
+			keyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+		}
 		opts := x509.VerifyOptions{
 			Roots:         c.config.ClientCAs,
 			CurrentTime:   c.config.time(),
 			Intermediates: x509.NewCertPool(),
-			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+			KeyUsages:     keyUsages,
 		}
 
 		chains, err := certs[0].Verify(opts)
