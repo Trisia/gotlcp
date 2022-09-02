@@ -224,3 +224,19 @@ config := &tlcp.Config{
 ```
 
 完整示例见 [server/mutual_auth_spec/main.go](../example/server/mutual_auth_spec/main.go)
+
+### 2.4 客户端校验策略
+
+服务端具有不同的客户端认证策略，用于实现不同等级的客户端安全校验。
+
+在服务端对客户端证书安全策略通过`tlcp.Config`中的`ClientAuth`参数配置，目前GoTLCP支持以下策略类型：
+
+| 参数值 | 意义 |
+| :-- | :-- |
+| NoClientCert | 不需要客户端证书。 |
+| RequestClientCert | 标识服务端是否在握手过程中向客户端发送证书请求消息，但并不在乎客户端是否发送证书消息。 | 
+| RequireAnyClientCert | 要求客户端在握手过程中向服务端发送客户端认证证书，但是不对证书有效性校验。 |
+| VerifyClientCertIfGiven | 若客户端提供了客户端证书则校验，否则忽略客户端证书校验。 |
+| RequireAndVerifyAnyKeyUsageClientCert | 要求客户端在握手过程中向服务端发送客户端认证证书，并且验证数字证书有效性，证书验证时忽略证书的扩展密钥用法。|
+| RequireAndVerifyClientCert | 要求客户端在握手过程中向服务端发送客户端认证证书，并且验证数字证书，且要求客户端证书具有`x509.ExtKeyUsageClientAuth`或`x509.ExtKeyUsageServerAuth`的扩展密钥用法。|
+
