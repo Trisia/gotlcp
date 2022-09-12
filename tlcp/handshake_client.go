@@ -19,10 +19,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"hash"
 	"sync/atomic"
 	"time"
+
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 // clientHandshakeState 客户端握手上下文参数
@@ -548,9 +549,14 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 
 	if !c.config.InsecureSkipVerify {
 		opts := x509.VerifyOptions{
-			Roots:       c.config.RootCAs,
-			CurrentTime: c.config.time(),
-			DNSName:     c.config.ServerName,
+			Roots:         c.config.RootCAs,
+			CurrentTime:   c.config.time(),
+			DNSName:       c.config.ServerName,
+			Intermediates: x509.NewCertPool(),
+		}
+
+		for _, cert := range certs[2:] {
+			opts.Intermediates.AddCert(cert)
 		}
 
 		var err error
