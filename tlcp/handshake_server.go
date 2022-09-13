@@ -20,11 +20,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"hash"
 	"io"
 	"sync/atomic"
 	"time"
+
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 // serverHandshakeState 服务端握手上下文，包含了服务端握手过程中需要的上下文参数
@@ -391,6 +392,13 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	certMsg.certificates = [][]byte{
 		hs.sigCert.Certificate[0], hs.encCert.Certificate[0],
 	}
+	// sign cert should have same cert chain with encrypt cert.
+	// we consider sign cert chain as high priority.
+	if len(hs.sigCert.Certificate) > 1 {
+		certMsg.certificates = append(certMsg.certificates, hs.sigCert.Certificate[1:]...)
+	} else if len(hs.encCert.Certificate) > 1 {
+		certMsg.certificates = append(certMsg.certificates, hs.encCert.Certificate[1:]...)
+	}
 	hs.finishedHash.Write(certMsg.marshal())
 	if _, err := c.writeRecord(recordTypeHandshake, certMsg.marshal()); err != nil {
 		return err
@@ -652,6 +660,10 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			CurrentTime:   c.config.time(),
 			Intermediates: x509.NewCertPool(),
 			KeyUsages:     keyUsages,
+		}
+
+		for _, cert := range certs[1:] {
+			opts.Intermediates.AddCert(cert)
 		}
 
 		chains, err := certs[0].Verify(opts)
