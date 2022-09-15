@@ -3,6 +3,6 @@ module gitee.com/Trisia/gotlcp
 go 1.16
 
 require (
-	github.com/emmansun/gmsm v0.14.0
-	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	github.com/emmansun/gmsm v0.14.1
+	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 )
