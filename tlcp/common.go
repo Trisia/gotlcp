@@ -334,6 +334,7 @@ func (c *Config) Clone() *Config {
 		Time:                        c.Time,
 		Certificates:                c.Certificates,
 		GetCertificate:              c.GetCertificate,
+		GetKECertificate:            c.GetKECertificate,
 		GetClientCertificate:        c.GetClientCertificate,
 		GetConfigForClient:          c.GetConfigForClient,
 		VerifyPeerCertificate:       c.VerifyPeerCertificate,
