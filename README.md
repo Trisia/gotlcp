@@ -105,6 +105,8 @@ func main() {
 
 - 完整代码见 [quickstart/server/main.go](./example/quickstart/server/main.go)
 
+> 若您需要同时支持TLCP/TLS协议，请参考[《GoTLCP 协议适配器》](./pa/README.md)相关内容。
+
 ## 文档
 
 - [《关于 TLCP协议》](./doc/AboutTLCP.md)
@@ -112,6 +114,7 @@ func main() {
 - [《GoTLCP 客户端 配置》](./doc/ClientConfig.md) 
 - [《GoTLCP 服务端 配置》](./doc/ServerConfig.md)
 - [《GoTLCP HTTPS 配置》](./doc/HTTPsConfig.md)
+- [《GoTLCP 协议适配器》](./pa/README.md)
 
 ## 进展
 
