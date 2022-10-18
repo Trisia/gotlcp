@@ -737,10 +737,14 @@ func (c *Conn) sendAlertLocked(err alert) error {
 	return c.out.setErrorLocked(&net.OpError{Op: "local error", Err: err})
 }
 
-// sendAlert sends a TLS alert message.
+// sendAlert 发送TLCP报警
 func (c *Conn) sendAlert(err alert) error {
 	c.out.Lock()
 	defer c.out.Unlock()
+	// 报警回调
+	if c.config != nil && c.config.OnAlert != nil {
+		c.config.OnAlert(uint8(err), c)
+	}
 	return c.sendAlertLocked(err)
 }
 

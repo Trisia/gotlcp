@@ -151,3 +151,12 @@ func (e alert) CN() string {
 	}
 	return "TLCP: 报警(" + strconv.Itoa(int(e)) + ")"
 }
+
+// AlertCN 错误码意义
+func AlertCN(code uint8) string {
+	s, ok := alertTextCN[alert(code)]
+	if ok {
+		return s
+	}
+	return s
+}

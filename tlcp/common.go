@@ -317,6 +317,9 @@ type Config struct {
 	// improve latency.
 	DynamicRecordSizingDisabled bool
 
+	// OnAlert 在发生报警时回调该方法，在该方法内请不要执行耗时操作！
+	OnAlert func(code uint8, conn *Conn)
+
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
 }
