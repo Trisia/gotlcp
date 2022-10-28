@@ -352,6 +352,7 @@ func (c *Config) Clone() *Config {
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
+		OnAlert:                     c.OnAlert,
 	}
 }
 
