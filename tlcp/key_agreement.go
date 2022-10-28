@@ -133,6 +133,18 @@ func (e *eccKeyAgreement) processClientKeyExchange(hs *serverHandshakeState, ckx
 	}
 
 	cipher := ckx.ciphertext[2:]
+	if cipher[0] != 0x30 {
+		return nil, errors.New("tlcp:  bad client key exchange ciphertext format.")
+	}
+
+	// 此处兼容C1C3C2 ASN1 报文中含有而外填充内容
+	// 长形式也不会超过255， 3+32 + 3+32 + 3+32 + 3+48
+	// ASN.1 Seq: tag(1B)+ length(1B+1B) = 3
+	// ContentsLength fixed: 0x8001
+	length := 3 + int(cipher[2])
+	if len(cipher) >= length {
+		cipher = cipher[:length]
+	}
 
 	decrypter, ok := encCert.PrivateKey.(crypto.Decrypter)
 	if !ok {
