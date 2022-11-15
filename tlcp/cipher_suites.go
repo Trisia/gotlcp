@@ -14,9 +14,10 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"fmt"
+	"hash"
+
 	"github.com/emmansun/gmsm/sm3"
 	"github.com/emmansun/gmsm/sm4"
-	"hash"
 )
 
 // CipherSuite 密码套件

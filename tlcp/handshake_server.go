@@ -339,7 +339,7 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 	hs.finishedHash.discardHandshakeBuffer()
 	hs.finishedHash.Write(hs.clientHello.marshal())
 	hs.finishedHash.Write(hs.hello.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
+	if _, err := c.writeHandshake(hs.hello); err != nil {
 		return err
 	}
 
@@ -384,7 +384,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	hs.finishedHash.Write(hs.clientHello.marshal())
 	hs.finishedHash.Write(hs.hello.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
+	if _, err := c.writeHandshake(hs.hello); err != nil {
 		return err
 	}
 
@@ -400,7 +400,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		certMsg.certificates = append(certMsg.certificates, hs.encCert.Certificate[1:]...)
 	}
 	hs.finishedHash.Write(certMsg.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, certMsg.marshal()); err != nil {
+	if _, err := c.writeHandshake(certMsg); err != nil {
 		return err
 	}
 
@@ -412,7 +412,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	if skx != nil {
 		hs.finishedHash.Write(skx.marshal())
-		if _, err := c.writeRecord(recordTypeHandshake, skx.marshal()); err != nil {
+		if _, err := c.writeHandshake(skx); err != nil {
 			return err
 		}
 	}
@@ -434,14 +434,14 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 			certReq.certificateAuthorities = c.config.ClientCAs.Subjects()
 		}
 		hs.finishedHash.Write(certReq.marshal())
-		if _, err := c.writeRecord(recordTypeHandshake, certReq.marshal()); err != nil {
+		if _, err := c.writeHandshake(certReq); err != nil {
 			return err
 		}
 	}
 
 	helloDone := new(serverHelloDoneMsg)
 	hs.finishedHash.Write(helloDone.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, helloDone.marshal()); err != nil {
+	if _, err := c.writeHandshake(helloDone); err != nil {
 		return err
 	}
 
@@ -605,7 +605,7 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 	finished := new(finishedMsg)
 	finished.verifyData = hs.finishedHash.serverSum(hs.masterSecret)
 	hs.finishedHash.Write(finished.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, finished.marshal()); err != nil {
+	if _, err := c.writeHandshake(finished); err != nil {
 		return err
 	}
 
@@ -662,6 +662,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			KeyUsages:     keyUsages,
 		}
 
+		// TODO: for TLCP ECDHE, this maybe incorrect, the second cert should be encryption cert.
 		for _, cert := range certs[1:] {
 			opts.Intermediates.AddCert(cert)
 		}

@@ -118,7 +118,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	if _, err := c.writeRecord(recordTypeHandshake, hello.marshal()); err != nil {
+	if _, err := c.writeHandshake(hello); err != nil {
 		return err
 	}
 
@@ -356,7 +356,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		certMsg = new(certificateMsg)
 		certMsg.certificates = clientAuthCert.Certificate
 		hs.finishedHash.Write(certMsg.marshal())
-		if _, err := c.writeRecord(recordTypeHandshake, certMsg.marshal()); err != nil {
+		if _, err := c.writeHandshake(certMsg); err != nil {
 			return err
 		}
 	}
@@ -368,7 +368,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 	if ckx != nil {
 		hs.finishedHash.Write(ckx.marshal())
-		if _, err := c.writeRecord(recordTypeHandshake, ckx.marshal()); err != nil {
+		if _, err := c.writeHandshake(ckx); err != nil {
 			return err
 		}
 	}
@@ -379,9 +379,9 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 		// 根据算法套件获取签名算法类型
 		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
-		if !ok {
+		if err != nil {
 			c.sendAlert(alertInternalError)
-			return fmt.Errorf("tlcp: client certificate private key of type %T does not implement crypto.Signer", clientAuthCert.PrivateKey)
+			return err
 		}
 		// 计算从Hello开始至今的握手消息Hash
 		signed := hs.finishedHash.Sum()
@@ -393,7 +393,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 
 		hs.finishedHash.Write(certVerify.marshal())
-		if _, err := c.writeRecord(recordTypeHandshake, certVerify.marshal()); err != nil {
+		if _, err := c.writeHandshake(certVerify); err != nil {
 			return err
 		}
 	}
@@ -522,7 +522,7 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 	finished := new(finishedMsg)
 	finished.verifyData = hs.finishedHash.clientSum(hs.masterSecret)
 	hs.finishedHash.Write(finished.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, finished.marshal()); err != nil {
+	if _, err := c.writeHandshake(finished); err != nil {
 		return err
 	}
 	copy(out, finished.verifyData)

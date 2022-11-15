@@ -17,11 +17,12 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -59,6 +60,30 @@ const (
 	typeClientKeyExchange  uint8 = 16
 	typeFinished           uint8 = 20
 )
+
+func HandshakeMessageTypeName(id uint8) string {
+	switch id {
+	case typeClientHello:
+		return "Client Hello"
+	case typeServerHello:
+		return "Server Hello"
+	case typeCertificate:
+		return "Certificate"
+	case typeServerKeyExchange:
+		return "Server Key Exchange"
+	case typeCertificateRequest:
+		return "Certificate Request"
+	case typeServerHelloDone:
+		return "Server Hello Done"
+	case typeCertificateVerify:
+		return "Certificate Verify"
+	case typeClientKeyExchange:
+		return "Client Key Exchange"
+	case typeFinished:
+		return "Finished"
+	}
+	return fmt.Sprintf("0x%02X", id)
+}
 
 // TLCP 压缩类型
 const (
@@ -322,6 +347,9 @@ type Config struct {
 
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
+
+	// EnableDebug, 是否打开debug
+	EnableDebug bool
 }
 
 // Clone 复制一个新的连接配置对象
@@ -353,6 +381,7 @@ func (c *Config) Clone() *Config {
 		MaxVersion:                  c.MaxVersion,
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 		OnAlert:                     c.OnAlert,
+		EnableDebug:                 c.EnableDebug,
 	}
 }
 
@@ -534,6 +563,7 @@ func (c *Certificate) leaf() (*x509.Certificate, error) {
 type handshakeMessage interface {
 	marshal() []byte
 	unmarshal([]byte) bool
+	messageType() uint8
 }
 
 // emptyConfig 默认的空配置对象

@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
-	"github.com/emmansun/gmsm/sm2"
 	"testing"
+
+	"github.com/emmansun/gmsm/sm2"
 )
 
 func Test_sm2ke_GenerateAgreementData(t *testing.T) {
@@ -36,7 +37,7 @@ func Test_sm2ke_GenerateAgreementData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Compare(preMasterSecretClient, preMasterSecretServer) != 0 {
+	if !bytes.Equal(preMasterSecretClient, preMasterSecretServer) {
 		t.Fatalf("Session key should same but not,\n"+
 			"Client key: %02X\n"+
 			"Server key: %02X\n", preMasterSecretClient, preMasterSecretServer)

@@ -11,7 +11,11 @@
 package tlcp
 
 import (
+	"encoding/hex"
+	"encoding/pem"
 	"fmt"
+
+	x509 "github.com/emmansun/gmsm/smx509"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -145,6 +149,24 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 	return true
 }
 
+func (m *clientHelloMsg) messageType() uint8 {
+	return typeClientHello
+}
+
+func (m *clientHelloMsg) String() string {
+	s1 := fmt.Sprintf("Random: bytes=%s\nSession ID: %s\nCipher Suites: ", hex.EncodeToString(m.random), hex.EncodeToString(m.sessionId))
+	for _, c := range m.cipherSuites {
+		s1 += CipherSuiteName(c) + ", "
+	}
+	return fmt.Sprintf("%s\nCompression Methods: %v", s1, m.compressionMethods)
+}
+
+func (m *clientHelloMsg) debug() {
+	fmt.Printf(">>> ClientHello\n")
+	fmt.Printf("%v\n", m)
+	fmt.Printf("<<<\n")
+}
+
 type serverHelloMsg struct {
 	raw    []byte
 	vers   uint16
@@ -194,6 +216,20 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 	// 由于GB/T 38636-2016 不支持扩展，因此忽略
 
 	return true
+}
+
+func (m *serverHelloMsg) messageType() uint8 {
+	return typeServerHello
+}
+
+func (m *serverHelloMsg) String() string {
+	return fmt.Sprintf("Random: bytes=%s\nSession ID: %s\nCipher Suite: %v\nCompression Method: %v", hex.EncodeToString(m.random), hex.EncodeToString(m.sessionId), CipherSuiteName(m.cipherSuite), m.compressionMethod)
+}
+
+func (m *serverHelloMsg) debug() {
+	fmt.Printf(">>> ServerHello\n")
+	fmt.Printf("%v\n", m)
+	fmt.Printf("<<<\n")
 }
 
 //
@@ -636,6 +672,20 @@ func (m *certificateMsg) unmarshal(data []byte) bool {
 	return true
 }
 
+func (m *certificateMsg) messageType() uint8 {
+	return typeCertificate
+}
+
+func (m *certificateMsg) debug() {
+	fmt.Printf(">>> Certificates\n")
+	for i, cert := range m.certificates {
+		fmt.Printf("Cert[%v]\n", i)
+		block := &pem.Block{Bytes: cert, Type: "CERTIFICATE"}
+		fmt.Printf("%v", string(pem.EncodeToMemory(block)))
+	}
+	fmt.Printf("<<<\n")
+}
+
 //
 //type certificateMsgTLS13 struct {
 //	raw          []byte
@@ -813,6 +863,10 @@ func (m *serverKeyExchangeMsg) unmarshal(data []byte) bool {
 	return true
 }
 
+func (m *serverKeyExchangeMsg) messageType() uint8 {
+	return typeServerKeyExchange
+}
+
 //
 //type certificateStatusMsg struct {
 //	raw      []byte
@@ -863,6 +917,10 @@ func (m *serverHelloDoneMsg) unmarshal(data []byte) bool {
 	return len(data) == 4
 }
 
+func (m *serverHelloDoneMsg) messageType() uint8 {
+	return typeServerHelloDone
+}
+
 type clientKeyExchangeMsg struct {
 	raw        []byte
 	ciphertext []byte
@@ -897,6 +955,10 @@ func (m *clientKeyExchangeMsg) unmarshal(data []byte) bool {
 	return true
 }
 
+func (m *clientKeyExchangeMsg) messageType() uint8 {
+	return typeClientKeyExchange
+}
+
 type finishedMsg struct {
 	raw        []byte
 	verifyData []byte
@@ -923,6 +985,10 @@ func (m *finishedMsg) unmarshal(data []byte) bool {
 	return s.Skip(1) &&
 		readUint24LengthPrefixed(&s, &m.verifyData) &&
 		s.Empty()
+}
+
+func (m *finishedMsg) messageType() uint8 {
+	return typeFinished
 }
 
 type certificateRequestMsg struct {
@@ -1028,6 +1094,25 @@ func (m *certificateRequestMsg) unmarshal(data []byte) bool {
 	return len(data) == 0
 }
 
+func (m *certificateRequestMsg) messageType() uint8 {
+	return typeCertificateRequest
+}
+
+func (m *certificateRequestMsg) debug() {
+	fmt.Printf(">>> Certificate Request\n")
+	fmt.Printf("Certificate Types: %v\n", m.certificateTypes)
+	for i, rawIssuer := range m.certificateAuthorities {
+		fmt.Printf("Issuer[%v]\n", i)
+		issuerRDNs, err := x509.ParseName(rawIssuer)
+		if err == nil {
+			fmt.Printf("%v\n", issuerRDNs)
+		} else {
+			fmt.Printf("%v\n", string(rawIssuer))
+		}
+	}
+	fmt.Printf("<<<\n")
+}
+
 type certificateVerifyMsg struct {
 	raw       []byte
 	signature []byte
@@ -1058,6 +1143,10 @@ func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
 		return false
 	}
 	return readUint16LengthPrefixed(&s, &m.signature) && s.Empty()
+}
+
+func (m *certificateVerifyMsg) messageType() uint8 {
+	return typeCertificateVerify
 }
 
 //type helloRequestMsg struct {

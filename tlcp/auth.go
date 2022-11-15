@@ -17,9 +17,10 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash"
+
 	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
-	"hash"
 )
 
 // 根据算法套件获取 签名算法 和对应的Hash函数
@@ -61,10 +62,10 @@ func verifyHandshakeSignature(sigType SignatureAlgorithm, pubkey crypto.PublicKe
 		}
 	case RSA_SM3:
 		// TODO: RSA_SM3 签名值校验
-		return errors.New("RSA_SM3 Handshake Signature no support!")
+		return errors.New("unsupported handshake signature: RSA_SM3")
 	case IBS_SM3:
 		// TODO: IBS_SM3 签名值校验
-		return errors.New("IBS_SM3 Handshake Signature no support!")
+		return errors.New("unsupported handshake signature: IBS_SM3")
 	default:
 		return errors.New("internal error: unknown signature type")
 	}
