@@ -679,7 +679,7 @@ func (m *certificateMsg) messageType() uint8 {
 func (m *certificateMsg) debug() {
 	fmt.Printf(">>> Certificates\n")
 	for i, cert := range m.certificates {
-		fmt.Printf("Cert[%v]\n", i)
+		fmt.Printf("Cert[%v]:\n", i)
 		block := &pem.Block{Bytes: cert, Type: "CERTIFICATE"}
 		fmt.Printf("%v", string(pem.EncodeToMemory(block)))
 	}
@@ -1115,9 +1115,27 @@ func (m *certificateRequestMsg) messageType() uint8 {
 
 func (m *certificateRequestMsg) debug() {
 	fmt.Printf(">>> Certificate Request\n")
-	fmt.Printf("Certificate Types: %v\n", m.certificateTypes)
+	fmt.Print("Certificate Types: ")
+	for i, t := range m.certificateTypes {
+		switch t {
+		case 1:
+			fmt.Print("RSA")
+		case 2:
+			fmt.Print("DSS")
+		case 64:
+			fmt.Print("ECDSA")
+		case 80:
+			fmt.Print("IBC")
+		default:
+			fmt.Printf("%v", t)
+		}
+		if i < len(m.certificateTypes)-1 {
+			fmt.Print(", ")
+		}
+	}
+	fmt.Printf("\nCertificate Authorities:\n")
 	for i, rawIssuer := range m.certificateAuthorities {
-		fmt.Printf("Issuer[%v]\n", i)
+		fmt.Printf("Issuer[%v]:\n", i)
 		issuerRDNs, err := x509.ParseName(rawIssuer)
 		if err == nil {
 			fmt.Printf("%v\n", issuerRDNs)
