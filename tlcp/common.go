@@ -564,6 +564,7 @@ type handshakeMessage interface {
 	marshal() []byte
 	unmarshal([]byte) bool
 	messageType() uint8
+	debug()
 }
 
 // emptyConfig 默认的空配置对象

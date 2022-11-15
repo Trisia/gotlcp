@@ -929,16 +929,7 @@ func (c *Conn) writeHandshake(m handshakeMessage) (int, error) {
 
 	if c.config.EnableDebug {
 		fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(m.messageType()), len(data), err == nil)
-		switch m1 := m.(type) {
-		case *clientHelloMsg:
-			m1.debug()
-		case *serverHelloMsg:
-			m1.debug()
-		case *certificateMsg:
-			m1.debug()
-		case *certificateRequestMsg:
-			m1.debug()
-		}
+		m.debug()
 	}
 	return n, err
 }
@@ -999,18 +990,8 @@ func (c *Conn) readHandshake() (interface{}, error) {
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
-
 	if c.config.EnableDebug {
-		switch m1 := m.(type) {
-		case *clientHelloMsg:
-			m1.debug()
-		case *serverHelloMsg:
-			m1.debug()
-		case *certificateMsg:
-			m1.debug()
-		case *certificateRequestMsg:
-			m1.debug()
-		}
+		m.debug()
 	}
 	return m, nil
 }

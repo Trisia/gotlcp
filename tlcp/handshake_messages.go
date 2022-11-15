@@ -867,6 +867,9 @@ func (m *serverKeyExchangeMsg) messageType() uint8 {
 	return typeServerKeyExchange
 }
 
+func (m *serverKeyExchangeMsg) debug() {
+}
+
 //
 //type certificateStatusMsg struct {
 //	raw      []byte
@@ -921,6 +924,9 @@ func (m *serverHelloDoneMsg) messageType() uint8 {
 	return typeServerHelloDone
 }
 
+func (m *serverHelloDoneMsg) debug() {
+}
+
 type clientKeyExchangeMsg struct {
 	raw        []byte
 	ciphertext []byte
@@ -959,6 +965,9 @@ func (m *clientKeyExchangeMsg) messageType() uint8 {
 	return typeClientKeyExchange
 }
 
+func (m *clientKeyExchangeMsg) debug() {
+}
+
 type finishedMsg struct {
 	raw        []byte
 	verifyData []byte
@@ -989,6 +998,12 @@ func (m *finishedMsg) unmarshal(data []byte) bool {
 
 func (m *finishedMsg) messageType() uint8 {
 	return typeFinished
+}
+
+func (m *finishedMsg) debug() {
+	fmt.Printf(">>> Finished\n")
+	fmt.Printf("verify_data: %v\n", m.verifyData)
+	fmt.Printf("<<<\n")
 }
 
 type certificateRequestMsg struct {
@@ -1147,6 +1162,9 @@ func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
 
 func (m *certificateVerifyMsg) messageType() uint8 {
 	return typeCertificateVerify
+}
+
+func (m *certificateVerifyMsg) debug() {
 }
 
 //type helloRequestMsg struct {
