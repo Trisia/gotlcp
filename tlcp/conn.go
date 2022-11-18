@@ -19,13 +19,14 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"hash"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 // Conn 表示一个TLCP连接，实现了 net.Conn 接口
@@ -919,6 +920,20 @@ func (c *Conn) writeRecord(typ recordType, data []byte) (int, error) {
 	return c.writeRecordLocked(typ, data)
 }
 
+func (c *Conn) writeHandshake(m handshakeMessage) (int, error) {
+	data := m.marshal()
+	c.out.Lock()
+	defer c.out.Unlock()
+
+	n, err := c.writeRecordLocked(recordTypeHandshake, data)
+
+	if c.config.EnableDebug {
+		fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(m.messageType()), len(data), err == nil)
+		m.debug()
+	}
+	return n, err
+}
+
 // readHandshake reads the next handshake message from
 // the record layer.
 func (c *Conn) readHandshake() (interface{}, error) {
@@ -940,6 +955,9 @@ func (c *Conn) readHandshake() (interface{}, error) {
 		}
 	}
 	data = c.hand.Next(4 + n)
+	if c.config.EnableDebug {
+		fmt.Printf("[read] %v, len=%v\n", HandshakeMessageTypeName(data[0]), len(data))
+	}
 	var m handshakeMessage
 	switch data[0] {
 	case typeClientHello:
@@ -971,6 +989,9 @@ func (c *Conn) readHandshake() (interface{}, error) {
 
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+	if c.config.EnableDebug {
+		m.debug()
 	}
 	return m, nil
 }

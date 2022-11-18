@@ -17,10 +17,11 @@ import (
 	"crypto/elliptic"
 	"errors"
 	"fmt"
-	"github.com/emmansun/gmsm/sm2"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"io"
 	"math/big"
+
+	"github.com/emmansun/gmsm/sm2"
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 // 密钥协商接口，实现了客户端 或 服务端的密钥协商协议
@@ -134,7 +135,7 @@ func (e *eccKeyAgreement) processClientKeyExchange(hs *serverHandshakeState, ckx
 
 	cipher := ckx.ciphertext[2:]
 	if cipher[0] != 0x30 {
-		return nil, errors.New("tlcp:  bad client key exchange ciphertext format.")
+		return nil, errors.New("tlcp: bad client key exchange ciphertext format")
 	}
 
 	// 此处兼容C1C3C2 ASN1 报文中含有而外填充内容
@@ -265,11 +266,11 @@ func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeSta
 
 	// 使用加密密钥对进行SM2密钥交换
 	encPrv := hs.encCert.PrivateKey
-	switch encPrv.(type) {
+	switch key := encPrv.(type) {
 	case SM2KeyAgreement:
-		ka.ke = encPrv.(SM2KeyAgreement)
+		ka.ke = key
 	case *sm2.PrivateKey:
-		ka.ke = newSM2KeyKE(config.rand(), encPrv.(*sm2.PrivateKey))
+		ka.ke = newSM2KeyKE(config.rand(), key)
 	default:
 		return nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}
