@@ -1,6 +1,9 @@
 # Go TLCP
 
-[![Documentation](https://godoc.org/gitee.com/Trisia/gotlcp?status.svg)](https://pkg.go.dev/gitee.com/Trisia/gotlcp) ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/Trisia/gotlcp) ![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/Trisia/gotlcp)
+[![Github CI](https://github.com/Trisia/gotlcp/actions/workflows/go.yml/badge.svg)](https://github.com/Trisia/gotlcp/actions/workflows/go.yml)
+[![Documentation](https://godoc.org/gitee.com/Trisia/gotlcp?status.svg)](https://pkg.go.dev/gitee.com/Trisia/gotlcp)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/Trisia/gotlcp)
+![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/Trisia/gotlcp)
 
 Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
 
