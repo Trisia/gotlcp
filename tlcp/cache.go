@@ -13,7 +13,7 @@ import (
 
 // cacheEntry 证书引用缓存项目
 type cacheEntry struct {
-	refs atomic.Int64      // 引用计数器
+	refs int64             // 引用计数器
 	cert *x509.Certificate // 证书对象
 }
 
@@ -47,10 +47,10 @@ type activeCert struct {
 // active 该方法将会增加缓存中引用计数器的数目，然后设置在该引用被被回收时的回调，用于减少计数器
 // 当计数器为0时，清理缓存。
 func (cc *certCache) active(e *cacheEntry) *activeCert {
-	e.refs.Add(1)
+	atomic.AddInt64(&e.refs, 1)
 	a := &activeCert{e.cert}
 	runtime.SetFinalizer(a, func(_ *activeCert) {
-		if e.refs.Add(-1) == 0 {
+		if atomic.AddInt64(&e.refs, -1) == 0 {
 			cc.evict(e)
 		}
 	})

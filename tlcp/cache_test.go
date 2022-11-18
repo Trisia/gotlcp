@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -34,7 +35,7 @@ func TestCertCache(t *testing.T) {
 	if entry, ok := cc.Load(string(p.Bytes)); !ok {
 		t.Fatal("cache does not contain expected entry")
 	} else {
-		if refs := entry.(*cacheEntry).refs.Load(); refs != 2 {
+		if refs := atomic.LoadInt64(&entry.(*cacheEntry).refs); refs != 2 {
 			t.Fatalf("unexpected number of references: got %d, want 2", refs)
 		}
 	}
@@ -54,7 +55,7 @@ func TestCertCache(t *testing.T) {
 					return
 				}
 
-				if e.(*cacheEntry).refs.Load() == count {
+				if atomic.LoadInt64(&e.(*cacheEntry).refs) == count {
 					return
 				}
 			}
