@@ -70,9 +70,10 @@ gmquZR3m
 )
 
 var (
-	sigCert Certificate
-	encCert Certificate
-	root1   *smx509.Certificate
+	sigCert    Certificate
+	encCert    Certificate
+	root1      *smx509.Certificate
+	simplePool *smx509.CertPool
 )
 
 func init() {
@@ -89,6 +90,9 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	simplePool = smx509.NewCertPool()
+	simplePool.AddCert(root1)
 }
 
 func Test_serverHandshake(t *testing.T) {
@@ -163,12 +167,11 @@ func serverNeedAuth(port int) error {
 	if err != nil {
 		return err
 	}
-	pool := smx509.NewCertPool()
-	pool.AddCert(root1)
+
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 		ClientAuth:   RequireAndVerifyClientCert,
-		ClientCAs:    pool,
+		ClientCAs:    simplePool,
 	}
 	var conn net.Conn
 	for {

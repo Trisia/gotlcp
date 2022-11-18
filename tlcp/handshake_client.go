@@ -532,14 +532,16 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 // verifyServerCertificate 解析并验证服务端证书（签名,加密）
 // c.verifiedChains and c.peerCertificates or sending the appropriate alert.
 func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
+	activeHandles := make([]*activeCert, len(certificates))
 	certs := make([]*x509.Certificate, len(certificates))
 	for i, asn1Data := range certificates {
-		cert, err := x509.ParseCertificate(asn1Data)
+		cert, err := clientCertCache.newCert(asn1Data)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
 			return errors.New("tlcp: failed to parse certificate from server: " + err.Error())
 		}
-		certs[i] = cert
+		activeHandles[i] = cert
+		certs[i] = cert.cert
 	}
 
 	if len(certs) < 2 {
@@ -583,6 +585,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		return fmt.Errorf("tlcp: server's certificate contains an unsupported type of public key: %T", certs[0].PublicKey)
 	}
 
+	c.activeCertHandles = activeHandles
 	c.peerCertificates = certs
 
 	if c.config.VerifyPeerCertificate != nil {

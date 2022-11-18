@@ -50,10 +50,11 @@ type Conn struct {
 	// handshakes counts the number of handshakes performed on the
 	// connection so far. If renegotiation is disabled then this is either
 	// zero or one.
-	handshakes       int
-	didResume        bool                // 表示是否为会话重用
-	cipherSuite      uint16              // 密码套件ID
-	peerCertificates []*x509.Certificate // 对端数字证书列表
+	handshakes        int
+	didResume         bool                // 表示是否为会话重用
+	cipherSuite       uint16              // 密码套件ID
+	activeCertHandles []*activeCert       // 证书缓存引用，在运行期间持有该引用维持缓存，用于减少重复的DER证书解析造成而外性能损耗。
+	peerCertificates  []*x509.Certificate // 对端数字证书列表
 	// verifiedChains 用于验证对端证书的根证书链
 	verifiedChains [][]*x509.Certificate
 	// serverName contains the server name indicated by the client, if any.
