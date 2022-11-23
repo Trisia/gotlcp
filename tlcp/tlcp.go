@@ -11,11 +11,9 @@
 package tlcp
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/ed25519"
 	"crypto/rsa"
 	"encoding/pem"
 	"errors"
@@ -129,7 +127,7 @@ func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, conf
 
 	conn := Client(rawConn, config)
 	if err := conn.HandshakeContext(ctx); err != nil {
-		rawConn.Close()
+		_ = rawConn.Close()
 		return nil, err
 	}
 	return conn, nil
@@ -271,14 +269,6 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		if pub.X.Cmp(priv.X) != 0 || pub.Y.Cmp(priv.Y) != 0 {
 			return fail(errors.New("tlcp: private key does not match public key"))
 		}
-	case ed25519.PublicKey:
-		priv, ok := cert.PrivateKey.(ed25519.PrivateKey)
-		if !ok {
-			return fail(errors.New("tlcp: private key type does not match public key type"))
-		}
-		if !bytes.Equal(priv.Public().(ed25519.PublicKey), pub) {
-			return fail(errors.New("tlcp: private key does not match public key"))
-		}
 	default:
 		return fail(errors.New("tlcp: unknown public key algorithm"))
 	}
@@ -293,7 +283,7 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	//}
 	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, *sm2.PrivateKey:
+		case *rsa.PrivateKey, *ecdsa.PrivateKey, *sm2.PrivateKey:
 			return key, nil
 		default:
 			return nil, errors.New("tlcp: found unknown private key type in PKCS#8 wrapping")
