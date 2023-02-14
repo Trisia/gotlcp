@@ -578,3 +578,18 @@ func defaultConfig() *Config {
 func unexpectedMessageError(wanted, got interface{}) error {
 	return fmt.Errorf("tlcp: received unexpected handshake message of type %T when waiting for %T", got, wanted)
 }
+
+// CertificateVerificationError is returned when certificate verification fails during the handshake.
+type CertificateVerificationError struct {
+	// UnverifiedCertificates and its contents should not be modified.
+	UnverifiedCertificates []*x509.Certificate
+	Err                    error
+}
+
+func (e *CertificateVerificationError) Error() string {
+	return fmt.Sprintf("tlcp: failed to verify certificate: %s", e.Err)
+}
+
+func (e *CertificateVerificationError) Unwrap() error {
+	return e.Err
+}

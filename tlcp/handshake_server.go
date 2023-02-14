@@ -668,8 +668,15 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 
 		chains, err := certs[0].Verify(opts)
 		if err != nil {
-			c.sendAlert(alertBadCertificate)
-			return errors.New("tlcp: failed to verify client certificate: " + err.Error())
+			var errCertificateInvalid x509.CertificateInvalidError
+			if errors.As(err, &x509.UnknownAuthorityError{}) {
+				c.sendAlert(alertUnknownCA)
+			} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
+				c.sendAlert(alertCertificateExpired)
+			} else {
+				c.sendAlert(alertBadCertificate)
+			}
+			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 		}
 
 		c.verifiedChains = chains
