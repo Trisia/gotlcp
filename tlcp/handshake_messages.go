@@ -88,9 +88,9 @@ type clientHelloMsg struct {
 	compressionMethods []uint8
 }
 
-func (m *clientHelloMsg) marshal() []byte {
+func (m *clientHelloMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var b cryptobyte.Builder
@@ -113,8 +113,9 @@ func (m *clientHelloMsg) marshal() []byte {
 		// 由于GB/T 38636-2016 不支持扩展，因此忽略
 	})
 
-	m.raw = b.BytesOrPanic()
-	return m.raw
+	var err error
+	m.raw, err = b.Bytes()
+	return m.raw, err
 }
 
 func (m *clientHelloMsg) unmarshal(data []byte) bool {
@@ -179,9 +180,9 @@ type serverHelloMsg struct {
 	compressionMethod uint8
 }
 
-func (m *serverHelloMsg) marshal() []byte {
+func (m *serverHelloMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var b cryptobyte.Builder
@@ -196,9 +197,9 @@ func (m *serverHelloMsg) marshal() []byte {
 		b.AddUint8(m.compressionMethod)
 		// 由于GB/T 38636-2016 不支持扩展，因此忽略
 	})
-
-	m.raw = b.BytesOrPanic()
-	return m.raw
+	var err error
+	m.raw, err = b.Bytes()
+	return m.raw, err
 }
 
 func (m *serverHelloMsg) unmarshal(data []byte) bool {
@@ -600,9 +601,9 @@ type certificateMsg struct {
 	certificates [][]byte
 }
 
-func (m *certificateMsg) marshal() (x []byte) {
+func (m *certificateMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var i int
@@ -611,7 +612,7 @@ func (m *certificateMsg) marshal() (x []byte) {
 	}
 
 	length := 3 + 3*len(m.certificates) + i
-	x = make([]byte, 4+length)
+	x := make([]byte, 4+length)
 	x[0] = typeCertificate
 	x[1] = uint8(length >> 16)
 	x[2] = uint8(length >> 8)
@@ -632,7 +633,7 @@ func (m *certificateMsg) marshal() (x []byte) {
 	}
 
 	m.raw = x
-	return
+	return m.raw, nil
 }
 
 func (m *certificateMsg) unmarshal(data []byte) bool {
@@ -838,9 +839,9 @@ type serverKeyExchangeMsg struct {
 	key []byte
 }
 
-func (m *serverKeyExchangeMsg) marshal() []byte {
+func (m *serverKeyExchangeMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 	length := len(m.key)
 	x := make([]byte, length+4)
@@ -851,7 +852,7 @@ func (m *serverKeyExchangeMsg) marshal() []byte {
 	copy(x[4:], m.key)
 
 	m.raw = x
-	return x
+	return x, nil
 }
 
 func (m *serverKeyExchangeMsg) unmarshal(data []byte) bool {
@@ -910,10 +911,10 @@ func (m *serverKeyExchangeMsg) debug() {
 
 type serverHelloDoneMsg struct{}
 
-func (m *serverHelloDoneMsg) marshal() []byte {
+func (m *serverHelloDoneMsg) marshal() ([]byte, error) {
 	x := make([]byte, 4)
 	x[0] = typeServerHelloDone
-	return x
+	return x, nil
 }
 
 func (m *serverHelloDoneMsg) unmarshal(data []byte) bool {
@@ -932,9 +933,9 @@ type clientKeyExchangeMsg struct {
 	ciphertext []byte
 }
 
-func (m *clientKeyExchangeMsg) marshal() []byte {
+func (m *clientKeyExchangeMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 	length := len(m.ciphertext)
 	x := make([]byte, length+4)
@@ -945,7 +946,7 @@ func (m *clientKeyExchangeMsg) marshal() []byte {
 	copy(x[4:], m.ciphertext)
 
 	m.raw = x
-	return x
+	return x, nil
 }
 
 func (m *clientKeyExchangeMsg) unmarshal(data []byte) bool {
@@ -973,9 +974,9 @@ type finishedMsg struct {
 	verifyData []byte
 }
 
-func (m *finishedMsg) marshal() []byte {
+func (m *finishedMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var b cryptobyte.Builder
@@ -984,8 +985,9 @@ func (m *finishedMsg) marshal() []byte {
 		b.AddBytes(m.verifyData)
 	})
 
-	m.raw = b.BytesOrPanic()
-	return m.raw
+	var err error
+	m.raw, err = b.Bytes()
+	return m.raw, err
 }
 
 func (m *finishedMsg) unmarshal(data []byte) bool {
@@ -1014,9 +1016,9 @@ type certificateRequestMsg struct {
 	certificateAuthorities [][]byte
 }
 
-func (m *certificateRequestMsg) marshal() (x []byte) {
+func (m *certificateRequestMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	// See RFC 4346, Section 7.4.4.
@@ -1027,7 +1029,7 @@ func (m *certificateRequestMsg) marshal() (x []byte) {
 	}
 	length += casLength
 
-	x = make([]byte, 4+length)
+	x := make([]byte, 4+length)
 	x[0] = typeCertificateRequest
 	x[1] = uint8(length >> 16)
 	x[2] = uint8(length >> 8)
@@ -1050,7 +1052,7 @@ func (m *certificateRequestMsg) marshal() (x []byte) {
 	}
 
 	m.raw = x
-	return
+	return x, nil
 }
 
 func (m *certificateRequestMsg) unmarshal(data []byte) bool {
@@ -1151,9 +1153,9 @@ type certificateVerifyMsg struct {
 	signature []byte
 }
 
-func (m *certificateVerifyMsg) marshal() (x []byte) {
+func (m *certificateVerifyMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var b cryptobyte.Builder
@@ -1163,9 +1165,9 @@ func (m *certificateVerifyMsg) marshal() (x []byte) {
 			b.AddBytes(m.signature)
 		})
 	})
-
-	m.raw = b.BytesOrPanic()
-	return m.raw
+	var err error
+	m.raw, err = b.Bytes()
+	return m.raw, err
 }
 
 func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
@@ -1195,3 +1197,18 @@ func (m *certificateVerifyMsg) debug() {
 //func (*helloRequestMsg) unmarshal(data []byte) bool {
 //	return len(data) == 4
 //}
+
+type transcriptHash interface {
+	Write([]byte) (int, error)
+}
+
+// transcriptMsg is a helper used to marshal and hash messages which typically
+// are not written to the wire, and as such aren't hashed during Conn.writeRecord.
+func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
+	data, err := msg.marshal()
+	if err != nil {
+		return err
+	}
+	h.Write(data)
+	return nil
+}
