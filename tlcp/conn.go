@@ -912,32 +912,43 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 	return n, nil
 }
 
-// writeRecord writes a TLS record with the given type and payload to the
-// connection and updates the record layer state.
-func (c *Conn) writeRecord(typ recordType, data []byte) (int, error) {
+// writeHandshakeRecord writes a handshake message to the connection and updates
+// the record layer state. If transcript is non-nil the marshalled message is
+// written to it.
+func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptHash) (int, error) {
 	c.out.Lock()
 	defer c.out.Unlock()
 
-	return c.writeRecordLocked(typ, data)
-}
-
-func (c *Conn) writeHandshake(m handshakeMessage) (int, error) {
-	data := m.marshal()
-	c.out.Lock()
-	defer c.out.Unlock()
+	data, err := msg.marshal()
+	if err != nil {
+		return 0, err
+	}
+	if transcript != nil {
+		transcript.Write(data)
+	}
 
 	n, err := c.writeRecordLocked(recordTypeHandshake, data)
 
 	if c.config.EnableDebug {
-		fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(m.messageType()), len(data), err == nil)
-		m.debug()
+		fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(msg.messageType()), len(data), err == nil)
+		msg.debug()
 	}
 	return n, err
 }
 
+// writeChangeCipherRecord writes a ChangeCipherSpec message to the connection and
+// updates the record layer state.
+func (c *Conn) writeChangeCipherRecord() error {
+	c.out.Lock()
+	defer c.out.Unlock()
+	_, err := c.writeRecordLocked(recordTypeChangeCipherSpec, []byte{1})
+	return err
+}
+
 // readHandshake reads the next handshake message from
-// the record layer.
-func (c *Conn) readHandshake() (interface{}, error) {
+// the record layer. If transcript is non-nil, the message
+// is written to the passed transcriptHash.
+func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 	for c.hand.Len() < 4 {
 		if err := c.readRecord(); err != nil {
 			return nil, err
@@ -990,6 +1001,9 @@ func (c *Conn) readHandshake() (interface{}, error) {
 
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+	if transcript != nil {
+		transcript.Write(data)
 	}
 	if c.config.EnableDebug {
 		m.debug()
