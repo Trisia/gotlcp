@@ -580,16 +580,19 @@ func unexpectedMessageError(wanted, got interface{}) error {
 }
 
 // CertificateVerificationError is returned when certificate verification fails during the handshake.
+// 证书验证错误类型，用于记录握手过程中证书验证错误信息
 type CertificateVerificationError struct {
 	// UnverifiedCertificates and its contents should not be modified.
 	UnverifiedCertificates []*x509.Certificate
 	Err                    error
 }
 
+// Error 错误信息
 func (e *CertificateVerificationError) Error() string {
 	return fmt.Sprintf("tlcp: failed to verify certificate: %s", e.Err)
 }
 
+// Unwrap 原始错误对象
 func (e *CertificateVerificationError) Unwrap() error {
 	return e.Err
 }

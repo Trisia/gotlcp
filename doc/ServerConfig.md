@@ -240,3 +240,37 @@ config := &tlcp.Config{
 | RequireAndVerifyAnyKeyUsageClientCert | 要求客户端在握手过程中向服务端发送客户端认证证书，并且验证数字证书有效性，证书验证时忽略证书的扩展密钥用法。|
 | RequireAndVerifyClientCert | 要求客户端在握手过程中向服务端发送客户端认证证书，并且验证数字证书，且要求客户端证书具有`x509.ExtKeyUsageClientAuth`或`x509.ExtKeyUsageServerAuth`的扩展密钥用法。|
 
+
+### 2.5 证书校验
+
+若开启`RequestClientCert`及以上的客户端验证，在客户端证书验证失败时将会返回`tlcp.CertificateVerificationError`类型的错误。
+
+通常您可以通过该错误得知证书的验证失败的类型和描述，如下：
+
+```go
+err := conn.Read(buf);
+if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
+    // 	错误处理...
+}
+```
+
+若`tlcp.CertificateVerificationError`类型的错误若难以满足您的需要，您需要可能需要由自己来实现证书验证流程，可以通过如下方式开启自定义证书校验：
+
+1. 配置`tlcp.Config`中的`InsecureSkipVerify`参数为`true`，表示关闭默认证书安全校验。
+2. 实现并设置`tlcp.Config`中的`VerifyPeerCertificate`的校验对端证书方法。
+   - 函数原型`func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error`。
+   - 参数 `rawCerts` 为客户端证书消息中的DER编码的证书数组。
+   - 参数 `verifiedChains` 固定为空。
+   - 返回值 `nil` 表示有效，非`nil`表示证书校验失败。
+
+示例如下：
+
+```go
+config := &tlcp.Config{
+	InsecureSkipVerify: true,
+	VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+		// 自定证书的验证流程...
+		return nil
+	},
+}
+```
