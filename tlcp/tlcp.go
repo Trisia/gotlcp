@@ -290,6 +290,9 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 		}
 	}
 	if key, err := x509.ParseECPrivateKey(der); err == nil {
+		if key.Curve == sm2.P256() {
+			return new(sm2.PrivateKey).FromECPrivateKey(key)
+		}
 		return key, nil
 	}
 
