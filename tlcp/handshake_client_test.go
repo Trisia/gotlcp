@@ -187,7 +187,7 @@ func Test_clientHandshake_ECDHE(t *testing.T) {
 	pool.AddCert(root1)
 	config := &Config{
 		RootCAs:      pool,
-		Certificates: []Certificate{authCert},
+		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
 	}
 	conn, err := Dial("tcp", "127.0.0.1:8451", config)
