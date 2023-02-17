@@ -269,6 +269,10 @@ type Config struct {
 	// 也需要返回一个空的 Certificate 对象，这样客户端可以发送一个空的证书消息给服务端。
 	GetClientCertificate func(*CertificateRequestInfo) (*Certificate, error)
 
+	// GetClientKECertificate 根据服务端的证书请求消息，返回客户端用于密钥交换的密钥和证书
+	// 如果客户端想要支持ECDHE，就必须要同时提供签名和加密证书。
+	GetClientKECertificate func(*CertificateRequestInfo) (*Certificate, error)
+
 	// GetConfigForClient 【可选】 根据客户端Hello消息，生成TLCP配置对象
 	// 如果该方法不为空，将会在接受到客户端的 ClientHello 消息后调用。
 	//
@@ -367,6 +371,7 @@ func (c *Config) Clone() *Config {
 		GetCertificate:              c.GetCertificate,
 		GetKECertificate:            c.GetKECertificate,
 		GetClientCertificate:        c.GetClientCertificate,
+		GetClientKECertificate:      c.GetClientKECertificate,
 		GetConfigForClient:          c.GetConfigForClient,
 		VerifyPeerCertificate:       c.VerifyPeerCertificate,
 		VerifyConnection:            c.VerifyConnection,
@@ -580,19 +585,16 @@ func unexpectedMessageError(wanted, got interface{}) error {
 }
 
 // CertificateVerificationError is returned when certificate verification fails during the handshake.
-// 证书验证错误类型，用于记录握手过程中证书验证错误信息
 type CertificateVerificationError struct {
 	// UnverifiedCertificates and its contents should not be modified.
 	UnverifiedCertificates []*x509.Certificate
 	Err                    error
 }
 
-// Error 错误信息
 func (e *CertificateVerificationError) Error() string {
 	return fmt.Sprintf("tlcp: failed to verify certificate: %s", e.Err)
 }
 
-// Unwrap 原始错误对象
 func (e *CertificateVerificationError) Unwrap() error {
 	return e.Err
 }

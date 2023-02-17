@@ -14,8 +14,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"fmt"
-	"github.com/emmansun/gmsm/sm2"
 	"io"
+
+	"github.com/emmansun/gmsm/sm2"
 )
 
 // SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 3622-2018
@@ -29,10 +30,9 @@ type SM2KeyAgreement interface {
 }
 
 type sm2ke struct {
-	rd     io.Reader
-	prv    *sm2.PrivateKey
-	ke     *sm2.KeyExchange
-	keyLen int
+	rd  io.Reader
+	prv *sm2.PrivateKey
+	ke  *sm2.KeyExchange
 }
 
 func newSM2KeyKE(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {

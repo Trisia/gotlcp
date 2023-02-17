@@ -38,6 +38,7 @@ type clientHandshakeState struct {
 	masterSecret     []byte              // 主密钥
 	session          *SessionState       // 会话状态
 	authCert         *Certificate        // 客户端认证密钥对
+	encCert          *Certificate        // 客户端加密证书
 	peerCertificates []*x509.Certificate // 服务端证书，依次为签名证书、加密证书
 }
 
@@ -62,6 +63,11 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		hasAuthKeyPair = true
 	}
 
+	hasEncKeyPair := false
+	if len(config.Certificates) > 1 || config.GetClientKECertificate != nil {
+		hasEncKeyPair = true
+	}
+
 	preferenceOrder := cipherSuitesPreferenceOrder
 	configCipherSuites := config.cipherSuites()
 	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
@@ -73,7 +79,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		}
 		// SM2 ECDHE 必须要求客户端具有认证密钥对
 		if suiteId == ECDHE_SM4_GCM_SM3 || suiteId == ECDHE_SM4_CBC_SM3 {
-			if !hasAuthKeyPair {
+			if !hasAuthKeyPair || !hasEncKeyPair {
 				continue
 			}
 		}
@@ -327,6 +333,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 
 	var clientAuthCert *Certificate
+	var clientEncCert *Certificate
 	var certRequested bool
 	certReq, ok := msg.(*certificateRequestMsg)
 	if ok {
@@ -337,7 +344,14 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 			c.sendAlert(alertInternalError)
 			return err
 		}
+		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
+			if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
+				c.sendAlert(alertInternalError)
+				return err
+			}
+		}
 		hs.authCert = clientAuthCert
+		hs.encCert = clientEncCert
 
 		msg, err = c.readHandshake(&hs.finishedHash)
 		if err != nil {
@@ -355,7 +369,10 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	// 即便客户端没有证书，也需要发一条空证书的证书消息到服务端。
 	if certRequested {
 		certMsg = new(certificateMsg)
-		certMsg.certificates = clientAuthCert.Certificate
+		certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
+		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
+			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
+		}
 		if _, err := c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
 			return err
 		}
@@ -613,13 +630,26 @@ func (c *Conn) getClientCertificate(cri *CertificateRequestInfo) (*Certificate, 
 		return c.config.GetClientCertificate(cri)
 	}
 
-	for _, chain := range c.config.Certificates {
-		if err := cri.SupportsCertificate(&chain); err != nil {
-			continue
+	if len(c.config.Certificates) > 0 {
+		if err := cri.SupportsCertificate(&c.config.Certificates[0]); err == nil {
+			return &c.config.Certificates[0], nil
 		}
-		return &chain, nil
 	}
 
 	// No acceptable certificate found. Don't send a certificate.
 	return new(Certificate), nil
+}
+
+func (c *Conn) getClientKECertificate(cri *CertificateRequestInfo) (*Certificate, error) {
+	if c.config.GetClientKECertificate != nil {
+		return c.config.GetClientKECertificate(cri)
+	}
+	if len(c.config.Certificates) > 1 {
+		if err := cri.SupportsCertificate(&c.config.Certificates[1]); err == nil {
+			return &c.config.Certificates[1], nil
+		}
+	}
+
+	// No acceptable certificate found. Don't send a certificate.
+	return nil, errNoCertificates
 }

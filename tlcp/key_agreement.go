@@ -258,7 +258,7 @@ type sm2ECDHEKeyAgreement struct {
 
 // generateServerKeyExchange 生成服务端ECDHE密钥交换消息
 func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeState) (*serverKeyExchangeMsg, error) {
-	if hs.sigCert == nil && hs.encCert == nil {
+	if hs.sigCert == nil || hs.encCert == nil {
 		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
 	}
 	config := hs.c.config
@@ -360,10 +360,10 @@ func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeSta
 
 // processClientKeyExchange 处理客户端密钥交换消息（服务端）
 func (ka *sm2ECDHEKeyAgreement) processClientKeyExchange(hs *serverHandshakeState, ckx *clientKeyExchangeMsg) ([]byte, error) {
-	if len(hs.peerCertificates) < 1 {
-		return nil, errors.New("tlcp: sm2 key exchange need client cert")
+	if len(hs.peerCertificates) < 2 {
+		return nil, errors.New("tlcp: sm2 key exchange need client enc cert")
 	}
-	responsePubKey, ok := hs.peerCertificates[0].PublicKey.(*ecdsa.PublicKey)
+	responsePubKey, ok := hs.peerCertificates[1].PublicKey.(*ecdsa.PublicKey)
 	if !ok {
 		return nil, errors.New("tlcp: client key not sm2 type")
 	}
@@ -382,17 +382,19 @@ func (ka *sm2ECDHEKeyAgreement) processClientKeyExchange(hs *serverHandshakeStat
 		    opaque point <1..2^8-1>;
 		} ECPoint;
 	*/
-	pLen := int(ckx.ciphertext[0]) << 8
-	pLen |= int(ckx.ciphertext[1])
-	if pLen+2 > len(ckx.ciphertext) {
+	if len(ckx.ciphertext) <= 4 {
 		return nil, errClientKeyExchange
 	}
-	clientECDHParams := ckx.ciphertext[2:]
+	publicLen := int(ckx.ciphertext[3])
+	if publicLen != len(ckx.ciphertext[4:]) {
+		return nil, errClientKeyExchange
+	}
+
 	// 第一个参数不校验 3 + 1
-	public := clientECDHParams[4:]
+	sm2Point := ckx.ciphertext[4:]
 	p256 := sm2.P256()
 	responseTmpPubKey := &ecdsa.PublicKey{Curve: p256}
-	responseTmpPubKey.X, responseTmpPubKey.Y = elliptic.Unmarshal(p256, public)
+	responseTmpPubKey.X, responseTmpPubKey.Y = elliptic.Unmarshal(p256, sm2Point)
 	// 服务端 生成预主密钥
 	return ka.ke.GenerateKey(nil, responsePubKey, responseTmpPubKey)
 }
@@ -466,13 +468,13 @@ func (ka *sm2ECDHEKeyAgreement) generateClientKeyExchange(hs *clientHandshakeSta
 		return nil, nil, errServerKeyExchange
 	}
 
-	// 使用客户端认证密钥对进行SM2密钥交换
-	authPrv := hs.authCert.PrivateKey
-	switch authPrv.(type) {
+	// 使用客户端加密密钥对进行SM2密钥交换
+	encPriv := hs.encCert.PrivateKey
+	switch prvKey := encPriv.(type) {
 	case SM2KeyAgreement:
-		ka.ke = authPrv.(SM2KeyAgreement)
+		ka.ke = prvKey
 	case *sm2.PrivateKey:
-		ka.ke = newSM2KeyKE(hs.c.config.rand(), authPrv.(*sm2.PrivateKey))
+		ka.ke = newSM2KeyKE(hs.c.config.rand(), prvKey)
 	default:
 		return nil, nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}
@@ -503,16 +505,12 @@ func (ka *sm2ECDHEKeyAgreement) generateClientKeyExchange(hs *clientHandshakeSta
 	ecdhePublic := elliptic.Marshal(sm2.P256(), responseTmpPubKey.X, responseTmpPubKey.Y)
 	ckx := new(clientKeyExchangeMsg)
 	paramLen := 1 + 2 + 1 + len(ecdhePublic)
-	ckx.ciphertext = make([]byte, 2+paramLen)
-	ckx.ciphertext[0] = byte(paramLen >> 8)
-	ckx.ciphertext[1] = byte(paramLen & 0xFF)
-
-	clientECDHEParams := ckx.ciphertext[2:]
-	clientECDHEParams[0] = 3 // named curve
-	clientECDHEParams[1] = byte(CurveSM2 >> 8)
-	clientECDHEParams[2] = byte(CurveSM2)
-	clientECDHEParams[3] = byte(len(ecdhePublic))
-	copy(clientECDHEParams[4:], ecdhePublic)
+	ckx.ciphertext = make([]byte, paramLen)
+	ckx.ciphertext[0] = 3 // named curve
+	ckx.ciphertext[1] = byte(CurveSM2 >> 8)
+	ckx.ciphertext[2] = byte(CurveSM2)
+	ckx.ciphertext[3] = byte(len(ecdhePublic))
+	copy(ckx.ciphertext[4:], ecdhePublic)
 
 	return preMasterSecret, ckx, nil
 }
