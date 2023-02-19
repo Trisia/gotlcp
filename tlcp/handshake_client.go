@@ -77,11 +77,9 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		if suite == nil {
 			continue
 		}
-		// SM2 ECDHE 必须要求客户端具有认证密钥对
-		if suiteId == ECDHE_SM4_GCM_SM3 || suiteId == ECDHE_SM4_CBC_SM3 {
-			if !hasAuthKeyPair || !hasEncKeyPair {
-				continue
-			}
+		// SM2 ECDHE 必须要求客户端具有认证密钥对(需要同时有签名密钥对吗？)
+		if (suiteId == ECDHE_SM4_GCM_SM3 || suiteId == ECDHE_SM4_CBC_SM3) && !(hasAuthKeyPair && hasEncKeyPair) {
+			continue
 		}
 		hello.cipherSuites = append(hello.cipherSuites, suiteId)
 	}
