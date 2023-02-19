@@ -730,7 +730,7 @@ func (c *Conn) processCertsFromClient(suite *cipherSuite, certificate Certificat
 			case *ecdsa.PublicKey, *rsa.PublicKey:
 			default:
 				c.sendAlert(alertUnsupportedCertificate)
-				return fmt.Errorf("tlcp: client enc certificate contains an unsupported public key of type %T", certs[0].PublicKey)
+				return fmt.Errorf("tlcp: client enc certificate contains an unsupported public key of type %T", certs[1].PublicKey)
 			}
 		}
 	}
