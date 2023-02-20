@@ -18,11 +18,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/emmansun/gmsm/sm2"
-	x509 "github.com/emmansun/gmsm/smx509"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/emmansun/gmsm/sm2"
+	x509 "github.com/emmansun/gmsm/smx509"
 )
 
 // Server 使用现有连接对象构造一个新的TLCP服务端连接对象

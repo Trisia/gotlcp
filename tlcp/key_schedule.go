@@ -11,77 +11,90 @@
 package tlcp
 
 import (
-	"crypto/ecdsa"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/emmansun/gmsm/sm2"
+	"github.com/emmansun/gmsm/ecdh"
 )
 
 // SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 3622-2018
 type SM2KeyAgreement interface {
 	// GenerateAgreementData 发起方生成临时公钥，接口设计参考 GB/T 3622-2018 6.3.15
-	GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, err error)
+	GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, err error)
 	// GenerateKey 发起方计算会话密钥，接口设计参考 GB/T 3622-2018 6.3.16
-	GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdsa.PublicKey) ([]byte, error)
+	GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdh.PublicKey) ([]byte, error)
 	// GenerateAgreementDataAndKey 响应方计算会话密钥并返回临时公钥，接口设计参考 GB/T 3622-2018 6.3.17
-	GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, kenLen int) (*ecdsa.PublicKey, []byte, error)
+	GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, keyLen int) (*ecdh.PublicKey, []byte, error)
 }
 
 type sm2ke struct {
-	rd  io.Reader
-	prv *sm2.PrivateKey
-	ke  *sm2.KeyExchange
+	rd     io.Reader
+	prv    *ecdh.PrivateKey
+	keyLen int              // only used by sponsor/server side
+	uid    []byte           // only used by sponsor/server side
+	ePrv   *ecdh.PrivateKey // only used by sponsor/server side
 }
 
-func newSM2KeyKE(rd io.Reader, prv *sm2.PrivateKey) *sm2ke {
+func newSM2KeyKE(rd io.Reader, prv *ecdh.PrivateKey) *sm2ke {
 	if rd == nil {
 		rd = rand.Reader
 	}
 	return &sm2ke{rd: rd, prv: prv}
 }
 
-func (s *sm2ke) GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, err error) {
-	s.ke, err = sm2.NewKeyExchange(s.prv, nil, sponsorId, nil, keyLen, false)
-	if err != nil {
-		return
+func (s *sm2ke) GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, err error) {
+	if keyLen <= 0 {
+		return nil, nil, errors.New("sm2ke: invalid key length")
 	}
-	sponsorPubKey = &s.prv.PublicKey
+	// below values will be used by GenerateKey() method.
+	s.keyLen = keyLen
+	s.uid = sponsorId
+
+	sponsorPubKey = s.prv.PublicKey()
+
 	// 计算发起方临时公钥
-	sponsorTmpPubKey, err = s.ke.InitKeyExchange(s.rd)
+	s.ePrv, err = ecdh.P256().GenerateKey(s.rd)
+	if err != nil {
+		return nil, nil, err
+	}
+	sponsorTmpPubKey = s.ePrv.PublicKey()
 	return
 }
 
-func (s *sm2ke) GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdsa.PublicKey) ([]byte, error) {
-	if s.ke == nil {
+func (s *sm2ke) GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdh.PublicKey) ([]byte, error) {
+	if s.ePrv == nil {
 		return nil, fmt.Errorf("sm2ke: should call GenerateAgreementData frist")
 	}
-	err := s.ke.SetPeerParameters(responsePubKey, responseId)
+	secret, err := s.prv.SM2MQV(s.ePrv, responsePubKey, responseTmpPubKey)
 	if err != nil {
 		return nil, err
 	}
-	shareKey, _, err := s.ke.ConfirmResponder(responseTmpPubKey, nil)
+
+	sharedKey, err := secret.SM2SharedKey(false, s.keyLen, s.prv.PublicKey(), responsePubKey, s.uid, responseId)
 	if err != nil {
 		return nil, err
 	}
-	return shareKey, nil
+
+	return sharedKey, nil
 }
 
-func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdsa.PublicKey, kenLen int) (*ecdsa.PublicKey, []byte, error) {
-	var err error
-	s.ke, err = sm2.NewKeyExchange(s.prv, sponsorPubKey, responseId, sponsorId, kenLen, false)
+func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, keyLen int) (*ecdh.PublicKey, []byte, error) {
+	// 计算发起方临时公钥
+	ePrv, err := ecdh.P256().GenerateKey(s.rd)
 	if err != nil {
 		return nil, nil, err
 	}
-	tmpPub, _, err := s.ke.RepondKeyExchange(s.rd, sponsorTmpPubKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	shareKey, err := s.ke.ConfirmInitiator(nil)
+	secret, err := s.prv.SM2MQV(ePrv, sponsorPubKey, sponsorTmpPubKey)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return tmpPub, shareKey, nil
+	sharedKey, err := secret.SM2SharedKey(true, keyLen, s.prv.PublicKey(), sponsorPubKey, responseId, sponsorId)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ePrv.PublicKey(), sharedKey, nil
 }

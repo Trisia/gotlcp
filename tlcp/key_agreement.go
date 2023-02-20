@@ -14,12 +14,12 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 
+	"github.com/emmansun/gmsm/ecdh"
 	"github.com/emmansun/gmsm/sm2"
 	x509 "github.com/emmansun/gmsm/smx509"
 )
@@ -252,14 +252,14 @@ func (e *eccKeyAgreement) hashForServerKeyExchange(clientRandom, serverRandom, c
 
 // sm2ECDHEKeyAgreement 实现了基于SM2密钥交换算法的ECHD密钥交换，SM2密钥交换算法详见 GT/T GBT 35276-2017 9.6
 type sm2ECDHEKeyAgreement struct {
-	ke         SM2KeyAgreement  // SM2密钥交换
-	peerTmpKey *ecdsa.PublicKey // 对端的临时公钥
+	ke         SM2KeyAgreement // SM2密钥交换
+	peerTmpKey *ecdh.PublicKey // 对端的临时公钥
 }
 
 // generateServerKeyExchange 生成服务端ECDHE密钥交换消息
 func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeState) (*serverKeyExchangeMsg, error) {
 	if hs.sigCert == nil || hs.encCert == nil {
-		return nil, errors.New("tlcp: ecc key exchange need 2 certificates")
+		return nil, errors.New("tlcp: ECDHE key exchange needs 2 certificates")
 	}
 	config := hs.c.config
 	sigkey := hs.sigCert
@@ -270,7 +270,11 @@ func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeSta
 	case SM2KeyAgreement:
 		ka.ke = key
 	case *sm2.PrivateKey:
-		ka.ke = newSM2KeyKE(config.rand(), key)
+		ecdhKey, err := key.ECDH()
+		if err != nil {
+			return nil, err
+		}
+		ka.ke = newSM2KeyKE(config.rand(), ecdhKey)
 	default:
 		return nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}
@@ -301,10 +305,7 @@ func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeSta
 			    } ServerECDHParams;
 		其中服务端的公钥不需要交换，客户端直接从服务端的加密证书中获取。
 	*/
-	ecdhePublic := elliptic.Marshal(sm2.P256(), sponsorTmpPubKey.X, sponsorTmpPubKey.Y)
-	if err != nil {
-		return nil, err
-	}
+	ecdhePublic := sponsorTmpPubKey.Bytes()
 	serverECDHEParams := make([]byte, 1+2+1+len(ecdhePublic))
 	serverECDHEParams[0] = 3 // named curve
 	serverECDHEParams[1] = byte(CurveSM2 >> 8)
@@ -367,6 +368,10 @@ func (ka *sm2ECDHEKeyAgreement) processClientKeyExchange(hs *serverHandshakeStat
 	if !ok {
 		return nil, errors.New("tlcp: client key not sm2 type")
 	}
+	responsePubKeyECDH, err := sm2.PublicKeyToECDH(responsePubKey)
+	if err != nil {
+		return nil, err
+	}
 
 	/*
 		opaque ClientECDHParams<1..2^16-1>
@@ -391,12 +396,9 @@ func (ka *sm2ECDHEKeyAgreement) processClientKeyExchange(hs *serverHandshakeStat
 	}
 
 	// 第一个参数不校验 3 + 1
-	sm2Point := ckx.ciphertext[4:]
-	p256 := sm2.P256()
-	responseTmpPubKey := &ecdsa.PublicKey{Curve: p256}
-	responseTmpPubKey.X, responseTmpPubKey.Y = elliptic.Unmarshal(p256, sm2Point)
+	responseTmpPubKey, err := ecdh.P256().NewPublicKey(ckx.ciphertext[4:])
 	// 服务端 生成预主密钥
-	return ka.ke.GenerateKey(nil, responsePubKey, responseTmpPubKey)
+	return ka.ke.GenerateKey(nil, responsePubKeyECDH, responseTmpPubKey)
 }
 
 // processServerKeyExchange 处理服务端密钥交换消息（客户端）
@@ -431,10 +433,11 @@ func (ka *sm2ECDHEKeyAgreement) processServerKeyExchange(hs *clientHandshakeStat
 	// 服务端曲线参数 ServerECDHParams
 	serverECDHEParams := skx.key[:4+publicLen]
 	// 服务端临时公钥
-	public := serverECDHEParams[4:]
-	p256 := sm2.P256()
-	ka.peerTmpKey = &ecdsa.PublicKey{Curve: p256}
-	ka.peerTmpKey.X, ka.peerTmpKey.Y = elliptic.Unmarshal(p256, public)
+	tmpPubKey, err := ecdh.P256().NewPublicKey(serverECDHEParams[4:])
+	if err != nil {
+		return err
+	}
+	ka.peerTmpKey = tmpPubKey
 
 	// 验证签名值，认证对端身份
 	signedParams := skx.key[4+publicLen:]
@@ -474,20 +477,30 @@ func (ka *sm2ECDHEKeyAgreement) generateClientKeyExchange(hs *clientHandshakeSta
 	case SM2KeyAgreement:
 		ka.ke = prvKey
 	case *sm2.PrivateKey:
-		ka.ke = newSM2KeyKE(hs.c.config.rand(), prvKey)
+		ecdhPriv, err := prvKey.ECDH()
+		if err != nil {
+			return nil, nil, err
+		}
+		ka.ke = newSM2KeyKE(hs.c.config.rand(), ecdhPriv)
 	default:
 		return nil, nil, fmt.Errorf("tlcp: private key not support sm2 key exchange")
 	}
 
 	// 获取服务端加密证书中的加密公钥
 	encCert := hs.peerCertificates[1]
+
 	sponsorPubKey, ok := encCert.PublicKey.(*ecdsa.PublicKey)
 	if !ok {
 		return nil, nil, errors.New("tlcp: server encrypt certificate key type not sm2")
 	}
 
+	sponsorECDHPubKey, err := sm2.PublicKeyToECDH(sponsorPubKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// 使用服务端的临时公钥以及客户端认证密钥对计算SM2密钥交换，生成预主密钥与客户端临时公钥
-	responseTmpPubKey, preMasterSecret, err := ka.ke.GenerateAgreementDataAndKey(nil, nil, sponsorPubKey, ka.peerTmpKey, 48)
+	responseTmpPubKey, preMasterSecret, err := ka.ke.GenerateAgreementDataAndKey(nil, nil, sponsorECDHPubKey, ka.peerTmpKey, 48)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -502,7 +515,7 @@ func (ka *sm2ECDHEKeyAgreement) generateClientKeyExchange(hs *clientHandshakeSta
 			ECPoint         public;
 		} ClientECDHParams;
 	*/
-	ecdhePublic := elliptic.Marshal(sm2.P256(), responseTmpPubKey.X, responseTmpPubKey.Y)
+	ecdhePublic := responseTmpPubKey.Bytes()
 	ckx := new(clientKeyExchangeMsg)
 	paramLen := 1 + 2 + 1 + len(ecdhePublic)
 	ckx.ciphertext = make([]byte, paramLen)
