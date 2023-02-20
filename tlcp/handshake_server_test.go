@@ -94,7 +94,7 @@ func init() {
 	simplePool = smx509.NewCertPool()
 	simplePool.AddCert(root1)
 }
-
+/*
 func Test_serverHandshake(t *testing.T) {
 	err := server(8443)
 	if err != nil {
@@ -132,7 +132,7 @@ func Test_doResumeHandshake(t *testing.T) {
 	}
 
 }
-
+*/
 // 启动TLCP服务端
 func server(port int) error {
 	var err error

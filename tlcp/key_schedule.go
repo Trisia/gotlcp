@@ -81,7 +81,6 @@ func (s *sm2ke) GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey
 }
 
 func (s *sm2ke) GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, keyLen int) (*ecdh.PublicKey, []byte, error) {
-	// 计算发起方临时公钥
 	ePrv, err := ecdh.P256().GenerateKey(s.rd)
 	if err != nil {
 		return nil, nil, err
