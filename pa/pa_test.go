@@ -256,6 +256,7 @@ func mockHelloServer(port int) error {
 			_ = conn.Close()
 			return err
 		}
+		time.Sleep(time.Millisecond * 300)
 		_ = conn.Close()
 	}
 }
