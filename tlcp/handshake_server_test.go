@@ -2,10 +2,9 @@ package tlcp
 
 import (
 	"fmt"
-	"github.com/emmansun/gmsm/smx509"
 	"net"
-	"net/http"
-	"testing"
+
+	"github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -94,6 +93,7 @@ func init() {
 	simplePool = smx509.NewCertPool()
 	simplePool.AddCert(root1)
 }
+
 /*
 func Test_serverHandshake(t *testing.T) {
 	err := server(8443)

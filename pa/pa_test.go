@@ -5,9 +5,11 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"testing"
+	"time"
+
 	"gitee.com/Trisia/gotlcp/tlcp"
 	"github.com/emmansun/gmsm/smx509"
-	"testing"
 )
 
 const (
@@ -189,7 +191,7 @@ func TestListen(t *testing.T) {
 		}
 	}()
 	buf := make([]byte, 1480)
-
+	time.Sleep(time.Millisecond * 300)
 	// TLS Case
 	conn, err := tls.Dial("tcp", "127.0.0.1:9000", &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
