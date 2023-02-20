@@ -397,6 +397,9 @@ func (ka *sm2ECDHEKeyAgreement) processClientKeyExchange(hs *serverHandshakeStat
 
 	// 第一个参数不校验 3 + 1
 	responseTmpPubKey, err := ecdh.P256().NewPublicKey(ckx.ciphertext[4:])
+	if err != nil {
+		return nil, err
+	}
 	// 服务端 生成预主密钥
 	return ka.ke.GenerateKey(nil, responsePubKeyECDH, responseTmpPubKey)
 }
