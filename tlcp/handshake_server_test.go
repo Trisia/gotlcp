@@ -140,6 +140,7 @@ func server(port int) error {
 	if err != nil {
 		return err
 	}
+	defer tcpLn.Close()
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 	}
@@ -167,7 +168,7 @@ func serverNeedAuth(port int) error {
 	if err != nil {
 		return err
 	}
-
+	defer tcpLn.Close()
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 		ClientAuth:   RequireAndVerifyClientCert,
@@ -197,6 +198,7 @@ func serverResumeSession(port int) error {
 	if err != nil {
 		return err
 	}
+	defer tcpLn.Close()
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 		SessionCache: NewLRUSessionCache(10),

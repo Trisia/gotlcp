@@ -284,18 +284,22 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	//}
 	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, *sm2.PrivateKey:
+		case *rsa.PrivateKey, *sm2.PrivateKey: // 这个项目还需要支持RSA吗？目前没有实现RSA密码套件
 			return key, nil
+		case *ecdsa.PrivateKey:
+			return nil, errors.New("tlcp: non-SM2 curve in PKCS#8 private key")
 		default:
 			return nil, errors.New("tlcp: found unknown private key type in PKCS#8 wrapping")
 		}
 	}
-	if key, err := x509.ParseECPrivateKey(der); err == nil {
-		if key.Curve == sm2.P256() {
-			return new(sm2.PrivateKey).FromECPrivateKey(key)
+	if key, err := x509.ParseTypedECPrivateKey(der); err == nil {
+		switch key := key.(type) {
+		case *sm2.PrivateKey:
+			return key, nil
+		default:
+			return nil, errors.New("tlcp: non-SM2 curve in EC private key")
 		}
-		return key, nil
 	}
 
-	return nil, errors.New("tlcp: failed to parse private key")
+	return nil, errors.New("tlcp: failed to parse SM2/RSA private key")
 }
