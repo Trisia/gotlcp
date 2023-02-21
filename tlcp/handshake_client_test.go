@@ -2,10 +2,11 @@ package tlcp
 
 import (
 	"fmt"
-	"github.com/emmansun/gmsm/smx509"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -81,16 +82,7 @@ func Test_clientHandshake_no_auth(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 
 	config := &Config{InsecureSkipVerify: true}
-	conn, err := Dial("tcp", "127.0.0.1:8444", config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = conn.Handshake()
-	if err != nil {
-		_ = conn.Close()
-		t.Fatal(err)
-	}
-	_ = conn.Close()
+	testClientHandshak(t, config, "127.0.0.1:8444")
 }
 
 // 测试服务端身份认证
@@ -107,16 +99,7 @@ func Test_clientHandshake_auth_server(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 300)
 	config := &Config{RootCAs: pool}
-	conn, err := Dial("tcp", "127.0.0.1:8445", config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = conn.Handshake()
-	if err != nil {
-		_ = conn.Close()
-		t.Fatal(err)
-	}
-	_ = conn.Close()
+	testClientHandshak(t, config, "127.0.0.1:8445")
 }
 
 // 测试双向身份认证
@@ -132,16 +115,7 @@ func Test_clientHandshake_client_auth(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 
 	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}}
-	conn, err := Dial("tcp", "127.0.0.1:8446", config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = conn.Handshake()
-	if err != nil {
-		_ = conn.Close()
-		t.Fatal(err)
-	}
-	_ = conn.Close()
+	testClientHandshak(t, config, "127.0.0.1:8446")
 }
 
 // 测试握手重用
@@ -162,9 +136,9 @@ func Test_resumedSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer conn.Close()
 		err = conn.Handshake()
 		if err != nil {
-			_ = conn.Close()
 			t.Fatal(err)
 		}
 		n, err := conn.Read(buff)
@@ -172,7 +146,6 @@ func Test_resumedSession(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Printf(">> %02X\n", buff[:n])
-		_ = conn.Close()
 	}
 }
 
@@ -185,20 +158,25 @@ func Test_clientHandshake_ECDHE(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 	pool := smx509.NewCertPool()
 	pool.AddCert(root1)
+
 	config := &Config{
 		RootCAs:      pool,
-		Certificates: []Certificate{authCert},
+		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
 	}
-	conn, err := Dial("tcp", "127.0.0.1:8451", config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = conn.Handshake()
-	if err != nil {
-		_ = conn.Close()
-		t.Fatal(err)
-	}
-	_ = conn.Close()
+	testClientHandshak(t, config, "127.0.0.1:8451")
 
+	config.ClientECDHEParamsAsVector = true
+	testClientHandshak(t, config, "127.0.0.1:8451")
+}
+
+func testClientHandshak(t *testing.T, config *Config, addr string) {
+	conn, err := Dial("tcp", addr, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err = conn.Handshake(); err != nil {
+		t.Fatal(err)
+	}
 }

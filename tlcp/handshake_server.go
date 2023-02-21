@@ -639,6 +639,7 @@ func (hs *serverHandshakeState) createSessionState() {
 // processCertsFromClient takes a chain of client certificates either from a
 // Certificates message or from a sessionState and verifies them. It returns
 // the public key of the leaf certificate.
+// TODO: 需要进一步调整
 func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	certificates := certificate.Certificate
 	certs := make([]*x509.Certificate, len(certificates))
@@ -655,6 +656,12 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		return errors.New("tlcp: client didn't provide a certificate")
 	}
 
+	isECDHE := (c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3)
+	if len(certs) < 2 && isECDHE {
+		c.sendAlert(alertBadCertificate)
+		return errors.New("tlcp: client didn't provide both sign/enc certificates for ECDHE suite")
+	}
+
 	if c.config.ClientAuth >= VerifyClientCertIfGiven && len(certs) > 0 {
 		keyUsages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		if c.config.ClientAuth == RequireAndVerifyAnyKeyUsageClientCert {
@@ -667,11 +674,16 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			KeyUsages:     keyUsages,
 		}
 
-		// TODO: for TLCP ECDHE, this maybe incorrect, the second cert should be encryption cert.
-		for _, cert := range certs[1:] {
+		// handle possbile intermediates
+		start := 1
+		if isECDHE {
+			start = 2
+		}
+		for _, cert := range certs[start:] {
 			opts.Intermediates.AddCert(cert)
 		}
 
+		// verfiy auth/sign certificate
 		chains, err := certs[0].Verify(opts)
 		if err != nil {
 			var errCertificateInvalid x509.CertificateInvalidError
@@ -685,6 +697,22 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 		}
 
+		// verify enc certificate, do we need to further check certificate's key usage (certs[1].KeyUsage)?
+		if isECDHE {
+			_, err = certs[1].Verify(opts)
+			if err != nil {
+				var errCertificateInvalid x509.CertificateInvalidError
+				if errors.As(err, &x509.UnknownAuthorityError{}) {
+					c.sendAlert(alertUnknownCA)
+				} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
+					c.sendAlert(alertCertificateExpired)
+				} else {
+					c.sendAlert(alertBadCertificate)
+				}
+				return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
+			}
+		}
+
 		c.verifiedChains = chains
 	}
 
@@ -695,7 +723,15 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		case *ecdsa.PublicKey, *rsa.PublicKey:
 		default:
 			c.sendAlert(alertUnsupportedCertificate)
-			return fmt.Errorf("tlcp: client certificate contains an unsupported public key of type %T", certs[0].PublicKey)
+			return fmt.Errorf("tlcp: client auth certificate contains an unsupported public key of type %T", certs[0].PublicKey)
+		}
+		if isECDHE {
+			switch certs[1].PublicKey.(type) {
+			case *ecdsa.PublicKey, *rsa.PublicKey:
+			default:
+				c.sendAlert(alertUnsupportedCertificate)
+				return fmt.Errorf("tlcp: client enc certificate contains an unsupported public key of type %T", certs[1].PublicKey)
+			}
 		}
 	}
 
