@@ -354,6 +354,11 @@ type Config struct {
 
 	// EnableDebug, 是否打开debug
 	EnableDebug bool
+
+	// ClientECDHEParamAsVector, 把ClientECDHEParams当作structure还是变长向量。
+	// 这个配置用于客户端使用ECDHE密码套件时与其他实现进行兼容，如果你在进行ECDHE密码套件的集成测试时失败，可以尝试配置这个变量。
+	// 默认当作structure，起始无两字节长度。
+	ClientECDHEParamsAsVector bool
 }
 
 // Clone 复制一个新的连接配置对象
@@ -377,6 +382,7 @@ func (c *Config) Clone() *Config {
 		VerifyConnection:            c.VerifyConnection,
 		RootCAs:                     c.RootCAs,
 		ServerName:                  c.ServerName,
+		ClientECDHEParamsAsVector:   c.ClientECDHEParamsAsVector,
 		ClientAuth:                  c.ClientAuth,
 		ClientCAs:                   c.ClientCAs,
 		InsecureSkipVerify:          c.InsecureSkipVerify,

@@ -463,7 +463,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 			return unexpectedMessageError(clientCertMsg, msg)
 		}
 
-		if err := c.processCertsFromClient(hs.suite, Certificate{Certificate: clientCertMsg.certificates}); err != nil {
+		if err := c.processCertsFromClient(Certificate{Certificate: clientCertMsg.certificates}); err != nil {
 			return err
 		}
 		if len(clientCertMsg.certificates) != 0 {
@@ -640,7 +640,7 @@ func (hs *serverHandshakeState) createSessionState() {
 // Certificates message or from a sessionState and verifies them. It returns
 // the public key of the leaf certificate.
 // TODO: 需要进一步调整
-func (c *Conn) processCertsFromClient(suite *cipherSuite, certificate Certificate) error {
+func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	certificates := certificate.Certificate
 	certs := make([]*x509.Certificate, len(certificates))
 	var err error
@@ -656,7 +656,7 @@ func (c *Conn) processCertsFromClient(suite *cipherSuite, certificate Certificat
 		return errors.New("tlcp: client didn't provide a certificate")
 	}
 
-	isECDHE := suite.id == ECDHE_SM4_CBC_SM3 || suite.id == ECDHE_SM4_GCM_SM3
+	isECDHE := (c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3)
 	if len(certs) < 2 && isECDHE {
 		c.sendAlert(alertBadCertificate)
 		return errors.New("tlcp: client didn't provide both sign/enc certificates for ECDHE suite")

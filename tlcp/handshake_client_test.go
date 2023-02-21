@@ -2,10 +2,11 @@ package tlcp
 
 import (
 	"fmt"
-	"github.com/emmansun/gmsm/smx509"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -185,12 +186,25 @@ func Test_clientHandshake_ECDHE(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 	pool := smx509.NewCertPool()
 	pool.AddCert(root1)
+
 	config := &Config{
 		RootCAs:      pool,
 		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
 	}
 	conn, err := Dial("tcp", "127.0.0.1:8451", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conn.Handshake()
+	if err != nil {
+		_ = conn.Close()
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+
+	config.ClientECDHEParamsAsVector = true
+	conn, err = Dial("tcp", "127.0.0.1:8451", config)
 	if err != nil {
 		t.Fatal(err)
 	}
