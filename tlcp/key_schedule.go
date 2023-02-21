@@ -19,13 +19,13 @@ import (
 	"github.com/emmansun/gmsm/ecdh"
 )
 
-// SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 3622-2018
+// SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 36322-2018
 type SM2KeyAgreement interface {
-	// GenerateAgreementData 发起方生成临时公钥，接口设计参考 GB/T 3622-2018 6.3.15
+	// GenerateAgreementData 发起方生成临时公钥，接口设计参考 GB/T 36322-2018 6.3.15
 	GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, err error)
-	// GenerateKey 发起方计算会话密钥，接口设计参考 GB/T 3622-2018 6.3.16
+	// GenerateKey 发起方计算会话密钥，接口设计参考 GB/T 36322-2018 6.3.16
 	GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdh.PublicKey) ([]byte, error)
-	// GenerateAgreementDataAndKey 响应方计算会话密钥并返回临时公钥，接口设计参考 GB/T 3622-2018 6.3.17
+	// GenerateAgreementDataAndKey 响应方计算会话密钥并返回临时公钥，接口设计参考 GB/T 36322-2018 6.3.17
 	GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, keyLen int) (*ecdh.PublicKey, []byte, error)
 }
 

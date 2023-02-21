@@ -519,7 +519,7 @@ func (ka *sm2ECDHEKeyAgreement) generateClientKeyExchange(hs *clientHandshakeSta
 		return nil, nil, err
 	}
 
-	// 使用服务端的临时公钥以及客户端认证密钥对计算SM2密钥交换，生成预主密钥与客户端临时公钥
+	// 使用服务端的临时公钥以及客户端加密密钥对计算SM2密钥交换，生成预主密钥与客户端临时公钥
 	responseTmpPubKey, preMasterSecret, err := ka.ke.GenerateAgreementDataAndKey(nil, nil, sponsorECDHPubKey, ka.peerTmpKey, 48)
 	if err != nil {
 		return nil, nil, err
