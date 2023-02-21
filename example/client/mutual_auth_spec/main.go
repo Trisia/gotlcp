@@ -17,9 +17,8 @@ func main() {
 		RootCAs:      pool,
 		Certificates: []tlcp.Certificate{authCertKeypair},
 		CipherSuites: []uint16{
-			tlcp.ECDHE_SM4_GCM_SM3, // 最高优先级
 			tlcp.ECC_SM4_GCM_SM3,
-			tlcp.ECC_SM4_CBC_SM3, // 最低优先级
+			tlcp.ECC_SM4_CBC_SM3,
 		},
 	}
 	conn, err := tlcp.Dial("tcp", "127.0.0.1:8450", config)
