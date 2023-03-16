@@ -13,7 +13,7 @@ func BenchmarkHandshake(b *testing.B) {
 		go func() {
 			err := server(38443)
 			if err != nil {
-				b.Fatal(err)
+				panic(err)
 			}
 		}()
 	})

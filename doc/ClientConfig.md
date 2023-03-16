@@ -55,14 +55,14 @@ func main() {
 
 ### 1.2 双向身份认证
 
-双向身份认证指在握手过程中 **客户端对服务端进行身份，服务端对客户端进行身份认证**，该方式适用于通信双方均有较高安全性需要。
+双向身份认证指在握手过程中 **客户端对服务端进行身份认证，服务端对客户端进行身份认证**，该方式适用于通信双方均有较高安全性需要。
 
 身份认证包含：数字证书的校验、签名值的校验。
 
 双向身份认证需要如下配置：
 
 1. 在客户端用于验证服务服务端数字证书的根证书列表，通过`tlcp.Config`的`RootCAs`参数配置，提供证书列表。
-2. 在客户端提供 **认证密钥对和认证证书**，通过`tlcp.Config`的`Certificates`参数配置，提供证书密钥对。
+2. 在客户端提供 **认证密钥对和认证证书**，通过`tlcp.Config`的`Certificates`参数配置，提供证书密钥对。（特殊的：ECDHE系列套件，客户端还需要提供加密证书和密钥）
 
 ```go
 package main
@@ -95,7 +95,7 @@ func main() {
 
 ### 1.3 忽略认证 用于测试 
 
-**注意：该方式仅用于测试，在忽略了服务端的身份认证后非常容易遭受中间攻击。**
+**注意：该方式仅用于测试，在忽略了服务端的身份认证后可能遭受中间人攻击。**
 
 在测试过程中可能需要忽略服务端的身份验证，此时可以设置 `InsecureSkipVerify`参数为`true`表示不对服务端的证书证书进行校验，跳过服务端身份认证。
 
@@ -242,24 +242,46 @@ func main() {
 3. `ECDHE_SM4_GCM_SM3` (试验性)
 4. `ECDHE_SM4_CBC_SM3` (试验性)
 
-注意： ECDHE基于SM2密钥交换实现，需要客户端具有认证密钥才启用。
+> 注意： ECDHE基于SM2密钥交换实现（关于SM2密钥交换，详见**GB/T 35276-2017**和**GB/T 32918.3-2016**），与服务端类似的，
+> ECDHE密码套件需要客户端同时配置**认证密钥**和**加密密钥**，工作时使用认证密钥签名产生证书验证消息，使用加密密钥与服务端协商产生密钥交换消息。
 
-可以通过下面方式手动指定握手使用的密码套件（绝大部分情况下不需要），这里的顺序不重要：
+
+可以通过下面方式手动指定握手使用的密码套件（绝大部分情况下不需要，除非您想限制某些密码套件的使用），这里的顺序不重要（密码套件的优先顺序由本实现固定）。
+
+ECC系列套件配置方式如下：
 
 ```go
 config := &tlcp.Config{
     // 省略其它无关配置项...
 	Certificates: []tlcp.Certificate{authCertKeypair},
 	CipherSuites: []uint16{
-		tlcp.ECDHE_SM4_GCM_SM3,
 		tlcp.ECC_SM4_GCM_SM3,	
 		tlcp.ECC_SM4_CBC_SM3,
 	},
 }
 ```
 
-完整示例见 [client/mutual_auth_spec/main.go](../example/client/mutual_auth_spec/main.go
+完整示例见 [client/mutual_auth_spec/main.go](../example/client/mutual_auth_spec/main.go)
 
+如果您需要使用`ECDHE_SM4_GCM_SM3`、`ECDHE_SM4_CBC_SM3`系列套件，
+那么在客户端的`Config.CipherSuites`配置中不能出现`ECC_SM4_GCM_SM3`、`ECC_SM4_CBC_SM3`，除非服务端只支持ECDHE密码套件，
+否则服务端可能优先选择ECC系列套件。
+
+ECDHE系列套件配置方式如下：
+
+```go
+config := &tlcp.Config{
+    // 省略其它无关配置项...
+	Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
+	CipherSuites: []uint16{
+		tlcp.ECDHE_SM4_GCM_SM3,	
+		tlcp.ECDHE_SM4_CBC_SM3,
+		// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
+	},
+}
+```
+
+完整示例见 [client/mutual_auth_spec/ecdhe/main.go](../example/client/mutual_auth_spec/ecdhe/main.go)
 
 ### 2.4 证书校验
 

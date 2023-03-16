@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/emmansun/gmsm/sm2"
+	"github.com/emmansun/gmsm/ecdh"
 )
 
 func Test_sm2ke_GenerateAgreementData(t *testing.T) {
-	sponsorPri, err := sm2.GenerateKey(rand.Reader)
+	sponsorPri, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	responsePri, err := sm2.GenerateKey(rand.Reader)
+	responsePri, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func Test_sm2ke_GenerateAgreementData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	preMasterSecretServer, err := sponsorKE.GenerateKey(nil, &responsePri.PublicKey, responseTmpPubKey)
+	preMasterSecretServer, err := sponsorKE.GenerateKey(nil, responsePri.PublicKey(), responseTmpPubKey)
 	if err != nil {
 		t.Fatal(err)
 	}
