@@ -83,7 +83,7 @@ func signHandshake(c *Conn, sigType SignatureAlgorithm, prvKey crypto.PrivateKey
 	case ECC_SM3:
 		if _, ok := prvKey.(*sm2.PrivateKey); ok {
 			// SM2密钥需要额外进行 H的Hash计算
-			signOpts = &sm2.SM2SignerOption{ForceGMSign: true}
+			signOpts = sm2.NewSM2SignerOption(true, nil)
 		}
 	case RSA_SHA256:
 		// TODO: RSA_SHA256 签名参数

@@ -99,7 +99,7 @@ func (e *eccKeyAgreement) generateServerKeyExchange(hs *serverHandshakeState) (*
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
 	}
-	sig, err := priv.Sign(config.rand(), msg, &sm2.SM2SignerOption{ForceGMSign: true})
+	sig, err := priv.Sign(config.rand(), msg, sm2.NewSM2SignerOption(true, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +337,7 @@ func (ka *sm2ECDHEKeyAgreement) generateServerKeyExchange(hs *serverHandshakeSta
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Signer")
 	}
-	sig, err := sigPrv.Sign(config.rand(), tbs, &sm2.SM2SignerOption{ForceGMSign: true})
+	sig, err := sigPrv.Sign(config.rand(), tbs, sm2.NewSM2SignerOption(true, nil))
 	if err != nil {
 		return nil, err
 	}
