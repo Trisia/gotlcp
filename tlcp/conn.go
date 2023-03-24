@@ -132,6 +132,16 @@ func (c *Conn) NetConn() net.Conn {
 	return c.conn
 }
 
+// PeerCertificates 对端证书列表
+func (c *Conn) PeerCertificates() []*x509.Certificate {
+	return c.peerCertificates
+}
+
+// IsClient 是否客户端，true - 客户端；false - 服务端
+func (c *Conn) IsClient() bool {
+	return c.isClient
+}
+
 // halfConn 代表一个传输方向(发送/接收) 的记录层协议连接
 type halfConn struct {
 	sync.Mutex
