@@ -109,20 +109,20 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	}
 	c.serverName = c.config.ServerName
 
+	dst := c.conn.RemoteAddr().String()
 	// 加载会话，如果存在
-	cacheKey, session := c.loadSession(hello)
-	if cacheKey != "" && session != nil {
-		defer func() {
-			// 按照 GB/T 38636-2020 6.4.5.2.1 Client Hello 消息 c) session_id 要求
-			// 会话标识生成后应一直保持到超时删除 或 这个会话相关的连接遇到致命错误被关闭。
-			if err != nil {
-				// 删除会话
-				c.config.SessionCache.Put(cacheKey, nil)
-			}
-		}()
-	}
+	sessionId, session := c.loadSession(dst, hello)
+	defer func() {
+		// 按照 GB/T 38636-2020 6.4.5.2.1 Client Hello 消息 c) session_id 要求
+		// 会话标识生成后应一直保持到超时删除 或 这个会话相关的连接遇到致命错误被关闭。
+		if session != nil && err != nil {
+			// 删除会话
+			c.config.SessionCache.Put(dst, nil)
+			c.config.SessionCache.Put(sessionId, nil)
+		}
+	}()
 
-	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
+	if _, err = c.writeHandshakeRecord(hello, nil); err != nil {
 		return err
 	}
 
@@ -134,11 +134,11 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 
 	serverHello, ok := msg.(*serverHelloMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverHello, msg)
 	}
 
-	if err := c.pickProtocolVersion(serverHello); err != nil {
+	if err = c.pickProtocolVersion(serverHello); err != nil {
 		return err
 	}
 
@@ -150,7 +150,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		session:     session,
 	}
 
-	if err := hs.handshake(); err != nil {
+	if err = hs.handshake(); err != nil {
 		return err
 	}
 
@@ -158,13 +158,16 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 }
 
 // 加载会话，如果存在
-func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string, session *SessionState) {
+// dest: 目的地址
+// hello: 客户端Hello消息
+func (c *Conn) loadSession(dest string, hello *clientHelloMsg) (cacheKey string, session *SessionState) {
 	if c.config.SessionCache == nil {
 		return
 	}
 	var ok = false
-	// 获取最近一个会话
-	session, ok = c.config.SessionCache.Get("")
+
+	// 通过目的主机地址尝试获取会话
+	session, ok = c.config.SessionCache.Get(dest)
 	if !ok || session == nil {
 		return cacheKey, nil
 	}
@@ -181,7 +184,7 @@ func (c *Conn) pickProtocolVersion(serverHello *serverHelloMsg) error {
 
 	vers, ok := c.config.mutualVersion(roleClient, []uint16{peerVersion})
 	if !ok {
-		c.sendAlert(alertProtocolVersion)
+		_ = c.sendAlert(alertProtocolVersion)
 		return fmt.Errorf("tlcp: server selected unsupported protocol version %x", peerVersion)
 	}
 
@@ -211,52 +214,52 @@ func (hs *clientHandshakeState) handshake() error {
 		hs.finishedHash.discardHandshakeBuffer()
 	}
 
-	if err := transcriptMsg(hs.hello, &hs.finishedHash); err != nil {
+	if err = transcriptMsg(hs.hello, &hs.finishedHash); err != nil {
 		return err
 	}
-	if err := transcriptMsg(hs.serverHello, &hs.finishedHash); err != nil {
+	if err = transcriptMsg(hs.serverHello, &hs.finishedHash); err != nil {
 		return err
 	}
 
 	c.buffering = true
 	c.didResume = isResume
 	if isResume {
-		if err := hs.establishKeys(); err != nil {
+		if err = hs.establishKeys(); err != nil {
 			return err
 		}
-		if err := hs.readFinished(c.serverFinished[:]); err != nil {
+		if err = hs.readFinished(c.serverFinished[:]); err != nil {
 			return err
 		}
 		// 握手重用时可以通过连接验证再次验证连接相关的信息
 		if c.config.VerifyConnection != nil {
-			if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
-				c.sendAlert(alertBadCertificate)
+			if err = c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
+				_ = c.sendAlert(alertBadCertificate)
 				return err
 			}
 		}
-		if err := hs.sendFinished(c.clientFinished[:]); err != nil {
+		if err = hs.sendFinished(c.clientFinished[:]); err != nil {
 			return err
 		}
-		if _, err := c.flush(); err != nil {
+		if _, err = c.flush(); err != nil {
 			return err
 		}
 	} else {
-		if err := hs.doFullHandshake(); err != nil {
+		if err = hs.doFullHandshake(); err != nil {
 			return err
 		}
-		if err := hs.establishKeys(); err != nil {
+		if err = hs.establishKeys(); err != nil {
 			return err
 		}
-		if err := hs.sendFinished(c.clientFinished[:]); err != nil {
+		if err = hs.sendFinished(c.clientFinished[:]); err != nil {
 			return err
 		}
-		if _, err := c.flush(); err != nil {
+		if _, err = c.flush(); err != nil {
 			return err
 		}
-		if err := hs.createNewSession(); err != nil {
+		if err = hs.createNewSession(); err != nil {
 			return err
 		}
-		if err := hs.readFinished(c.serverFinished[:]); err != nil {
+		if err = hs.readFinished(c.serverFinished[:]); err != nil {
 			return err
 		}
 	}
@@ -268,7 +271,7 @@ func (hs *clientHandshakeState) handshake() error {
 
 func (hs *clientHandshakeState) pickCipherSuite() error {
 	if hs.suite = mutualCipherSuite(hs.hello.cipherSuites, hs.serverHello.cipherSuite); hs.suite == nil {
-		hs.c.sendAlert(alertHandshakeFailure)
+		_ = hs.c.sendAlert(alertHandshakeFailure)
 		return errors.New("tlcp: server chose an unconfigured cipher suite")
 	}
 
@@ -285,7 +288,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 	certMsg, ok := msg.(*certificateMsg)
 	if !ok || len(certMsg.certificates) == 0 {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(certMsg, msg)
 	}
 
@@ -297,7 +300,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if c.handshakes == 0 {
 		// If this is the first handshake on a connection, process and
 		// (optionally) verify the server's certificates.
-		if err := c.verifyServerCertificate(certMsg.certificates); err != nil {
+		if err = c.verifyServerCertificate(certMsg.certificates); err != nil {
 			return err
 		}
 	} else {
@@ -308,7 +311,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		// See https://mitls.org/pages/attacks/3SHAKE for the
 		// motivation behind this requirement.
 		if !bytes.Equal(c.peerCertificates[0].Raw, certMsg.certificates[0]) {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return errors.New("tlcp: server's identity changed during renegotiation")
 		}
 	}
@@ -320,7 +323,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if ok {
 		err = keyAgreement.processServerKeyExchange(hs, skx)
 		if err != nil {
-			c.sendAlert(alertUnexpectedMessage)
+			_ = c.sendAlert(alertUnexpectedMessage)
 			return err
 		}
 
@@ -339,12 +342,12 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 		cri := &CertificateRequestInfo{AcceptableCAs: certReq.certificateAuthorities, Version: c.vers, ctx: hs.ctx}
 		if clientAuthCert, err = c.getClientCertificate(cri); err != nil {
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return err
 		}
 		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
 			if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
-				c.sendAlert(alertInternalError)
+				_ = c.sendAlert(alertInternalError)
 				return err
 			}
 		}
@@ -359,7 +362,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 	shd, ok := msg.(*serverHelloDoneMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(shd, msg)
 	}
 
@@ -371,18 +374,18 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
 			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
 		}
-		if _, err := c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
+		if _, err = c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
 			return err
 		}
 	}
 
 	preMasterSecret, ckx, err := keyAgreement.generateClientKeyExchange(hs)
 	if err != nil {
-		c.sendAlert(alertInternalError)
+		_ = c.sendAlert(alertInternalError)
 		return err
 	}
 	if ckx != nil {
-		if _, err := c.writeHandshakeRecord(ckx, &hs.finishedHash); err != nil {
+		if _, err = c.writeHandshakeRecord(ckx, &hs.finishedHash); err != nil {
 			return err
 		}
 	}
@@ -394,7 +397,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		// 根据算法套件获取签名算法类型
 		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
 		if err != nil {
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return err
 		}
 		// 计算从Hello开始至今的握手消息Hash
@@ -402,7 +405,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		// 根据算法套件使用密钥签名
 		certVerify.signature, err = signHandshake(c, sigType, clientAuthCert.PrivateKey, newHash, signed)
 		if err != nil {
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return err
 		}
 
@@ -439,9 +442,10 @@ func (hs *clientHandshakeState) establishKeys() error {
 }
 
 func (hs *clientHandshakeState) serverResumedSession() bool {
-	// If the server responded with the same sessionId then it means the
-	// sessionTicket is being used to resume a TLS session.
-	return hs.session != nil && hs.hello.sessionId != nil &&
+	// 如果服务端返回session id 不为空且与 客户端发送的session id 一致，那么重用会话
+	return hs.session != nil &&
+		hs.hello.sessionId != nil &&
+		len(hs.serverHello.sessionId) > 0 &&
 		bytes.Equal(hs.serverHello.sessionId, hs.hello.sessionId)
 }
 
@@ -456,7 +460,7 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	if hs.serverHello.compressionMethod != compressionNone {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return false, errors.New("tlcp: server selected unsupported compression format")
 	}
 	if !hs.serverResumedSession() {
@@ -464,12 +468,12 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	if hs.session.vers != c.vers {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return false, errors.New("tlcp: server resumed a session with a different version")
 	}
 
 	if hs.session.cipherSuite != hs.suite.id {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return false, errors.New("tlcp: server resumed a session with a different cipher suite")
 	}
 
@@ -495,14 +499,14 @@ func (hs *clientHandshakeState) readFinished(out []byte) error {
 	}
 	serverFinished, ok := msg.(*finishedMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverFinished, msg)
 	}
 
 	verify := hs.finishedHash.serverSum(hs.masterSecret)
 	if len(verify) != len(serverFinished.verifyData) ||
 		subtle.ConstantTimeCompare(verify, serverFinished.verifyData) != 1 {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return errors.New("tlcp: server's Finished message was incorrect")
 	}
 	if err := transcriptMsg(serverFinished, &hs.finishedHash); err != nil {
@@ -526,7 +530,9 @@ func (hs *clientHandshakeState) createNewSession() error {
 		masterSecret: hs.masterSecret,
 		createdAt:    time.Now(),
 	}
+	dst := hs.c.conn.RemoteAddr().String()
 	hs.c.config.SessionCache.Put(sessionKey, cs)
+	hs.c.config.SessionCache.Put(dst, cs)
 	return nil
 }
 
@@ -554,7 +560,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	for i, asn1Data := range certificates {
 		cert, err := clientCertCache.newCert(asn1Data)
 		if err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return errors.New("tlcp: failed to parse certificate from server: " + err.Error())
 		}
 		activeHandles[i] = cert
@@ -562,7 +568,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	}
 
 	if len(certs) < 2 {
-		c.sendAlert(alertBadCertificate)
+		_ = c.sendAlert(alertBadCertificate)
 		return errors.New("tlcp: need two of certificate one for sign one for encrypt")
 	}
 
@@ -583,13 +589,13 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		// 验证签名证书
 		c.verifiedChains, err = certs[0].Verify(opts)
 		if err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 		}
 		// 验证加密证书
 		_, err = certs[1].Verify(opts)
 		if err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 		}
 	}
@@ -598,7 +604,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	case *rsa.PublicKey, *ecdsa.PublicKey:
 		break
 	default:
-		c.sendAlert(alertUnsupportedCertificate)
+		_ = c.sendAlert(alertUnsupportedCertificate)
 		return fmt.Errorf("tlcp: server's certificate contains an unsupported type of public key: %T", certs[0].PublicKey)
 	}
 
@@ -607,14 +613,14 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 
 	if c.config.VerifyPeerCertificate != nil {
 		if err := c.config.VerifyPeerCertificate(certificates, c.verifiedChains); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return err
 		}
 	}
 
 	if c.config.VerifyConnection != nil {
 		if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return err
 		}
 	}

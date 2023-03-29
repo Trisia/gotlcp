@@ -128,7 +128,7 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	}
 	clientHello, ok := msg.(*clientHelloMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return nil, unexpectedMessageError(clientHello, msg)
 	}
 
@@ -136,7 +136,7 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	if c.config.GetConfigForClient != nil {
 		chi := clientHelloInfo(ctx, c, clientHello)
 		if configForClient, err = c.config.GetConfigForClient(chi); err != nil {
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return nil, err
 		} else if configForClient != nil {
 			c.config = configForClient
@@ -147,7 +147,7 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	// 客户端支持的协议版本 与 服务端支持的服务版本 进行匹配
 	c.vers, ok = c.config.mutualVersion(roleServer, clientVersions)
 	if !ok {
-		c.sendAlert(alertProtocolVersion)
+		_ = c.sendAlert(alertProtocolVersion)
 		return nil, fmt.Errorf("tlcp: client offered only unsupported versions: %x", clientVersions)
 	}
 	c.haveVers = true
@@ -173,12 +173,12 @@ func (hs *serverHandshakeState) processClientHello() error {
 	}
 
 	if !foundCompression {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return errors.New("tlcp: client does not support uncompressed connections")
 	}
 	var err error
 	if hs.hello.random, err = c.tlcpRand(); err != nil {
-		c.sendAlert(alertInternalError)
+		_ = c.sendAlert(alertInternalError)
 		return err
 	}
 
@@ -218,7 +218,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 		case *rsa.PublicKey:
 			hs.rsaSignOk = true
 		default:
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return fmt.Errorf("tlcp: unsupported signing key type (%T)", priv.Public())
 		}
 	}
@@ -229,7 +229,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 		case *rsa.PublicKey:
 			hs.rsaDecryptOk = true
 		default:
-			c.sendAlert(alertInternalError)
+			_ = c.sendAlert(alertInternalError)
 			return fmt.Errorf("tlcp: unsupported decryption key type (%T)", priv.Public())
 		}
 	}
@@ -349,7 +349,7 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 
 	if c.config.VerifyConnection != nil {
 		if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return err
 		}
 	}
@@ -408,7 +408,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	keyAgreement := hs.suite.ka(c.vers)
 	skx, err := keyAgreement.generateServerKeyExchange(hs)
 	if err != nil {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return err
 	}
 	if skx != nil {
@@ -459,7 +459,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	if authPolice >= RequestClientCert {
 		clientCertMsg, ok := msg.(*certificateMsg)
 		if !ok {
-			c.sendAlert(alertUnexpectedMessage)
+			_ = c.sendAlert(alertUnexpectedMessage)
 			return unexpectedMessageError(clientCertMsg, msg)
 		}
 
@@ -477,7 +477,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	if c.config.VerifyConnection != nil {
 		if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return err
 		}
 	}
@@ -485,13 +485,13 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	// Get client key exchange
 	ckx, ok := msg.(*clientKeyExchangeMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(ckx, msg)
 	}
 
 	preMasterSecret, err := keyAgreement.processClientKeyExchange(hs, ckx)
 	if err != nil {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return err
 	}
 	hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.clientHello.random, hs.hello.random)
@@ -512,14 +512,14 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 		certVerify, ok := msg.(*certificateVerifyMsg)
 		if !ok {
-			c.sendAlert(alertUnexpectedMessage)
+			_ = c.sendAlert(alertUnexpectedMessage)
 			return unexpectedMessageError(certVerify, msg)
 		}
 
 		// 根据算法套件确定签名算法和Hash算法
 		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
 		if err != nil {
-			c.sendAlert(alertIllegalParameter)
+			_ = c.sendAlert(alertIllegalParameter)
 			return err
 		}
 
@@ -528,7 +528,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		// 包括握手消息的类型和长度域。
 		signed := hs.finishedHash.Sum()
 		if err := verifyHandshakeSignature(sigType, pub, newHash, signed, certVerify.signature); err != nil {
-			c.sendAlert(alertDecryptError)
+			_ = c.sendAlert(alertDecryptError)
 			return errors.New("tlcp: invalid signature by the client certificate: " + err.Error())
 		}
 
@@ -583,14 +583,14 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 	}
 	clientFinished, ok := msg.(*finishedMsg)
 	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
+		_ = c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(clientFinished, msg)
 	}
 
 	verify := hs.finishedHash.clientSum(hs.masterSecret)
 	if len(verify) != len(clientFinished.verifyData) ||
 		subtle.ConstantTimeCompare(verify, clientFinished.verifyData) != 1 {
-		c.sendAlert(alertHandshakeFailure)
+		_ = c.sendAlert(alertHandshakeFailure)
 		return errors.New("tlcp: client's Finished message is incorrect")
 	}
 
@@ -646,19 +646,19 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	var err error
 	for i, asn1Data := range certificates {
 		if certs[i], err = x509.ParseCertificate(asn1Data); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return errors.New("tlcp: failed to parse client certificate: " + err.Error())
 		}
 	}
 
 	if len(certs) == 0 && requiresClientCert(c.config.ClientAuth) {
-		c.sendAlert(alertBadCertificate)
+		_ = c.sendAlert(alertBadCertificate)
 		return errors.New("tlcp: client didn't provide a certificate")
 	}
 
 	isECDHE := (c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3)
 	if len(certs) < 2 && isECDHE {
-		c.sendAlert(alertBadCertificate)
+		_ = c.sendAlert(alertBadCertificate)
 		return errors.New("tlcp: client didn't provide both sign/enc certificates for ECDHE suite")
 	}
 
@@ -688,11 +688,11 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		if err != nil {
 			var errCertificateInvalid x509.CertificateInvalidError
 			if errors.As(err, &x509.UnknownAuthorityError{}) {
-				c.sendAlert(alertUnknownCA)
+				_ = c.sendAlert(alertUnknownCA)
 			} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
-				c.sendAlert(alertCertificateExpired)
+				_ = c.sendAlert(alertCertificateExpired)
 			} else {
-				c.sendAlert(alertBadCertificate)
+				_ = c.sendAlert(alertBadCertificate)
 			}
 			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 		}
@@ -703,11 +703,11 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			if err != nil {
 				var errCertificateInvalid x509.CertificateInvalidError
 				if errors.As(err, &x509.UnknownAuthorityError{}) {
-					c.sendAlert(alertUnknownCA)
+					_ = c.sendAlert(alertUnknownCA)
 				} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
-					c.sendAlert(alertCertificateExpired)
+					_ = c.sendAlert(alertCertificateExpired)
 				} else {
-					c.sendAlert(alertBadCertificate)
+					_ = c.sendAlert(alertBadCertificate)
 				}
 				return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
 			}
@@ -722,14 +722,14 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		switch certs[0].PublicKey.(type) {
 		case *ecdsa.PublicKey, *rsa.PublicKey:
 		default:
-			c.sendAlert(alertUnsupportedCertificate)
+			_ = c.sendAlert(alertUnsupportedCertificate)
 			return fmt.Errorf("tlcp: client auth certificate contains an unsupported public key of type %T", certs[0].PublicKey)
 		}
 		if isECDHE {
 			switch certs[1].PublicKey.(type) {
 			case *ecdsa.PublicKey, *rsa.PublicKey:
 			default:
-				c.sendAlert(alertUnsupportedCertificate)
+				_ = c.sendAlert(alertUnsupportedCertificate)
 				return fmt.Errorf("tlcp: client enc certificate contains an unsupported public key of type %T", certs[1].PublicKey)
 			}
 		}
@@ -737,7 +737,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 
 	if c.config.VerifyPeerCertificate != nil {
 		if err := c.config.VerifyPeerCertificate(certificates, c.verifiedChains); err != nil {
-			c.sendAlert(alertBadCertificate)
+			_ = c.sendAlert(alertBadCertificate)
 			return err
 		}
 	}
