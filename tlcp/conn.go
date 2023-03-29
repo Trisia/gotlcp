@@ -132,6 +132,16 @@ func (c *Conn) NetConn() net.Conn {
 	return c.conn
 }
 
+// PeerCertificates 对端证书列表
+func (c *Conn) PeerCertificates() []*x509.Certificate {
+	return c.peerCertificates
+}
+
+// IsClient 是否客户端，true - 客户端；false - 服务端
+func (c *Conn) IsClient() bool {
+	return c.isClient
+}
+
 // halfConn 代表一个传输方向(发送/接收) 的记录层协议连接
 type halfConn struct {
 	sync.Mutex
@@ -544,7 +554,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	// is always < 256 bytes long. Therefore typ == 0x80 strongly suggests
 	// an SSLv2 client.
 	if !handshakeComplete && typ == 0x80 {
-		c.sendAlert(alertProtocolVersion)
+		_ = c.sendAlert(alertProtocolVersion)
 		return c.in.setErrorLocked(c.newRecordHeaderError(nil, "unsupported SSLv2 handshake received"))
 	}
 
@@ -552,7 +562,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	n := int(hdr[3])<<8 | int(hdr[4])
 	//if c.haveVers && c.vers != VersionTLS13 && vers != c.vers {
 	if c.haveVers && vers != c.vers {
-		c.sendAlert(alertProtocolVersion)
+		_ = c.sendAlert(alertProtocolVersion)
 		msg := fmt.Sprintf("received record with version %x when expecting version %x", vers, c.vers)
 		return c.in.setErrorLocked(c.newRecordHeaderError(nil, msg))
 	}
@@ -571,7 +581,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	//	return c.in.setErrorLocked(c.newRecordHeaderError(nil, msg))
 	//}
 	if n > maxCiphertext {
-		c.sendAlert(alertRecordOverflow)
+		_ = c.sendAlert(alertRecordOverflow)
 		msg := fmt.Sprintf("oversized record received with length %d", n)
 		return c.in.setErrorLocked(c.newRecordHeaderError(nil, msg))
 	}
