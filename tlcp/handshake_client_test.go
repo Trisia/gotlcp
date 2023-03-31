@@ -3,6 +3,7 @@ package tlcp
 import (
 	"fmt"
 	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -178,5 +179,63 @@ func testClientHandshak(t *testing.T, config *Config, addr string) {
 	defer conn.Close()
 	if err = conn.Handshake(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 测试握手重用
+func Test_NotResumedSession(t *testing.T) {
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+	go func() {
+		var err error
+		tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", 20099))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tcpLn.Close()
+		config := &Config{
+			ClientCAs:    pool,
+			ClientAuth:   RequireAndVerifyClientCert,
+			Certificates: []Certificate{sigCert, encCert},
+		}
+		for {
+			conn, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+
+			tlcpConn := Server(conn, config)
+			err = tlcpConn.Handshake()
+			if err != nil {
+				_ = conn.Close()
+				return
+			}
+			_ = tlcpConn.Close()
+		}
+	}()
+
+	time.Sleep(time.Millisecond * 300)
+	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}, SessionCache: NewLRUSessionCache(2)}
+
+	for i := 0; i < 2; i++ {
+		conn, err := Dial("tcp", "127.0.0.1:20099", config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = conn.Handshake()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !conn.IsClient() {
+			t.Fatalf("Expect client connection type, but not")
+		}
+		if len(conn.PeerCertificates()) == 0 {
+			t.Fatalf("Expect get peer cert, but not")
+		}
+		if conn.didResume {
+			t.Fatalf("Expect disable resume, but not")
+		}
+		_ = conn.Close()
 	}
 }

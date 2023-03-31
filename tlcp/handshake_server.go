@@ -627,11 +627,12 @@ func (hs *serverHandshakeState) createSessionState() {
 
 	sessionKey := hex.EncodeToString(hs.hello.sessionId)
 	cs := &SessionState{
-		sessionId:    hs.hello.sessionId,
-		vers:         hs.hello.vers,
-		cipherSuite:  hs.hello.cipherSuite,
-		masterSecret: hs.masterSecret,
-		createdAt:    time.Now(),
+		sessionId:        hs.hello.sessionId,
+		vers:             hs.hello.vers,
+		cipherSuite:      hs.hello.cipherSuite,
+		masterSecret:     hs.masterSecret,
+		peerCertificates: hs.peerCertificates,
+		createdAt:        time.Now(),
 	}
 	hs.c.config.SessionCache.Put(sessionKey, cs)
 }

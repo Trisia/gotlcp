@@ -3,6 +3,8 @@ package tlcp
 import (
 	"fmt"
 	"net"
+	"testing"
+	"time"
 
 	"github.com/emmansun/gmsm/smx509"
 )
@@ -225,5 +227,69 @@ func serverResumeSession(port int) error {
 		_, _ = tlcpConn.Write(data)
 
 		_ = tlcpConn.Close()
+	}
+}
+
+// 测试握手重用
+func Test_ResumedSession(t *testing.T) {
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+	go func() {
+		var err error
+		tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", 20100))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tcpLn.Close()
+		config := &Config{
+			ClientCAs:    pool,
+			ClientAuth:   RequireAndVerifyClientCert,
+			Certificates: []Certificate{sigCert, encCert},
+			SessionCache: NewLRUSessionCache(10),
+		}
+		first := true
+		for {
+			conn, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+
+			tlcpConn := Server(conn, config)
+			err = tlcpConn.Handshake()
+			if err != nil {
+				_ = conn.Close()
+				return
+			}
+
+			if tlcpConn.IsClient() {
+				t.Fatalf("Expect server connection type, but not")
+			}
+			if len(tlcpConn.PeerCertificates()) == 0 {
+				t.Fatalf("Expect get peer cert, but not")
+			}
+			if first {
+				first = false
+			} else {
+				if !tlcpConn.didResume {
+					t.Fatalf("Expect second connection session resume, but not")
+				}
+			}
+			_ = tlcpConn.Close()
+		}
+	}()
+
+	time.Sleep(time.Millisecond * 300)
+	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}, SessionCache: NewLRUSessionCache(2)}
+
+	for i := 0; i < 2; i++ {
+		conn, err := Dial("tcp", "127.0.0.1:20100", config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = conn.Handshake()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.Close()
 	}
 }
