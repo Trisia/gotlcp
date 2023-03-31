@@ -151,7 +151,7 @@ func (e *eccKeyAgreement) processClientKeyExchange(hs *serverHandshakeState, ckx
 	if !ok {
 		return nil, errors.New("tlcp: certificate private key does not implement crypto.Decrypter")
 	}
-	plain, err := decrypter.Decrypt(config.rand(), cipher, &sm2.DecrypterOpts{CiphertextEncoding: sm2.ENCODING_ASN1})
+	plain, err := decrypter.Decrypt(config.rand(), cipher, sm2.ASN1DecrypterOpts)
 	if err != nil {
 		return nil, err
 	}
