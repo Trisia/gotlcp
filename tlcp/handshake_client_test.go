@@ -119,6 +119,53 @@ func Test_clientHandshake_client_auth(t *testing.T) {
 	testClientHandshak(t, config, "127.0.0.1:8446")
 }
 
+// 测试客户端无证书，服务端要求证书
+func Test_clientHandshake_client_noauth_nocert(t *testing.T) {
+	go func() {
+		if err := serverNeedAuth(8447); err != nil {
+			if err.Error() != "tlcp: client didn't provide a certificate" {
+				t.Errorf("%v\n", err)
+			}
+		}
+	}()
+	time.Sleep(time.Millisecond * 300)
+
+	config := &Config{InsecureSkipVerify: true}
+	conn, err := Dial("tcp", "127.0.0.1:8447", config)
+	if err != nil && err.Error() != "remote error: tlcp: bad certificate" {
+		t.Fatal(err)
+	}
+
+	if err == nil {
+		conn.Close()
+	}
+}
+
+// 测试客户端无证书，服务端要求证书
+func Test_clientHandshake_client_nocert(t *testing.T) {
+	go func() {
+		if err := serverNeedAuth(8449); err != nil {
+			if err.Error() != "tlcp: client didn't provide a certificate" {
+				t.Errorf("%v\n", err)
+			}
+		}
+	}()
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+
+	time.Sleep(time.Millisecond * 300)
+
+	config := &Config{RootCAs: pool}
+	conn, err := Dial("tcp", "127.0.0.1:8449", config)
+	if err != nil && err.Error() != "remote error: tlcp: bad certificate" {
+		t.Fatal(err)
+	}
+
+	if err == nil {
+		conn.Close()
+	}
+}
+
 // 测试握手重用
 func Test_resumedSession(t *testing.T) {
 	go func() {
