@@ -370,7 +370,9 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	// 即便客户端没有证书，也需要发一条空证书的证书消息到服务端。
 	if certRequested {
 		certMsg = new(certificateMsg)
-		certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
+		if len(clientAuthCert.Certificate) > 0 {
+			certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
+		}
 		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
 			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
 		}
