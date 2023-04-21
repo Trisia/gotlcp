@@ -366,7 +366,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		return unexpectedMessageError(shd, msg)
 	}
 
-	// 如果服务端发送了证书请求消息，那么我们必须发送证书消息（客户端）
+	// 如果服务端发送了证书请求消息，那么必须发送证书消息（客户端）
 	// 即便客户端没有证书，也需要发一条空证书的证书消息到服务端。
 	if certRequested {
 		certMsg = new(certificateMsg)
@@ -374,6 +374,8 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 			certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
 		}
 		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
+			// ECDHE系列套件出签名证书外，还需要客户端额外发送加密证书
+			// 加密证书将用于SM2密钥交换协商密钥。
 			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
 		}
 		if _, err = c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {

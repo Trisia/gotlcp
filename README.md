@@ -7,7 +7,7 @@
 
 Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
 
-GoTLCP采用Go语言实现的传输层密码协议(TLCP)，TLCP协议遵循《GB/T 38636-2020 信息安全技术 传输层密码协议》。
+GoTLCP采用Go语言实现的传输层密码协议(TLCP，也称GMSSL) ，其协议遵循《GB/T 38636-2020 信息安全技术 传输层密码协议》。
 
 GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计算，支持完整TLCP握手、会话重用、传输保护、单向身份认证（认证服务端）双向身份认证。
 
@@ -15,8 +15,8 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 
 1. `ECC_SM4_GCM_SM3`
 2. `ECC_SM4_CBC_SM3`
-3. `ECDHE_SM4_GCM_SM3`  (试验性)
-4. `ECDHE_SM4_CBC_SM3`  (试验性)
+3. `ECDHE_SM4_GCM_SM3`
+4. `ECDHE_SM4_CBC_SM3`
 
 **在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
 

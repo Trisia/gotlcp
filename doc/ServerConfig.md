@@ -205,20 +205,20 @@ func main() {
 
 1. `ECC_SM4_GCM_SM3`
 2. `ECC_SM4_CBC_SM3`
-3. `ECDHE_SM4_GCM_SM3` (试验性)
-4. `ECDHE_SM4_CBC_SM3` (试验性)
+3. `ECDHE_SM4_GCM_SM3`
+4. `ECDHE_SM4_CBC_SM3`
 
-注意： ECDHE基于SM2密钥交换实现，需要客户端具有认证密钥才有效，服务端将会发证书请求要求客户端验证身份。
+注意： ECDHE基于SM2密钥交换实现，需要客户端具有认证密钥、加密密钥才有效，服务端将会发证书请求要求客户端验证身份，并通过密钥交换消息协商预主密钥。
 
-可以通过下面方式手动指定握手使用的密码条件和顺序：
+可以通过下面方式手动指定握手使用的密码套件：
 
 ```go
 config := &tlcp.Config{
     // 省略其它无关配置项...
 	ClientAuth:   RequireAndVerifyClientCert,
 	CipherSuites: []uint16{
-        tlcp.ECDHE_SM4_GCM_SM3, // 最高优先级
-        tlcp.ECC_SM4_CBC_SM3,   // 最低优先级
+        tlcp.ECDHE_SM4_GCM_SM3, 
+        tlcp.ECC_SM4_CBC_SM3,   
     },
 }
 ```
