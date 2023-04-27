@@ -7,6 +7,14 @@ import (
 	"net"
 )
 
+type ProtocolNotSupportError struct{}
+
+func (ProtocolNotSupportError) Error() string   { return "pa: unknown protocol version" }
+func (ProtocolNotSupportError) Timeout() bool   { return true }
+func (ProtocolNotSupportError) Temporary() bool { return true }
+
+var notSupportError = ProtocolNotSupportError{}
+
 // listener tlcp/tls协议自适应监听器， 实现了 net.Listener 接口，用于表示自适应连接选择监听器
 type listener struct {
 	net.Listener              // 端口监听器
@@ -45,7 +53,7 @@ func (l *listener) Accept() (net.Conn, error) {
 		conn := tls.Server(conn, l.tlsCfg)
 		return conn, nil
 	default:
-		return nil, errors.New("pa: unknown protocol version")
+		return nil, notSupportError
 	}
 }
 

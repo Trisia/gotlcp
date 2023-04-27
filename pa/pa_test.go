@@ -1,10 +1,12 @@
 package pa
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -222,6 +224,64 @@ func TestListen(t *testing.T) {
 	}
 	fmt.Printf("[TLCP Client] << %s\n", buf[:n])
 
+}
+
+// 测试非标准TLS/TLCP 协议造成的Accept错误
+func TestProtocolNotSupportError_Error(t *testing.T) {
+	var err error
+	var conn net.Conn
+	send := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	buf := make([]byte, 256)
+	tlcpCfg := &tlcp.Config{
+		Certificates: []tlcp.Certificate{sigCert, encCert},
+	}
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{rsaCert},
+	}
+
+	listen, err := Listen("tcp", fmt.Sprintf(":%d", 9001), tlcpCfg, tlsCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listen.Close()
+
+	go func() {
+		var cli net.Conn
+		time.Sleep(time.Millisecond * 100)
+		cli, _ = net.Dial("tcp", "127.0.0.1:9001")
+		_, _ = cli.Write(send)
+		// 第二次发起正确的连接
+		time.Sleep(time.Millisecond * 100)
+		cli, _ = tlcp.Dial("tcp", "127.0.0.1:9000", &tlcp.Config{InsecureSkipVerify: true})
+		_, _ = cli.Write(send)
+	}()
+
+	conn, err = listen.Accept()
+	// assert err type is ProtocolNotSupportError
+	if err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			return
+		}
+		t.Fatal(err)
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
+	// 再次接收连接本次应该可以PA选择
+	conn, err = listen.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf[:n], send) {
+		t.Fatalf("recv: %x, want: %x", buf[:n], send)
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
 }
 
 // 启动TLCP服务端
