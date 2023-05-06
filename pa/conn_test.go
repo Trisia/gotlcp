@@ -72,10 +72,7 @@ func TestTypeDetectConn_Read(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 4 {
-		t.Fatalf("expect read buffer first but not, got %02XZ ", buf)
-	}
-	if !bytes.Equal(buf[:n], []byte{0xFF, 0xFF, 0xFF, 0xFF}) {
+	if !bytes.Equal(buf[:n], []byte{0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x01, 0x02, 0x03}) {
 		t.Fatalf("result not match expect, %02X", buf)
 	}
 }

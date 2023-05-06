@@ -46,6 +46,14 @@ func (c *ProtocolDetectConn) Read(b []byte) (n int, err error) {
 	if len(b) >= len(c.recordHeader) {
 		n = copy(b, c.recordHeader)
 		c.recordHeader = nil
+		if len(b) > n {
+			var n1 = 0
+			n1, err = c.Conn.Read(b[n:])
+			n += n1
+			if err != nil {
+				return n, err
+			}
+		}
 		return n, nil
 	} else {
 		p := c.recordHeader[:len(b)]

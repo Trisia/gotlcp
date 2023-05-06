@@ -10,10 +10,10 @@ import (
 type ProtocolNotSupportError struct{}
 
 func (ProtocolNotSupportError) Error() string   { return "pa: unknown protocol version" }
-func (ProtocolNotSupportError) Timeout() bool   { return true }
-func (ProtocolNotSupportError) Temporary() bool { return true }
+func (ProtocolNotSupportError) Timeout() bool   { return false }
+func (ProtocolNotSupportError) Temporary() bool { return false }
 
-var notSupportError = ProtocolNotSupportError{}
+var notSupportError = &ProtocolNotSupportError{}
 
 // listener tlcp/tls协议自适应监听器， 实现了 net.Listener 接口，用于表示自适应连接选择监听器
 type listener struct {
@@ -30,31 +30,7 @@ func (l *listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 构造连接检测对象
-	conn := &ProtocolDetectConn{Conn: rawConn}
-	// 读取连接中第一个消息的头部用于判断连接连接
-	err = conn.ReadFirstHeader()
-	if err != nil {
-		return nil, err
-	}
-
-	// 根据连接的记录层协议主版本号判断连接类型
-	switch conn.major {
-	case 0x01: // TLCP major version 0x01
-		if l.tlcpCfg == nil {
-			return nil, errors.New("pa: tlcp config not set")
-		}
-		conn := tlcp.Server(conn, l.tlcpCfg)
-		return conn, nil
-	case 0x03: // SSL/TLS major version 0x03
-		if l.tlsCfg == nil {
-			return nil, errors.New("pa: tls config not set")
-		}
-		conn := tls.Server(conn, l.tlsCfg)
-		return conn, nil
-	default:
-		return nil, notSupportError
-	}
+	return NewProtocolSwitchServerConn(l, rawConn), nil
 }
 
 // NewListener tlcp/tls协议自适应，基于现有的一个可靠连接的 net.Listener 创建TLCP的Listener对象
@@ -62,7 +38,7 @@ func (l *listener) Accept() (net.Conn, error) {
 // 当其中一方为空时工作工作模式切换至单一的一种协议。
 //
 // 对于tlcpCfg对象至少提供签名密钥对和加密密钥以及签名证书和加密证书
-// 当然也可以通过 Config.GetCertificate 与 Config.GetKECertificate 以动态的方式获取相应密钥对于证书。
+// 当然也可以通过 tlcp.Config.GetCertificate 与 tlcp.Config.GetKECertificate 以动态的方式获取相应密钥对于证书。
 func NewListener(inner net.Listener, tlcpCfg *tlcp.Config, tlsCfg *tls.Config) net.Listener {
 	if inner == nil || (tlcpCfg == nil && tlsCfg == nil) {
 		return nil

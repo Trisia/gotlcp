@@ -6,7 +6,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -228,6 +230,7 @@ func TestListen(t *testing.T) {
 
 // 测试非标准TLS/TLCP 协议造成的Accept错误
 func TestProtocolNotSupportError_Error(t *testing.T) {
+	var port = 9001
 	var err error
 	var conn net.Conn
 	send := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -239,7 +242,7 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 		Certificates: []tls.Certificate{rsaCert},
 	}
 
-	listen, err := Listen("tcp", fmt.Sprintf(":%d", 9001), tlcpCfg, tlsCfg)
+	listen, err := Listen("tcp", fmt.Sprintf(":%d", port), tlcpCfg, tlsCfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,30 +251,145 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 	go func() {
 		var cli net.Conn
 		time.Sleep(time.Millisecond * 100)
-		cli, _ = net.Dial("tcp", "127.0.0.1:9001")
+		cli, _ = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		_, _ = cli.Write(send)
+		if cli != nil {
+			_ = cli.Close()
+		}
 		// 第二次发起正确的连接
 		time.Sleep(time.Millisecond * 100)
-		cli, _ = tlcp.Dial("tcp", "127.0.0.1:9000", &tlcp.Config{InsecureSkipVerify: true})
-		_, _ = cli.Write(send)
+		cli, _ = tlcp.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tlcp.Config{InsecureSkipVerify: true})
+		_, err = cli.Write(send)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cli != nil {
+			_ = cli.Close()
+		}
+		// 第三次发起TLS连接
+		cli, _ = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{InsecureSkipVerify: true})
+		_, err = cli.Write(send)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cli != nil {
+			_ = cli.Close()
+		}
 	}()
 
 	conn, err = listen.Accept()
-	// assert err type is ProtocolNotSupportError
+	// 不应该出现错误
 	if err != nil {
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
-			return
-		}
 		t.Fatal(err)
+	}
+	// 尝试读取数据
+	_, err = conn.Read(buf)
+	if err != notSupportError {
+		t.Fatalf("err: %v, want: %v", err, notSupportError)
+	}
+	_ = conn.Close()
+
+	// 第二次发送正常数据
+	conn, err = listen.Accept()
+	// 不应该出现错误
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 可以正常读取数据
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := conn.(*ProtocolSwitchServerConn).ProtectedConn().(*tlcp.Conn); !ok {
+		t.Fatalf("expect tlcp.Conn type but not")
+	}
+	if !bytes.Equal(buf[:n], send) {
+		t.Fatalf("recv: %x, want: %x", buf[:n], send)
 	}
 	if conn != nil {
 		_ = conn.Close()
 	}
-	// 再次接收连接本次应该可以PA选择
+
+	// 第三次发送TLS数据
 	conn, err = listen.Accept()
+	// 不应该出现错误
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 可以正常读取数据
+	n, err = conn.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := conn.(*ProtocolSwitchServerConn).ProtectedConn().(*tls.Conn); !ok {
+		t.Fatalf("expect tls.Conn type but not")
+	}
+	if !bytes.Equal(buf[:n], send) {
+		t.Fatalf("recv: %x, want: %x", buf[:n], send)
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
+}
+
+// 提早关闭连接测试
+func TestAccept_early_close(t *testing.T) {
+	var port = 9002
+	var err error
+	var conn net.Conn
+	send := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	buf := make([]byte, 256)
+	tlcpCfg := &tlcp.Config{
+		Certificates: []tlcp.Certificate{sigCert, encCert},
+	}
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{rsaCert},
+	}
+
+	listen, err := Listen("tcp", fmt.Sprintf(":%d", port), tlcpCfg, tlsCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listen.Close()
+
+	go func() {
+		var cli net.Conn
+		time.Sleep(time.Millisecond * 100)
+		cli, _ = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		// 打开连接后立即关闭，不发送数据
+		_ = cli.Close()
+
+		// 第二次发起正确的连接
+		time.Sleep(time.Millisecond * 100)
+		cli, _ = tlcp.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tlcp.Config{InsecureSkipVerify: true})
+		_, err = cli.Write(send)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cli != nil {
+			_ = cli.Close()
+		}
+	}()
+
+	conn, err = listen.Accept()
+	// 不应该出现错误
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 尝试读取数据
+	_, err = conn.Read(buf)
+	if err != io.EOF {
+		t.Fatalf("err: %v, want: %v", err, io.EOF)
+	}
+	_ = conn.Close()
+
+	// 第二次发送正常数据
+	conn, err = listen.Accept()
+	// 不应该出现错误
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 可以正常读取数据
 	n, err := conn.Read(buf)
 	if err != nil {
 		t.Fatal(err)
@@ -282,6 +400,61 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 	if conn != nil {
 		_ = conn.Close()
 	}
+}
+
+func TestWeb(t *testing.T) {
+	var port = 9004
+
+	tlcpCfg := &tlcp.Config{
+		Certificates: []tlcp.Certificate{sigCert, encCert},
+	}
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{rsaCert},
+	}
+
+	listen, err := Listen("tcp", fmt.Sprintf(":%d", port), tlcpCfg, tlsCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listen.Close()
+	serveMux := http.NewServeMux()
+	serveMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("Hello"))
+	})
+	srv := &http.Server{Handler: serveMux}
+
+	go func() {
+		defer srv.Close()
+		time.Sleep(time.Millisecond * 500)
+		// 提前关闭连接
+		cli, _ := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		_ = cli.Close()
+
+		// 测试Web正常调用
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+
+		client := &http.Client{Transport: tr}
+		response, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", port))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		bin, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(bin) != "Hello" {
+			t.Fatalf("recv: %s, want: %s", string(bin), "Hello")
+		}
+	}()
+
+	err = srv.Serve(listen)
+	if err != nil && err != http.ErrServerClosed {
+		t.Fatal(err)
+	}
+
 }
 
 // 启动TLCP服务端
