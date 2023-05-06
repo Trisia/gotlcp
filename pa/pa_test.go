@@ -266,8 +266,13 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 		if cli != nil {
 			_ = cli.Close()
 		}
+		// 第二次发起正确的连接
+		time.Sleep(time.Millisecond * 100)
 		// 第三次发起TLS连接
-		cli, _ = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{InsecureSkipVerify: true})
+		cli, err = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			t.Fatal(err)
+		}
 		_, err = cli.Write(send)
 		if err != nil {
 			t.Fatal(err)
