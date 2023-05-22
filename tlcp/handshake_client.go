@@ -528,11 +528,12 @@ func (hs *clientHandshakeState) createNewSession() error {
 
 	sessionKey := hex.EncodeToString(hs.serverHello.sessionId)
 	cs := &SessionState{
-		sessionId:    hs.serverHello.sessionId,
-		vers:         hs.serverHello.vers,
-		cipherSuite:  hs.serverHello.cipherSuite,
-		masterSecret: hs.masterSecret,
-		createdAt:    time.Now(),
+		sessionId:        hs.serverHello.sessionId,
+		vers:             hs.serverHello.vers,
+		cipherSuite:      hs.serverHello.cipherSuite,
+		masterSecret:     hs.masterSecret,
+		createdAt:        time.Now(),
+		peerCertificates: hs.peerCertificates,
 	}
 	dst := hs.c.conn.RemoteAddr().String()
 	hs.c.config.SessionCache.Put(sessionKey, cs)

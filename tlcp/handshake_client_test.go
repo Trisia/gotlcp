@@ -193,6 +193,10 @@ func Test_resumedSession(t *testing.T) {
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
+		peerCertificates := conn.PeerCertificates()
+		if len(peerCertificates) < 2 {
+			t.Fatal("peerCertificates no found, it should be 2 (sig cert,enc cert)")
+		}
 		fmt.Printf(">> %02X\n", buff[:n])
 	}
 }
