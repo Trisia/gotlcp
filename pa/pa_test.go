@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"testing"
@@ -371,7 +372,6 @@ func TestAccept_early_close(t *testing.T) {
 		// 第二次发起正确的连接
 		time.Sleep(time.Millisecond * 100)
 		cli, _ = tlcp.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tlcp.Config{InsecureSkipVerify: true})
-		time.Sleep(time.Millisecond * 800)
 		_, err = cli.Write(send)
 		if err != nil {
 			t.Fatal(err)
@@ -401,7 +401,8 @@ func TestAccept_early_close(t *testing.T) {
 	}
 	// 可以正常读取数据
 	n, err := conn.Read(buf)
-	if err != nil {
+	if n != len(send) {
+		log.Printf(">> actual read n: %d \n%02X\n", n, buf[:n])
 		t.Fatal(err)
 	}
 	if !bytes.Equal(buf[:n], send) {
