@@ -261,7 +261,6 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 		// 第二次发起正确的连接
 		time.Sleep(time.Millisecond * 100)
 		cli, _ = tlcp.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tlcp.Config{InsecureSkipVerify: true})
-		time.Sleep(time.Millisecond * 100)
 		_, err = cli.Write(send)
 		if err != nil {
 			t.Fatal(err)
@@ -273,7 +272,6 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 		// 第三次发起TLS连接
 		cli, err = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{InsecureSkipVerify: true})
-		time.Sleep(time.Millisecond * 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,7 +304,8 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 	}
 	// 可以正常读取数据
 	n, err := conn.Read(buf)
-	if err != nil {
+	if n != len(send) || !bytes.Equal(buf[:n], send) {
+		log.Printf(">> actual read n: %d \n%02X\n", n, buf[:n])
 		t.Fatal(err)
 	}
 	if _, ok := conn.(*ProtocolSwitchServerConn).ProtectedConn().(*tlcp.Conn); !ok {
@@ -327,7 +326,8 @@ func TestProtocolNotSupportError_Error(t *testing.T) {
 	}
 	// 可以正常读取数据
 	n, err = conn.Read(buf)
-	if err != nil {
+	if n != len(send) || !bytes.Equal(buf[:n], send) {
+		log.Printf(">> actual read n: %d \n%02X\n", n, buf[:n])
 		t.Fatal(err)
 	}
 	if _, ok := conn.(*ProtocolSwitchServerConn).ProtectedConn().(*tls.Conn); !ok {
