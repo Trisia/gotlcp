@@ -83,7 +83,7 @@ func Test_clientHandshake_no_auth(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 
 	config := &Config{InsecureSkipVerify: true}
-	testClientHandshak(t, config, "127.0.0.1:8444")
+	testClientHandshake(t, config, "127.0.0.1:8444")
 }
 
 // 测试服务端身份认证
@@ -100,7 +100,7 @@ func Test_clientHandshake_auth_server(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 300)
 	config := &Config{RootCAs: pool}
-	testClientHandshak(t, config, "127.0.0.1:8445")
+	testClientHandshake(t, config, "127.0.0.1:8445")
 }
 
 // 测试双向身份认证
@@ -116,7 +116,7 @@ func Test_clientHandshake_client_auth(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 
 	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}}
-	testClientHandshak(t, config, "127.0.0.1:8446")
+	testClientHandshake(t, config, "127.0.0.1:8446")
 }
 
 // 测试客户端无证书，服务端要求证书
@@ -216,13 +216,13 @@ func Test_clientHandshake_ECDHE(t *testing.T) {
 		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
 	}
-	testClientHandshak(t, config, "127.0.0.1:8451")
+	testClientHandshake(t, config, "127.0.0.1:8451")
 
 	config.ClientECDHEParamsAsVector = true
-	testClientHandshak(t, config, "127.0.0.1:8451")
+	testClientHandshake(t, config, "127.0.0.1:8451")
 }
 
-func testClientHandshak(t *testing.T, config *Config, addr string) {
+func testClientHandshake(t *testing.T, config *Config, addr string) {
 	conn, err := Dial("tcp", addr, config)
 	if err != nil {
 		t.Fatal(err)
@@ -289,4 +289,23 @@ func Test_NotResumedSession(t *testing.T) {
 		}
 		_ = conn.Close()
 	}
+}
+
+// ECC 套件下客户端传输双证书
+func Test_clientHandshake_ECCWithEncCert(t *testing.T) {
+	go func() {
+		if err := serverNeedAuth(8452); err != nil {
+			panic(err)
+		}
+	}()
+	time.Sleep(time.Millisecond * 300)
+	pool := smx509.NewCertPool()
+	pool.AddCert(root1)
+
+	config := &Config{
+		RootCAs:      pool,
+		Certificates: []Certificate{authCert, authCert},
+		CipherSuites: []uint16{ECC_SM4_GCM_SM3, ECC_SM4_CBC_SM3},
+	}
+	testClientHandshake(t, config, "127.0.0.1:8452")
 }

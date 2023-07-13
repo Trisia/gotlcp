@@ -345,12 +345,15 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 			_ = c.sendAlert(alertInternalError)
 			return err
 		}
-		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
-			if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
+		// 尝试尝试获取客户端加密证书，如果存在
+		if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
+			// 特殊的 ECDHE 仅支持双向身份认证若没有加密证书则认为无法协商。
+			if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
 				_ = c.sendAlert(alertInternalError)
 				return err
 			}
 		}
+
 		hs.authCert = clientAuthCert
 		hs.encCert = clientEncCert
 
@@ -370,14 +373,17 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	// 即便客户端没有证书，也需要发一条空证书的证书消息到服务端。
 	if certRequested {
 		certMsg = new(certificateMsg)
-		if len(clientAuthCert.Certificate) > 0 {
+		if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
 			certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
 		}
-		if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
-			// ECDHE系列套件出签名证书外，还需要客户端额外发送加密证书
-			// 加密证书将用于SM2密钥交换协商密钥。
+		// 若存在客户端加密证书则一同发送该证书。
+		//
+		// 特别的：ECDHE系列套件出签名证书外，还需要客户端额外发送加密证书
+		// 加密证书将用于SM2密钥交换协商密钥。
+		if clientEncCert != nil && len(clientEncCert.Certificate) > 0 {
 			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
 		}
+
 		if _, err = c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
 			return err
 		}
