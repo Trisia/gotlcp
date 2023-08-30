@@ -96,6 +96,12 @@ func init() {
 	simplePool.AddCert(root1)
 }
 
+// 测试时服务器时间，防止证书过期
+func runtimeTime() time.Time {
+	res, _ := time.Parse("2006-01-02 15:04:05", "2022-12-15 00:00:00")
+	return res
+}
+
 /*
 func Test_serverHandshake(t *testing.T) {
 	err := server(8443)
@@ -145,6 +151,7 @@ func server(port int) error {
 	defer tcpLn.Close()
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
+		Time:         runtimeTime,
 	}
 	var conn net.Conn
 	for {
@@ -175,6 +182,7 @@ func serverNeedAuth(port int) error {
 		Certificates: []Certificate{sigCert, encCert},
 		ClientAuth:   RequireAndVerifyClientCert,
 		ClientCAs:    simplePool,
+		Time:         runtimeTime,
 	}
 	var conn net.Conn
 	for {
@@ -246,6 +254,7 @@ func Test_ResumedSession(t *testing.T) {
 			ClientAuth:   RequireAndVerifyClientCert,
 			Certificates: []Certificate{sigCert, encCert},
 			SessionCache: NewLRUSessionCache(10),
+			Time:         runtimeTime,
 		}
 		first := true
 		for {
@@ -279,7 +288,12 @@ func Test_ResumedSession(t *testing.T) {
 	}()
 
 	time.Sleep(time.Millisecond * 300)
-	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}, SessionCache: NewLRUSessionCache(2)}
+	config := &Config{
+		RootCAs:      pool,
+		Certificates: []Certificate{authCert},
+		SessionCache: NewLRUSessionCache(2),
+		Time:         runtimeTime,
+	}
 
 	for i := 0; i < 2; i++ {
 		conn, err := Dial("tcp", "127.0.0.1:20100", config)

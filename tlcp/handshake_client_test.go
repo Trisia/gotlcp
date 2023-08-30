@@ -99,7 +99,7 @@ func Test_clientHandshake_auth_server(t *testing.T) {
 	pool.AddCert(zjcaRoot)
 
 	time.Sleep(time.Millisecond * 300)
-	config := &Config{RootCAs: pool}
+	config := &Config{RootCAs: pool, Time: runtimeTime}
 	testClientHandshake(t, config, "127.0.0.1:8445")
 }
 
@@ -115,7 +115,7 @@ func Test_clientHandshake_client_auth(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 300)
 
-	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}}
+	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}, Time: runtimeTime}
 	testClientHandshake(t, config, "127.0.0.1:8446")
 }
 
@@ -155,7 +155,7 @@ func Test_clientHandshake_client_nocert(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 300)
 
-	config := &Config{RootCAs: pool}
+	config := &Config{RootCAs: pool, Time: runtimeTime}
 	conn, err := Dial("tcp", "127.0.0.1:8449", config)
 	if err != nil && err.Error() != "remote error: tlcp: bad certificate" {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func Test_resumedSession(t *testing.T) {
 	pool := smx509.NewCertPool()
 	pool.AddCert(root1)
 	time.Sleep(time.Millisecond * 300)
-	config := &Config{RootCAs: pool, SessionCache: NewLRUSessionCache(2)}
+	config := &Config{RootCAs: pool, SessionCache: NewLRUSessionCache(2), Time: runtimeTime}
 
 	buff := make([]byte, 1024)
 	for i := 0; i < 2; i++ {
@@ -215,6 +215,7 @@ func Test_clientHandshake_ECDHE(t *testing.T) {
 		RootCAs:      pool,
 		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3},
+		Time:         runtimeTime,
 	}
 	testClientHandshake(t, config, "127.0.0.1:8451")
 
@@ -248,6 +249,7 @@ func Test_NotResumedSession(t *testing.T) {
 			ClientCAs:    pool,
 			ClientAuth:   RequireAndVerifyClientCert,
 			Certificates: []Certificate{sigCert, encCert},
+			Time:         runtimeTime,
 		}
 		for {
 			conn, err := tcpLn.Accept()
@@ -266,7 +268,12 @@ func Test_NotResumedSession(t *testing.T) {
 	}()
 
 	time.Sleep(time.Millisecond * 300)
-	config := &Config{RootCAs: pool, Certificates: []Certificate{authCert}, SessionCache: NewLRUSessionCache(2)}
+	config := &Config{
+		RootCAs:      pool,
+		Certificates: []Certificate{authCert},
+		SessionCache: NewLRUSessionCache(2),
+		Time:         runtimeTime,
+	}
 
 	for i := 0; i < 2; i++ {
 		conn, err := Dial("tcp", "127.0.0.1:20099", config)
@@ -306,6 +313,7 @@ func Test_clientHandshake_ECCWithEncCert(t *testing.T) {
 		RootCAs:      pool,
 		Certificates: []Certificate{authCert, authCert},
 		CipherSuites: []uint16{ECC_SM4_GCM_SM3, ECC_SM4_CBC_SM3},
+		Time:         runtimeTime,
 	}
 	testClientHandshake(t, config, "127.0.0.1:8452")
 }
