@@ -2,9 +2,17 @@ package main
 
 import (
 	"fmt"
+	"time"
+
 	"gitee.com/Trisia/gotlcp/tlcp"
 	"github.com/emmansun/gmsm/smx509"
 )
+
+// 测试时服务器时间，防止证书过期
+func runtimeTime() time.Time {
+	res, _ := time.Parse("2006-01-02 15:04:05", "2023-03-15 00:00:00")
+	return res
+}
 
 // 客户端双向身份认证
 func main() {
@@ -22,6 +30,8 @@ func main() {
 			tlcp.ECDHE_SM4_CBC_SM3,
 			// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
 		},
+		Time: runtimeTime,
+		EnableDebug: true,
 	}
 	//// 兼容向量模式的密钥交换参数
 	//config.ClientECDHEParamsAsVector = true
