@@ -1,11 +1,19 @@
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
-	"github.com/emmansun/gmsm/smx509"
 	"io"
 	"net"
+	"time"
+
+	"gitee.com/Trisia/gotlcp/tlcp"
+	"github.com/emmansun/gmsm/smx509"
 )
+
+// 测试时服务器时间，防止证书过期
+func runtimeTime() time.Time {
+	res, _ := time.Parse("2006-01-02 15:04:05", "2023-03-15 00:00:00")
+	return res
+}
 
 // 服务端双向身份认证
 func main() {
@@ -20,6 +28,8 @@ func main() {
 			tlcp.ECDHE_SM4_GCM_SM3, // 最高优先级
 			tlcp.ECC_SM4_CBC_SM3,   // 最低优先级
 		},
+		Time:        runtimeTime,
+		EnableDebug: true,
 	}
 	listen, err := tlcp.Listen("tcp", ":8450", config)
 	if err != nil {
