@@ -3,7 +3,7 @@
 ## 1. HTTPS原理概述
 
 TLCP协议作为传输层密码协议，在握手完成后认为建立TLCP连接，对于上层应用来说TLCP是透明的，上层应用依然可以使用Socket接口进行通信，
-只不过通信实现为TLCP协议保护的安全通信，不是TCP协议。
+下层通信实现为TLCP协议，而不是TCP协议。
 
 基于上述原理可以将HTTP下方的协议替换为TLCP协议，就这就是HTTPS，协议栈结构如下所示：
 
@@ -189,4 +189,68 @@ func main() {
 > 若您需要配置双向身份认证请参考 [《GoTLCP 客户端配置》](./ClientConfig.md)
 
 完整示例见 [https/client/main.go](../example/https/client/main.go)
+
+
+
+## 4. HTTPS TLCP/TLS自适应服务端
+
+> 关于 TLCP/TLS 自适应原理，请参考[《GoTLCP 协议适配器》](../pa/README.md)相关内容。
+
+以Go语言标准库为例，TLCP/TLS 自适应HTTPS服务端配置方式如下：
+
+1. 创建PA Listener。
+2. 构造HTTP服务。
+3. 通过 PA Listen 启动HTTPS服务。
+
+```go
+package main
+
+import (
+	"crypto/tls"
+	"gitee.com/Trisia/gotlcp/pa"
+	"gitee.com/Trisia/gotlcp/tlcp"
+	"net/http"
+)
+
+var (
+	sigCert tlcp.Certificate
+	encCert tlcp.Certificate
+
+	rsaCert tls.Certificate
+)
+
+func main() {
+	var err error
+	tlcpCfg := &tlcp.Config{
+		Certificates: []tlcp.Certificate{sigCert, encCert},
+	}
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{rsaCert},
+	}
+	// 1. 创建PA Listener
+	ln, err := pa.Listen("tcp", ":443", tlcpCfg, tlsCfg)
+	if err != nil {
+		panic(err)
+	}
+	// 2. 构造HTTP服务
+	serveMux := http.NewServeMux()
+	serveMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("Hello GoTLCP!"))
+	})
+	svr := http.Server{Addr: ":443", Handler: serveMux}
+	// 3. 通过 PA Listen 启动HTTPS服务
+	err = svr.Serve(ln)
+	if err != nil {
+		panic(err)
+	}
+}
+```
+
+完整示例见 [https/server/pa/main.go](../example/https/server/pa/main.go)
+
+类似的Gin 与 Fiber 的配置方式也是类似，详见示例：
+
+- [Gin HTTPS 协议自适应 https/server/pa/gin_demo/main.go](../example/https/server/pa/gin_demo/main.go)
+- [Fiber HTTPS 协议自适应 https/server/pa/fiber_demo/main.go](../example/https/server/pa/fiber_demo/main.go)
+
 

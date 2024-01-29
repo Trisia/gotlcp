@@ -35,4 +35,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace gitee.com/Trisia/gotlcp v1.3.18 => ../../../../
+replace gitee.com/Trisia/gotlcp v1.3.18 => ../../../../../

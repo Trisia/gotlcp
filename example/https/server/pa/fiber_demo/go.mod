@@ -2,16 +2,14 @@ module fiber_demo
 
 go 1.18
 
-require (
-	gitee.com/Trisia/gotlcp v1.3.18
-	github.com/gofiber/fiber/v2 v2.52.0
-)
+require gitee.com/Trisia/gotlcp v1.3.18
 
-replace gitee.com/Trisia/gotlcp v1.3.18 => ../../../../
+replace gitee.com/Trisia/gotlcp v1.3.18 => ../../../../../
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/emmansun/gmsm v0.25.0 // indirect
+	github.com/gofiber/fiber/v2 v2.52.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
