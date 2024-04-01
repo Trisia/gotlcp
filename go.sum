@@ -1,6 +1,10 @@
 github.com/emmansun/gmsm v0.25.0 h1:7WStxGMhdXlKe7E0qSsO6+XMfcdZ30Nlcy5jbt17RxY=
 github.com/emmansun/gmsm v0.25.0/go.mod h1:tKoGqGHkNwJM8wI1BGURqzRx3dsQF7rr2hp8rhrPOb4=
+github.com/emmansun/gmsm v0.26.1 h1:nLNE+P80RFKuoXgVbAkt/qAq/y+GNu06ciEpsvIc3zo=
+github.com/emmansun/gmsm v0.26.1/go.mod h1:p7FIZFWfCTgQC/AwDQPBAuzZ91788FfsyDFpqglYQYg=
 golang.org/x/crypto v0.18.0 h1:PGVlW0xEltQnzFZ55hkuX5+KLyrMYhHld1YHO4AKcdc=
 golang.org/x/crypto v0.18.0/go.mod h1:R0j02AL6hcrfOiy9T4ZYp/rcWeMxM3L6QYxlOuEG1mg=
+golang.org/x/crypto v0.21.0/go.mod h1:0BP7YvVV9gBbVKyeTG0Gyn+gZm94bibOW5BjDEYAOMs=
 golang.org/x/sys v0.16.0 h1:xWw16ngr6ZMtmxDyKyIgsE93KNKz5HKmMa3b8ALHidU=
 golang.org/x/sys v0.16.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.18.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
