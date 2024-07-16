@@ -175,7 +175,7 @@ const (
 	TLCP_IBC_SM4_GCM_SM3    uint16 = 0xe057
 	TLCP_RSA_SM4_CBC_SM3    uint16 = 0xe019
 	TLCP_RSA_SM4_GCM_SM3    uint16 = 0xe059
-	TLCP_RSA_SM4_CBC_SHA256 uint16 = 0xe01e
+	TLCP_RSA_SM4_CBC_SHA256 uint16 = 0xe01c
 	TLCP_RSA_SM4_GCM_SHA256 uint16 = 0xe05a
 
 	//
@@ -191,7 +191,7 @@ const (
 	IBC_SM4_GCM_SM3    uint16 = 0xe057
 	RSA_SM4_CBC_SM3    uint16 = 0xe019
 	RSA_SM4_GCM_SM3    uint16 = 0xe059
-	RSA_SM4_CBC_SHA256 uint16 = 0xe01e
+	RSA_SM4_CBC_SHA256 uint16 = 0xe01c
 	RSA_SM4_GCM_SHA256 uint16 = 0xe05a
 )
 
