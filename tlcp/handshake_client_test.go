@@ -203,7 +203,7 @@ func Test_resumedSession(t *testing.T) {
 
 func Test_clientHandshake_ECDHE(t *testing.T) {
 	go func() {
-		if err := server(8451); err != nil {
+		if err := server(8451, ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3); err != nil {
 			panic(err)
 		}
 	}()
