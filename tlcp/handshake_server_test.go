@@ -142,7 +142,7 @@ func Test_doResumeHandshake(t *testing.T) {
 }
 */
 // 启动TLCP服务端
-func server(port int) error {
+func server(port int, suites ...uint16) error {
 	var err error
 	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -152,6 +152,9 @@ func server(port int) error {
 	config := &Config{
 		Certificates: []Certificate{sigCert, encCert},
 		Time:         runtimeTime,
+	}
+	if len(suites) > 0 {
+		config.CipherSuites = suites
 	}
 	var conn net.Conn
 	for {
