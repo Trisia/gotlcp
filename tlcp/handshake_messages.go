@@ -86,11 +86,213 @@ type clientHelloMsg struct {
 	sessionId          []byte
 	cipherSuites       []uint16
 	compressionMethods []uint8
+
+	// GM/T 0024-2023 支持扩展
+	serverName                   string             // 服务器名称
+	trustedAuthorities           []TrustedAuthority // 信任的CA证书信息
+	ocspStapling                 bool               // 证书状态请求
+	supportedCurves              []CurveID          // 支持的椭圆曲线
+	supportedSignatureAlgorithms []SignatureScheme  // 支持的签名算法
+	alpnProtocols                []string           // 支持的应用层协议
+	ibsdhClientID                []byte             // IBSDH密钥交换 客户端标识
+
 }
 
 func (m *clientHelloMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
 		return m.raw, nil
+	}
+	var exts cryptobyte.Builder
+	if len(m.serverName) > 0 {
+		/*
+			// GM/T 0024-2023 A.1 SNI服务器名称指示
+			struct {
+			  ServerName server_name_list<1..2^16-1>
+			} ServerNameList;
+			struct {
+			  NameType name_type;
+			  select (name_type) {
+			    case host_name: HostName;
+			  } name;
+			} ServerName;
+			enum {
+			  host_name(0), (255)
+			} NameType;
+			opaque HostName<1..2^16-1>;
+		*/
+		exts.AddUint16(extensionServerName)
+		exts.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+				// NameType { host_name(0), (255)}
+				b.AddUint8(0)
+				b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
+					b.AddBytes([]byte(m.serverName))
+				})
+			})
+		})
+	}
+	if len(m.trustedAuthorities) > 0 {
+		// 客户端指定其信任的CA，从服务器端可根据客户端所信任的CA发送服务器证书给客户端。
+		/*
+			// GM/T 0024-2023 A.2 Trusted CA Indication 信任的CA指示
+			struct {
+				TrustedAuthority trusted_authority_list<1..2^16-1>;
+			} TrustedAuthorities;
+			struct {
+			    IdentifierType identifier_type;
+			    select (identifier_type) {
+					case pre_agreed: struct {};
+					case key_sm3_hash: SM3Hash;
+			        case x509_name: DistinguishedName;
+					case cert_sm3_hash: SM3Hash;
+			    } identifier;
+			} TrustedAuthority;
+			enum {
+				pre_agreed(0),x509_name(2),key_sm3_hash(4), cert_sm3_hash(5), (255)
+			} IdentifierType;
+
+			// 参考 RFC 3546
+			opaque SM3Hash[32];
+			// DER-encoded X.509 DistinguishedName of the CA.
+			opaque DistinguishedName<1..2^16-1>;
+		*/
+		exts.AddUint16(extensionTrustedCAKeys)
+		exts.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+				for _, ta := range m.trustedAuthorities {
+					b.AddUint16(ta.IdentifierType)
+					switch ta.IdentifierType {
+					case IdentifierTypePreAgreed:
+						// case pre_agreed: struct {};
+					case IdentifierTypeKeySM3Hash, IdentifierTypeCertSM3Hash:
+						b.AddBytes(ta.Identifier)
+					case IdentifierTypeX509Name:
+						b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+							b.AddBytes(ta.Identifier)
+						})
+					}
+				}
+			})
+		})
+	}
+	if m.ocspStapling {
+		// GM/T 0024-2023 A.3 OCSP Status Request OCSP状态请求
+		/*
+				struct {
+					CertificateStatusType status_type;
+					select (status_type) {
+						case ocsp: OCSPStatusRequest;
+					} request;
+				} CertificateStatusRequest;
+				enum { ocsp(1), (255) } CertificateStatusType;
+
+				struct {
+					ResponderID responder_id_list<1..2^16-1>;
+					Extensions  request_extensions;
+				} OCSPStatusRequest;
+
+				opaque ResponderID<1..2^16-1>;
+				opaque Extensions<0..2^16-1>;
+
+				// RFC 6960 4.2.1.  ASN.1 Specification of the OCSP Response (ASN.1)
+				ResponderID ::= CHOICE {
+			      byName               [1] Name,
+			      byKey                [2] KeyHash }
+				KeyHash ::= OCTET STRING // SHA-1 hash of responder's public key
+		*/
+		exts.AddUint16(extensionStatusRequest)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint8(1)  // status_type = ocsp
+			exts.AddUint16(0) // empty responder_id_list
+			exts.AddUint16(0) // empty request_extensions
+		})
+	}
+	if len(m.supportedCurves) > 0 {
+		// GM/T 0024-2023 A.4 Supported Elliptic Curves 支持的椭圆曲线
+		/*
+			struct {
+				NamedCurve curve_list<1..2^16-1>;
+			} SupportedEllipticCurves;
+			enum {
+				deprecated(1..22)
+				SM2Curve(41),
+				reserved(0xFE00..0xFEFF),
+				deprecated(0xFF01..0xFF02),
+				(0xFFFF)
+			} NamedCurve;
+		*/
+		exts.AddUint16(extensionSupportedCurves)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				for _, curve := range m.supportedCurves {
+					exts.AddUint16(uint16(curve))
+				}
+			})
+		})
+	}
+
+	if len(m.supportedSignatureAlgorithms) > 0 {
+		// GM/T 0024-2023 A.5 Supported Signature Algorithms 签名算法
+		/*
+			SignatureAndHashAlgorithm  supported_signature_algorithms<1..2^16-1>;
+			struct {
+				HashAlgorithm hash;
+				SignatureAlgorithm signature;
+			} SignatureAndHashAlgorithm;
+			enum {
+				none(0), sha224(3), sha256(4), sha384(5),
+				sha512(6), sm3(7), (255)
+			} HashAlgorithm;
+			enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
+
+			// 客户端在使用商用密码算法进行协商时，应发 SignatureAndHashAlgorithm 扩展并指定HashAlgorithm为SM3，
+			// 指定SignatureAlgorithm为SM2。 => 0x0704
+		*/
+		exts.AddUint16(extensionSignatureAlgorithms)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				for _, sigAlgo := range m.supportedSignatureAlgorithms {
+					exts.AddUint16(uint16(sigAlgo))
+				}
+			})
+		})
+	}
+	if len(m.alpnProtocols) > 0 {
+		// GM/T 0024-2023 A.6 Application-Layer Protocol Negotiation (ALPN) 应用层协议协商
+		/*
+			struct {
+				ProtocolName protocol_name_list<1..2^16-1>;
+			} ProtocolNameList;
+			opaque ProtocolName<1..2^8-1>;
+			// 其中 ProtocolName的定义和IANA保持一致：https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+		*/
+		exts.AddUint16(extensionALPN)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				for _, proto := range m.alpnProtocols {
+					exts.AddUint8LengthPrefixed(func(exts *cryptobyte.Builder) {
+						exts.AddBytes([]byte(proto))
+					})
+				}
+			})
+		})
+	}
+	if len(m.ibsdhClientID) > 0 {
+		// GM/T 0024-2023 A.7 IBSDH Client ID
+		/*
+			opaque ClientID<1..2^16-1>;
+		*/
+		exts.AddUint16(extensionClientID)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				exts.AddBytes(m.ibsdhClientID)
+			})
+		})
+	}
+
+	extBytes, err := exts.Bytes()
+	if err != nil {
+		return nil, err
 	}
 
 	var b cryptobyte.Builder
@@ -110,10 +312,14 @@ func (m *clientHelloMsg) marshal() ([]byte, error) {
 			b.AddBytes(m.compressionMethods)
 		})
 
-		// 由于GB/T 38636-2016 不支持扩展，因此忽略
+		// GM/T 0024-2023 支持扩展 6.4.5.2.1 Client Hello 消息
+		if len(extBytes) > 0 {
+			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+				b.AddBytes(extBytes)
+			})
+		}
 	})
 
-	var err error
 	m.raw, err = b.Bytes()
 	return m.raw, err
 }

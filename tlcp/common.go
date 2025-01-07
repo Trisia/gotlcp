@@ -85,6 +85,52 @@ func HandshakeMessageTypeName(id uint8) string {
 	return fmt.Sprintf("0x%02X", id)
 }
 
+// GM/T0024-2023 6.4.5.2.3 Hello 消息扩展字段 a)
+const (
+	extensionServerName                          uint16 = 0  // SNI服务器名称指示
+	extensionTrustedCAKeys                       uint16 = 3  // Trusted CA indication受信任的CA指示
+	extensionStatusRequest                       uint16 = 5  // Certificate Status Request证书状态请求
+	extensionSupportedGroups                     uint16 = 10 // Supported Elliptic Curves支持的椭圆曲线
+	extensionSupportedCurves                     uint16 = 10 // Supported Elliptic Curves支持的椭圆曲线
+	extensionSignatureAlgorithm                  uint16 = 13 // Signature Algorithms签名算法
+	extensionSignatureAlgorithms                 uint16 = 13 // Signature Algorithms签名算法
+	extensionALPN                                uint16 = 16 // Application-Layer Protocol Negotiation应用层协议协商
+	extensionApplicationLayerProtocolNegotiation uint16 = 16 // Application-Layer Protocol Negotiation应用层协议协商
+	extensionClientID                            uint16 = 66 // Client ID客户端标识
+)
+
+// GM/T0024-2023 A.2 Trusted CA indication受信任的CA指示
+const (
+	IdentifierTypePreAgreed   uint16 = 0 // Pre-agreed预先协商
+	IdentifierTypeX509Name    uint16 = 2 // X.509证书名称
+	IdentifierTypeKeySM3Hash  uint16 = 4 // 密钥SM3哈希
+	IdentifierTypeCertSM3Hash uint16 = 5 // 证书SM3哈希
+)
+
+// TrustedAuthority GM/T0024-2023  A.2 Trusted CA indication受信任的CA指示 结构
+//
+//	struct {
+//	    IdentifierType identifier_type;
+//	    select (identifier_type) {
+//			case pre_agreed: struct {};
+//			case key_sm3_hash: SM3Hash;
+//	        case x509_name: DistinguishedName;
+//			case cert_sm3_hash: SM3Hash;
+//	    } identifier;
+//	} TrustedAuthority;
+//	enum {
+//		pre_agreed(0),x509_name(2),key_sm3_hash(4), cert_sm3_hash(5), (255)
+//	} IdentifierType;
+//
+//	// 参考 RFC 3546
+//	opaque SM3Hash[32];
+//	// DER-encoded X.509 DistinguishedName of the CA.
+//	opaque DistinguishedName<1..2^16-1>;
+type TrustedAuthority struct {
+	IdentifierType uint16 // 证书标识类型
+	Identifier     []byte // 证书标识
+}
+
 // TLCP 压缩类型
 const (
 	compressionNone uint8 = 0
@@ -98,6 +144,24 @@ const (
 	// CurveSM2 命名曲线ID  见 RFC 8998 第2章
 	// https://www.rfc-editor.org/rfc/rfc8998.html
 	CurveSM2 CurveID = 41
+)
+
+// SignatureScheme GM/T 0024-2023 A.5 Signature Algorithms签名算法
+//
+//	struct {
+//		HashAlgorithm hash;
+//		SignatureAlgorithm signature;
+//	} SignatureAndHashAlgorithm;
+//	enum {
+//		none(0), sha224(3), sha256(4), sha384(5),
+//		sha512(6), sm3(7), (255)
+//	} HashAlgorithm;
+//	enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
+type SignatureScheme uint16
+
+const (
+	// SM2WithSM3 指定HashAlgorithm为SM3，指定SignatureAlgorithm为SM2。 => 0x0704
+	SM2WithSM3 SignatureScheme = 0x0704
 )
 
 // Certificate types (for certificateRequestMsg)
