@@ -955,9 +955,7 @@ func (c *Conn) writeChangeCipherRecord() error {
 	return err
 }
 
-// readHandshake reads the next handshake message from
-// the record layer. If transcript is non-nil, the message
-// is written to the passed transcriptHash.
+// readHandshake 从记录层读取下一个握手消息。如果transcript不为nil，则将消息写入传递的transcriptHash。
 func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 	for c.hand.Len() < 4 {
 		if err := c.readRecord(); err != nil {

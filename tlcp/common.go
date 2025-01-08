@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -101,10 +102,10 @@ const (
 
 // GM/T0024-2023 A.2 Trusted CA indication受信任的CA指示
 const (
-	IdentifierTypePreAgreed   uint16 = 0 // Pre-agreed预先协商
-	IdentifierTypeX509Name    uint16 = 2 // X.509证书名称
-	IdentifierTypeKeySM3Hash  uint16 = 4 // 密钥SM3哈希
-	IdentifierTypeCertSM3Hash uint16 = 5 // 证书SM3哈希
+	IdentifierTypePreAgreed   uint8 = 0 // Pre-agreed预先协商
+	IdentifierTypeX509Name    uint8 = 2 // X.509证书名称
+	IdentifierTypeKeySM3Hash  uint8 = 4 // 密钥SM3哈希
+	IdentifierTypeCertSM3Hash uint8 = 5 // 证书SM3哈希
 )
 
 // TrustedAuthority GM/T0024-2023  A.2 Trusted CA indication受信任的CA指示 结构
@@ -127,7 +128,7 @@ const (
 //	// DER-encoded X.509 DistinguishedName of the CA.
 //	opaque DistinguishedName<1..2^16-1>;
 type TrustedAuthority struct {
-	IdentifierType uint16 // 证书标识类型
+	IdentifierType uint8  // 证书标识类型
 	Identifier     []byte // 证书标识
 }
 
@@ -158,6 +159,15 @@ const (
 //	} HashAlgorithm;
 //	enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
 type SignatureScheme uint16
+
+func (s SignatureScheme) String() string {
+	switch s {
+	case SM2WithSM3:
+		return "SM2WithSM3"
+	default:
+		return "SignatureScheme(" + strconv.FormatInt(int64(s), 10) + ")"
+	}
+}
 
 const (
 	// SM2WithSM3 指定HashAlgorithm为SM3，指定SignatureAlgorithm为SM2。 => 0x0704

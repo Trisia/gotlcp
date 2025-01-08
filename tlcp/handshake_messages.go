@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"strings"
 
 	x509 "github.com/emmansun/gmsm/smx509"
 	"golang.org/x/crypto/cryptobyte"
@@ -87,7 +88,7 @@ type clientHelloMsg struct {
 	cipherSuites       []uint16
 	compressionMethods []uint8
 
-	// GM/T 0024-2023 支持扩展
+	// GM/T 0024-2023 6.4.5.2.3 Hello消息扩展字段
 	serverName                   string             // 服务器名称
 	trustedAuthorities           []TrustedAuthority // 信任的CA证书信息
 	ocspStapling                 bool               // 证书状态请求
@@ -95,7 +96,6 @@ type clientHelloMsg struct {
 	supportedSignatureAlgorithms []SignatureScheme  // 支持的签名算法
 	alpnProtocols                []string           // 支持的应用层协议
 	ibsdhClientID                []byte             // IBSDH密钥交换 客户端标识
-
 }
 
 func (m *clientHelloMsg) marshal() ([]byte, error) {
@@ -125,7 +125,7 @@ func (m *clientHelloMsg) marshal() ([]byte, error) {
 			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 				// NameType { host_name(0), (255)}
 				b.AddUint8(0)
-				b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
+				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 					b.AddBytes([]byte(m.serverName))
 				})
 			})
@@ -160,7 +160,7 @@ func (m *clientHelloMsg) marshal() ([]byte, error) {
 		exts.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 				for _, ta := range m.trustedAuthorities {
-					b.AddUint16(ta.IdentifierType)
+					b.AddUint8(ta.IdentifierType)
 					switch ta.IdentifierType {
 					case IdentifierTypePreAgreed:
 						// case pre_agreed: struct {};
@@ -200,6 +200,10 @@ func (m *clientHelloMsg) marshal() ([]byte, error) {
 			      byKey                [2] KeyHash }
 				KeyHash ::= OCTET STRING // SHA-1 hash of responder's public key
 		*/
+
+		// RFC 4366, Section 3.6
+		// ResponderIDs提供了客户机信任的OCSP响应者列表。
+		// ResponderIDs 长度为零的序列具有特殊含义，即响应者被服务器隐式地知道，例如，通过事先安排。“Extensions"是OCSP请求扩展的DER编码。
 		exts.AddUint16(extensionStatusRequest)
 		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
 			exts.AddUint8(1)  // status_type = ocsp
@@ -352,7 +356,260 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 		return false
 	}
 
-	// GM/T 38636-2016 不支持扩展，忽略剩余的扩展字段
+	if s.Empty() {
+		// 客户端Hello消息中扩展字段为可选字段，如果没有扩展字段则直接返回
+		return true
+	}
+
+	// GM/T 0024-2023 6.4.5.2.3 Hello消息扩展字段
+	/*
+		struct {
+			...
+			Extension extensions<0..2^16-1>;
+		} ClientHello;
+	*/
+	var extensions cryptobyte.String
+	if !s.ReadUint16LengthPrefixed(&extensions) || !s.Empty() {
+		return false
+	}
+
+	for !extensions.Empty() {
+		// 解析扩展字段
+		/*
+			struct {
+				ExtensionType extension_type;
+				opaque extension_data<0..2^16-1>;
+			} Extension;
+			enum {... ,(65535)} ExtensionType;
+		*/
+		var extension uint16
+		var extData cryptobyte.String
+		if !extensions.ReadUint16(&extension) ||
+			!extensions.ReadUint16LengthPrefixed(&extData) {
+			return false
+		}
+
+		switch extension {
+		case extensionServerName:
+			// GM/T 0024-2023 A.1 SNI服务器名称指示
+			/*
+				struct {
+				  ServerName server_name_list<1..2^16-1>
+				} ServerNameList;
+			*/
+			var nameList cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&nameList) || nameList.Empty() {
+				return false
+			}
+			for !nameList.Empty() {
+				/*
+					struct {
+					  NameType name_type;
+					  select (name_type) {
+					    case host_name: HostName;
+					  } name;
+					} ServerName;
+					enum {
+					  host_name(0), (255)
+					} NameType;
+					opaque HostName<1..2^16-1>;
+				*/
+				var nameType uint8
+				var serverName cryptobyte.String
+				if !nameList.ReadUint8(&nameType) ||
+					!nameList.ReadUint16LengthPrefixed(&serverName) ||
+					serverName.Empty() {
+					return false
+				}
+				if nameType != 0 {
+					continue
+				}
+				if len(m.serverName) != 0 {
+					// 忽略多个SNI，只处理第一个
+					continue
+				}
+				m.serverName = string(serverName)
+				// An SNI value may not include a trailing dot.
+				if strings.HasSuffix(m.serverName, ".") {
+					return false
+				}
+			}
+
+		case extensionTrustedCAKeys:
+			// GM/T 0024-2023 A.2 Trusted CA Indication 信任的CA指示
+			/*
+				struct {
+					TrustedAuthority trusted_authority_list<1..2^16-1>;
+				} TrustedAuthorities;
+			*/
+			var taList cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&taList) || taList.Empty() {
+				return false
+			}
+			for !taList.Empty() {
+				/*
+					struct {
+					    IdentifierType identifier_type;
+					    select (identifier_type) {
+							case pre_agreed: struct {};
+							case key_sm3_hash: SM3Hash;
+					        case x509_name: DistinguishedName;
+							case cert_sm3_hash: SM3Hash;
+					    } identifier;
+					} TrustedAuthority;
+				*/
+				var ta TrustedAuthority
+				if !taList.ReadUint8(&ta.IdentifierType) {
+					return false
+				}
+				/*
+					enum {
+						pre_agreed(0),x509_name(2),key_sm3_hash(4), cert_sm3_hash(5), (255)
+					} IdentifierType;
+				*/
+				switch ta.IdentifierType {
+				case IdentifierTypePreAgreed:
+					// case pre_agreed: struct {};
+					ta.Identifier = []byte{}
+				case IdentifierTypeKeySM3Hash, IdentifierTypeCertSM3Hash:
+					// case key_sm3_hash: SM3Hash;
+					// case cert_sm3_hash: SM3Hash;
+					//
+					// 参考 RFC 3546
+					// opaque SM3Hash[32];
+					ta.Identifier = make([]byte, 32)
+					if !taList.ReadBytes(&ta.Identifier, 32) {
+						return false
+					}
+				case IdentifierTypeX509Name:
+					// case x509_name: DistinguishedName;
+					//
+					// 参考 RFC 3546
+					// opaque DistinguishedName<1..2^16-1>;
+					var identifier cryptobyte.String
+					if !taList.ReadUint16LengthPrefixed(&identifier) {
+						return false
+					}
+					ta.Identifier = make([]byte, len(identifier))
+					copy(ta.Identifier, identifier)
+				default:
+					// 忽略未知的标识类型
+					continue
+				}
+				m.trustedAuthorities = append(m.trustedAuthorities, ta)
+			}
+
+		case extensionStatusRequest:
+			// GM/T 0024-2023 A.3 OCSP Status Request OCSP状态请求
+			/*
+				struct {
+					CertificateStatusType status_type;
+					select (status_type) {
+						case ocsp: OCSPStatusRequest;
+					} request;
+				} CertificateStatusRequest;
+			*/
+			var statusType uint8
+			var ignored cryptobyte.String
+			// 不处理 OCSPStatusRequest
+			if !extData.ReadUint8(&statusType) ||
+				!extData.ReadUint16LengthPrefixed(&ignored) ||
+				!extData.ReadUint16LengthPrefixed(&ignored) {
+				return false
+			}
+			// enum { ocsp(1), (255) } CertificateStatusType;
+			m.ocspStapling = statusType == 1
+
+		case extensionSupportedGroups:
+			// GM/T 0024-2023 A.4 Supported Elliptic Curves 支持的椭圆曲线
+			/*
+				struct {
+					NamedCurve curve_list<1..2^16-1>;
+				} SupportedEllipticCurves;
+			*/
+			var curves cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&curves) || curves.Empty() {
+				return false
+			}
+			for !curves.Empty() {
+				var curve uint16
+				if !curves.ReadUint16(&curve) {
+					return false
+				}
+				m.supportedCurves = append(m.supportedCurves, CurveID(curve))
+			}
+
+		case extensionSignatureAlgorithm:
+			// GM/T 0024-2023 A.5 Supported Signature Algorithms 签名算法
+			/*
+				SignatureAndHashAlgorithm  supported_signature_algorithms<1..2^16-1>;
+			*/
+			// RFC 5246, Section 7.4.1.4.1
+			var sigAndAlgs cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
+				return false
+			}
+			for !sigAndAlgs.Empty() {
+				/*
+					struct {
+						HashAlgorithm hash; // 8 bits
+						SignatureAlgorithm signature; // 8 bits
+					} SignatureAndHashAlgorithm;
+					enum {
+						none(0), sha224(3), sha256(4), sha384(5),
+						sha512(6), sm3(7), (255)
+					} HashAlgorithm;
+					enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
+				*/
+				var sigAndAlg uint16
+				if !sigAndAlgs.ReadUint16(&sigAndAlg) {
+					return false
+				}
+				m.supportedSignatureAlgorithms = append(
+					m.supportedSignatureAlgorithms, SignatureScheme(sigAndAlg),
+				)
+			}
+
+		case extensionALPN:
+			// GM/T 0024-2023 A.6 Application-Layer Protocol Negotiation (ALPN) 应用层协议协商
+			/*
+				struct {
+					ProtocolName protocol_name_list<1..2^16-1>;
+				} ProtocolNameList;
+				opaque ProtocolName<1..2^8-1>;
+			*/
+			var protoList cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+				return false
+			}
+			for !protoList.Empty() {
+				var proto cryptobyte.String
+				if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
+					return false
+				}
+				m.alpnProtocols = append(m.alpnProtocols, string(proto))
+			}
+		case extensionClientID:
+			// GM/T 0024-2023 A.7 IBSDH Client ID
+			/*
+				opaque ClientID<1..2^16-1>;
+			*/
+			var clientID cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&clientID) {
+				return false
+			}
+			m.ibsdhClientID = make([]byte, len(clientID))
+			copy(m.ibsdhClientID, clientID)
+		default:
+			// Ignore unknown extensions.
+			continue
+		}
+
+		if !extData.Empty() {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -438,369 +695,6 @@ func (m *serverHelloMsg) debug() {
 	fmt.Printf("%v\n", m)
 	fmt.Printf("<<<\n")
 }
-
-//
-//type encryptedExtensionsMsg struct {
-//	raw          []byte
-//	alpnProtocol string
-//}
-//
-//func (m *encryptedExtensionsMsg) marshal() []byte {
-//	if m.raw != nil {
-//		return m.raw
-//	}
-//
-//	var b cryptobyte.Builder
-//	b.AddUint8(typeEncryptedExtensions)
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//			if len(m.alpnProtocol) > 0 {
-//				b.AddUint16(extensionALPN)
-//				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-//							b.AddBytes([]byte(m.alpnProtocol))
-//						})
-//					})
-//				})
-//			}
-//		})
-//	})
-//
-//	m.raw = b.BytesOrPanic()
-//	return m.raw
-//}
-//
-//func (m *encryptedExtensionsMsg) unmarshal(data []byte) bool {
-//	*m = encryptedExtensionsMsg{raw: data}
-//	s := cryptobyte.String(data)
-//
-//	var extensions cryptobyte.String
-//	if !s.Skip(4) || // message type and uint24 length field
-//		!s.ReadUint16LengthPrefixed(&extensions) || !s.Empty() {
-//		return false
-//	}
-//
-//	for !extensions.Empty() {
-//		var extension uint16
-//		var extData cryptobyte.String
-//		if !extensions.ReadUint16(&extension) ||
-//			!extensions.ReadUint16LengthPrefixed(&extData) {
-//			return false
-//		}
-//
-//		switch extension {
-//		case extensionALPN:
-//			var protoList cryptobyte.String
-//			if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
-//				return false
-//			}
-//			var proto cryptobyte.String
-//			if !protoList.ReadUint8LengthPrefixed(&proto) ||
-//				proto.Empty() || !protoList.Empty() {
-//				return false
-//			}
-//			m.alpnProtocol = string(proto)
-//		default:
-//			// Ignore unknown extensions.
-//			continue
-//		}
-//
-//		if !extData.Empty() {
-//			return false
-//		}
-//	}
-//
-//	return true
-//}
-//
-//type endOfEarlyDataMsg struct{}
-//
-//func (m *endOfEarlyDataMsg) marshal() []byte {
-//	x := make([]byte, 4)
-//	x[0] = typeEndOfEarlyData
-//	return x
-//}
-//
-//func (m *endOfEarlyDataMsg) unmarshal(data []byte) bool {
-//	return len(data) == 4
-//}
-//
-//type keyUpdateMsg struct {
-//	raw             []byte
-//	updateRequested bool
-//}
-//
-//func (m *keyUpdateMsg) marshal() []byte {
-//	if m.raw != nil {
-//		return m.raw
-//	}
-//
-//	var b cryptobyte.Builder
-//	b.AddUint8(typeKeyUpdate)
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		if m.updateRequested {
-//			b.AddUint8(1)
-//		} else {
-//			b.AddUint8(0)
-//		}
-//	})
-//
-//	m.raw = b.BytesOrPanic()
-//	return m.raw
-//}
-//
-//func (m *keyUpdateMsg) unmarshal(data []byte) bool {
-//	m.raw = data
-//	s := cryptobyte.String(data)
-//
-//	var updateRequested uint8
-//	if !s.Skip(4) || // message type and uint24 length field
-//		!s.ReadUint8(&updateRequested) || !s.Empty() {
-//		return false
-//	}
-//	switch updateRequested {
-//	case 0:
-//		m.updateRequested = false
-//	case 1:
-//		m.updateRequested = true
-//	default:
-//		return false
-//	}
-//	return true
-//}
-
-//type newSessionTicketMsgTLS13 struct {
-//	raw          []byte
-//	lifetime     uint32
-//	ageAdd       uint32
-//	nonce        []byte
-//	label        []byte
-//	maxEarlyData uint32
-//}
-//
-//func (m *newSessionTicketMsgTLS13) marshal() []byte {
-//	if m.raw != nil {
-//		return m.raw
-//	}
-//
-//	var b cryptobyte.Builder
-//	b.AddUint8(typeNewSessionTicket)
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		b.AddUint32(m.lifetime)
-//		b.AddUint32(m.ageAdd)
-//		b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-//			b.AddBytes(m.nonce)
-//		})
-//		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//			b.AddBytes(m.label)
-//		})
-//
-//		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//			if m.maxEarlyData > 0 {
-//				b.AddUint16(extensionEarlyData)
-//				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//					b.AddUint32(m.maxEarlyData)
-//				})
-//			}
-//		})
-//	})
-//
-//	m.raw = b.BytesOrPanic()
-//	return m.raw
-//}
-//
-//func (m *newSessionTicketMsgTLS13) unmarshal(data []byte) bool {
-//	*m = newSessionTicketMsgTLS13{raw: data}
-//	s := cryptobyte.String(data)
-//
-//	var extensions cryptobyte.String
-//	if !s.Skip(4) || // message type and uint24 length field
-//		!s.ReadUint32(&m.lifetime) ||
-//		!s.ReadUint32(&m.ageAdd) ||
-//		!readUint8LengthPrefixed(&s, &m.nonce) ||
-//		!readUint16LengthPrefixed(&s, &m.label) ||
-//		!s.ReadUint16LengthPrefixed(&extensions) ||
-//		!s.Empty() {
-//		return false
-//	}
-//
-//	for !extensions.Empty() {
-//		var extension uint16
-//		var extData cryptobyte.String
-//		if !extensions.ReadUint16(&extension) ||
-//			!extensions.ReadUint16LengthPrefixed(&extData) {
-//			return false
-//		}
-//
-//		switch extension {
-//		case extensionEarlyData:
-//			if !extData.ReadUint32(&m.maxEarlyData) {
-//				return false
-//			}
-//		default:
-//			// Ignore unknown extensions.
-//			continue
-//		}
-//
-//		if !extData.Empty() {
-//			return false
-//		}
-//	}
-//
-//	return true
-//}
-
-//
-//type certificateRequestMsgTLS13 struct {
-//	raw                              []byte
-//	ocspStapling                     bool
-//	scts                             bool
-//	supportedSignatureAlgorithms     []SignatureScheme
-//	supportedSignatureAlgorithmsCert []SignatureScheme
-//	certificateAuthorities           [][]byte
-//}
-//
-//func (m *certificateRequestMsgTLS13) marshal() []byte {
-//	if m.raw != nil {
-//		return m.raw
-//	}
-//
-//	var b cryptobyte.Builder
-//	b.AddUint8(typeCertificateRequest)
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		// certificate_request_context (SHALL be zero length unless used for
-//		// post-handshake authentication)
-//		b.AddUint8(0)
-//
-//		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//			if m.ocspStapling {
-//				b.AddUint16(extensionStatusRequest)
-//				b.AddUint16(0) // empty extension_data
-//			}
-//			if m.scts {
-//				// RFC 8446, Section 4.4.2.1 makes no mention of
-//				// signed_certificate_timestamp in CertificateRequest, but
-//				// "Extensions in the Certificate message from the client MUST
-//				// correspond to extensions in the CertificateRequest message
-//				// from the server." and it appears in the table in Section 4.2.
-//				b.AddUint16(extensionSCT)
-//				b.AddUint16(0) // empty extension_data
-//			}
-//			if len(m.supportedSignatureAlgorithms) > 0 {
-//				b.AddUint16(extensionSignatureAlgorithms)
-//				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						for _, sigAlgo := range m.supportedSignatureAlgorithms {
-//							b.AddUint16(uint16(sigAlgo))
-//						}
-//					})
-//				})
-//			}
-//			if len(m.supportedSignatureAlgorithmsCert) > 0 {
-//				b.AddUint16(extensionSignatureAlgorithmsCert)
-//				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						for _, sigAlgo := range m.supportedSignatureAlgorithmsCert {
-//							b.AddUint16(uint16(sigAlgo))
-//						}
-//					})
-//				})
-//			}
-//			if len(m.certificateAuthorities) > 0 {
-//				b.AddUint16(extensionCertificateAuthorities)
-//				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						for _, ca := range m.certificateAuthorities {
-//							b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//								b.AddBytes(ca)
-//							})
-//						}
-//					})
-//				})
-//			}
-//		})
-//	})
-//
-//	m.raw = b.BytesOrPanic()
-//	return m.raw
-//}
-//
-//func (m *certificateRequestMsgTLS13) unmarshal(data []byte) bool {
-//	*m = certificateRequestMsgTLS13{raw: data}
-//	s := cryptobyte.String(data)
-//
-//	var context, extensions cryptobyte.String
-//	if !s.Skip(4) || // message type and uint24 length field
-//		!s.ReadUint8LengthPrefixed(&context) || !context.Empty() ||
-//		!s.ReadUint16LengthPrefixed(&extensions) ||
-//		!s.Empty() {
-//		return false
-//	}
-//
-//	for !extensions.Empty() {
-//		var extension uint16
-//		var extData cryptobyte.String
-//		if !extensions.ReadUint16(&extension) ||
-//			!extensions.ReadUint16LengthPrefixed(&extData) {
-//			return false
-//		}
-//
-//		switch extension {
-//		case extensionStatusRequest:
-//			m.ocspStapling = true
-//		case extensionSCT:
-//			m.scts = true
-//		case extensionSignatureAlgorithms:
-//			var sigAndAlgs cryptobyte.String
-//			if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
-//				return false
-//			}
-//			for !sigAndAlgs.Empty() {
-//				var sigAndAlg uint16
-//				if !sigAndAlgs.ReadUint16(&sigAndAlg) {
-//					return false
-//				}
-//				m.supportedSignatureAlgorithms = append(
-//					m.supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
-//			}
-//		case extensionSignatureAlgorithmsCert:
-//			var sigAndAlgs cryptobyte.String
-//			if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
-//				return false
-//			}
-//			for !sigAndAlgs.Empty() {
-//				var sigAndAlg uint16
-//				if !sigAndAlgs.ReadUint16(&sigAndAlg) {
-//					return false
-//				}
-//				m.supportedSignatureAlgorithmsCert = append(
-//					m.supportedSignatureAlgorithmsCert, SignatureScheme(sigAndAlg))
-//			}
-//		case extensionCertificateAuthorities:
-//			var auths cryptobyte.String
-//			if !extData.ReadUint16LengthPrefixed(&auths) || auths.Empty() {
-//				return false
-//			}
-//			for !auths.Empty() {
-//				var ca []byte
-//				if !readUint16LengthPrefixed(&auths, &ca) || len(ca) == 0 {
-//					return false
-//				}
-//				m.certificateAuthorities = append(m.certificateAuthorities, ca)
-//			}
-//		default:
-//			// Ignore unknown extensions.
-//			continue
-//		}
-//
-//		if !extData.Empty() {
-//			return false
-//		}
-//	}
-//
-//	return true
-//}
 
 type certificateMsg struct {
 	raw          []byte
