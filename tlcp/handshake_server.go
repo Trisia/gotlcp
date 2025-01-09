@@ -183,6 +183,9 @@ func (hs *serverHandshakeState) processClientHello() error {
 	}
 
 	hs.hello.compressionMethod = compressionNone
+	if len(hs.clientHello.serverName) > 0 {
+		c.serverName = hs.clientHello.serverName
+	}
 
 	// 选择服务端签名证书
 	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
@@ -361,6 +364,12 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 
 func (hs *serverHandshakeState) doFullHandshake() error {
 	c := hs.c
+
+	if hs.clientHello.ocspStapling && len(hs.sigCert.OCSPStaple) > 0 {
+		// !!! 由于GM/T 0024-2023 中没有定义 CertificateStatus 类型握手消息，所以只能通过扩展字段来传递 OCSP 响应。
+		hs.hello.ocspStapling = true
+		hs.hello.ocspResponse = hs.sigCert.OCSPStaple
+	}
 
 	hs.hello.cipherSuite = hs.suite.id
 	hs.hello.sessionId = make([]byte, 32)
@@ -750,6 +759,7 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 	supportedVers := supportedVersionsFromMax(clientHello.vers)
 	return &ClientHelloInfo{
 		CipherSuites:      clientHello.cipherSuites,
+		ServerName:        c.serverName,
 		SupportedVersions: supportedVers,
 		Conn:              c.conn,
 		config:            c.config,

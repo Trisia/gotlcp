@@ -57,7 +57,7 @@ type Conn struct {
 	peerCertificates  []*x509.Certificate // 对端数字证书列表
 	// verifiedChains 用于验证对端证书的根证书链
 	verifiedChains [][]*x509.Certificate
-	// serverName contains the server name indicated by the client, if any.
+	// serverName 由客户端Hello消息SNI扩展中指定的服务器名（域名）
 	serverName string
 
 	// closeNotifyErr is any error from sending the alertCloseNotify record.

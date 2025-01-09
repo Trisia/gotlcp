@@ -260,9 +260,7 @@ type ClientHelloInfo struct {
 	// CipherSuites 客户端支持的密码套件ID列表
 	CipherSuites []uint16
 
-	// ServerName indicates the name of the server requested by the client
-	// in order to support virtual hosting. ServerName is only set if the
-	// client is using SNI (see RFC 4366, Section 3.1).
+	// ServerName 客户端扩展中SNI指定的服务端名称，可以用于实现虚拟机主机。
 	ServerName string
 
 	// SupportedVersions 客户端支持的TLCP版本，目前只有 0x0101
@@ -414,6 +412,9 @@ type Config struct {
 	// MaxVersion 最高支持的TLCP协议版本，目前TLCP只有一个版本
 	MaxVersion uint16
 
+	// CurvePreferences 椭圆曲线ID列表，用于指定客户端和服务端支持的椭圆曲线
+	CurvePreferences []CurveID
+
 	// DynamicRecordSizingDisabled disables adaptive sizing of TLS records.
 	// When true, the largest possible TLS record size is always used. When
 	// false, the size of TLS records may be adjusted in an attempt to
@@ -464,6 +465,7 @@ func (c *Config) Clone() *Config {
 		SessionCache:                c.SessionCache,
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
+		CurvePreferences:            c.CurvePreferences,
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 		OnAlert:                     c.OnAlert,
 		EnableDebug:                 c.EnableDebug,
@@ -629,6 +631,9 @@ type Certificate struct {
 	// 签名密钥对需要实现 crypto.Signer 接口
 	// 加密密钥对需要实现 crypto.Decrypter 接口
 	PrivateKey crypto.PrivateKey
+
+	// OCSPStaple 包含一个可选的OCSP响应，该响应将提供给含OCSP请求扩展的客户端
+	OCSPStaple []byte
 
 	// Leaf 握手x509证书对象，默认为空
 	//

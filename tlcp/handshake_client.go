@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -56,6 +58,15 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		vers:               clientHelloVersion,
 		compressionMethods: []uint8{compressionNone},
 		random:             make([]byte, 32),
+		serverName:         hostnameInSNI(config.ServerName),
+	}
+
+	// 若用户指定了椭圆曲线偏好，则使用用户指定的椭圆曲线
+	if config.CurvePreferences != nil {
+		hello.supportedCurves = config.CurvePreferences
+	} else {
+		// 未指定时默认使用SM2
+		hello.supportedCurves = []CurveID{CurveSM2}
 	}
 
 	hasAuthKeyPair := false
@@ -77,11 +88,22 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		if suite == nil {
 			continue
 		}
-		// SM2 ECDHE 必须要求客户端具有认证密钥对(需要同时有签名密钥对吗？)
+		// SM2 ECDHE 必须要求客户端具有认证密钥对
 		if (suiteId == ECDHE_SM4_GCM_SM3 || suiteId == ECDHE_SM4_CBC_SM3) && !(hasAuthKeyPair && hasEncKeyPair) {
 			continue
 		}
 		hello.cipherSuites = append(hello.cipherSuites, suiteId)
+	}
+	// GM/T0024-2023 A.5 Signature Algorithms 签名算法
+	// 客户端在使用商用密码算法进行协商时，应发送 Signature Algorithms 扩展，以指定 HashAlgorithm 为SM3 和 SignatureAlgorithm 为 SM2。
+	for _, sigAlg := range hello.cipherSuites {
+		if sigAlg == ECDHE_SM4_GCM_SM3 ||
+			sigAlg == ECDHE_SM4_CBC_SM3 ||
+			sigAlg == ECC_SM4_CBC_SM3 ||
+			sigAlg == ECC_SM4_GCM_SM3 {
+			hello.supportedSignatureAlgorithms = []SignatureScheme{SM2WithSM3}
+			break
+		}
 	}
 
 	// 生成客户端随机数
@@ -667,4 +689,24 @@ func (c *Conn) getClientKECertificate(cri *CertificateRequestInfo) (*Certificate
 
 	// No acceptable certificate found. Don't send a certificate.
 	return nil, errNoCertificates
+}
+
+// hostnameInSNI converts name into an appropriate hostname for SNI.
+// Literal IP addresses and absolute FQDNs are not permitted as SNI values.
+// See RFC 6066, Section 3.
+func hostnameInSNI(name string) string {
+	host := name
+	if len(host) > 0 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+	if i := strings.LastIndex(host, "%"); i > 0 {
+		host = host[:i]
+	}
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+	for len(name) > 0 && name[len(name)-1] == '.' {
+		name = name[:len(name)-1]
+	}
+	return name
 }

@@ -638,7 +638,7 @@ type serverHelloMsg struct {
 
 	// GM/T 0024-2023 扩展字段
 	ocspStapling  bool   // 证书状态请求
-	ocspResponse  []byte // OCSP应答内容DER ocspStapling 为true时有效
+	ocspResponse  []byte // OCSP应答内容DER，由于GM/T 0024-2023 中没有定义 CertificateStatus 类型握手消息，所以只能通过扩展字段来传递 OCSP 响应。
 	alpnProtocol  string // 应用层协议
 	serverNameAck bool   // 服务器名称确认，若客户端发送了SNI扩展，服务端找到了对应的证书，则返回该扩展，内容为空
 }
@@ -665,6 +665,7 @@ func (m *serverHelloMsg) marshal() ([]byte, error) {
 		exts.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 			b.AddUint8(1) // status_type = ocsp
 			b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
+				// !!! 由于GM/T 0024-2023 中没有定义 CertificateStatus 类型握手消息，所以只能通过扩展字段来传递 OCSP 响应。
 				b.AddBytes(m.ocspResponse)
 			})
 		})
