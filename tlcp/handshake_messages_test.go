@@ -226,3 +226,80 @@ func Test_serverHelloMsg_marshal_ClientID(t *testing.T) {
 		t.Fatalf("ibsdhClientID not match")
 	}
 }
+
+func TestServerHelloMsg_OCSPStapling(t *testing.T) {
+	hello := &serverHelloMsg{
+		vers:              VersionTLCP,
+		compressionMethod: 0,
+		sessionId:         []byte{},
+		random:            mockFF32,
+		cipherSuite:       TLCP_ECC_SM4_CBC_SM3,
+		ocspStapling:      true,
+		ocspResponse:      mockOne32,
+	}
+
+	data, err := hello.marshal()
+	if err != nil {
+		t.Fatalf("marshal failed: %s", err)
+	}
+
+	hello2 := new(serverHelloMsg)
+	if ok := hello2.unmarshal(data); !ok {
+		t.Fatalf("unmarshal failed")
+	}
+	if hello2.ocspStapling != hello.ocspStapling {
+		t.Fatalf("ocspStapling not match")
+	}
+	if bytes.Compare(hello2.ocspResponse, hello.ocspResponse) != 0 {
+		t.Fatalf("ocspResponse not match")
+	}
+}
+
+func TestServerHelloMsg_ALPN(t *testing.T) {
+	hello := &serverHelloMsg{
+		vers:              VersionTLCP,
+		compressionMethod: 0,
+		sessionId:         []byte{},
+		random:            mockFF32,
+		cipherSuite:       TLCP_ECC_SM4_CBC_SM3,
+		alpnProtocol:      "h2",
+	}
+
+	data, err := hello.marshal()
+	if err != nil {
+		t.Fatalf("marshal failed: %s", err)
+	}
+
+	hello2 := new(serverHelloMsg)
+	if ok := hello2.unmarshal(data); !ok {
+		t.Fatalf("unmarshal failed")
+	}
+	if hello2.alpnProtocol != hello.alpnProtocol {
+		t.Fatalf("alpnProtocol not match")
+	}
+
+}
+
+func TestServerHelloMsg_ServerNameAck(t *testing.T) {
+	hello := &serverHelloMsg{
+		vers:              VersionTLCP,
+		compressionMethod: 0,
+		sessionId:         []byte{},
+		random:            mockFF32,
+		cipherSuite:       TLCP_ECC_SM4_CBC_SM3,
+		serverNameAck:     true,
+	}
+
+	data, err := hello.marshal()
+	if err != nil {
+		t.Fatalf("marshal failed: %s", err)
+	}
+
+	hello2 := new(serverHelloMsg)
+	if ok := hello2.unmarshal(data); !ok {
+		t.Fatalf("unmarshal failed")
+	}
+	if hello2.serverNameAck != hello.serverNameAck {
+		t.Fatalf("serverNameAck not match")
+	}
+}

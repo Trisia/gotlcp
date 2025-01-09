@@ -486,12 +486,9 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 					//
 					// 参考 RFC 3546
 					// opaque DistinguishedName<1..2^16-1>;
-					var identifier cryptobyte.String
-					if !taList.ReadUint16LengthPrefixed(&identifier) {
+					if !readUint16LengthPrefixed(&taList, &ta.Identifier) {
 						return false
 					}
-					ta.Identifier = make([]byte, len(identifier))
-					copy(ta.Identifier, identifier)
 				default:
 					// 忽略未知的标识类型
 					continue
@@ -594,12 +591,9 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 			/*
 				opaque ClientID<1..2^16-1>;
 			*/
-			var clientID cryptobyte.String
-			if !extData.ReadUint16LengthPrefixed(&clientID) {
+			if !readUint16LengthPrefixed(&extData, &m.ibsdhClientID) {
 				return false
 			}
-			m.ibsdhClientID = make([]byte, len(clientID))
-			copy(m.ibsdhClientID, clientID)
 		default:
 			// Ignore unknown extensions.
 			continue
@@ -641,11 +635,69 @@ type serverHelloMsg struct {
 	sessionId         []byte
 	cipherSuite       uint16
 	compressionMethod uint8
+
+	// GM/T 0024-2023 扩展字段
+	ocspStapling  bool   // 证书状态请求
+	ocspResponse  []byte // OCSP应答内容DER ocspStapling 为true时有效
+	alpnProtocol  string // 应用层协议
+	serverNameAck bool   // 服务器名称确认，若客户端发送了SNI扩展，服务端找到了对应的证书，则返回该扩展，内容为空
 }
 
 func (m *serverHelloMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
 		return m.raw, nil
+	}
+
+	var exts cryptobyte.Builder
+	if m.ocspStapling && len(m.ocspResponse) > 0 {
+		// GM/T 0024-2023 A.3 OCSP Status Request OCSP状态请求
+		/*
+			struct {
+				CertificateStatusType status_type;
+				select (status_type) {
+					case ocsp: OCSPStatusResponse;
+				} response;
+			} CertificateStatusRequest;
+			enum { ocsp(1), (255) } CertificateStatusType;
+			opaque OCSPStatusResponse<1..2^24-1>;
+		*/
+		exts.AddUint16(extensionStatusRequest)
+		exts.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddUint8(1) // status_type = ocsp
+			b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
+				b.AddBytes(m.ocspResponse)
+			})
+		})
+	}
+
+	if m.alpnProtocol != "" {
+		// GM/T 0024-2023 A.6 Application-Layer Protocol Negotiation (ALPN) 应用层协议协商
+		/*
+			struct {
+				ProtocolName protocol_name_list<1..2^16-1>;
+			} ProtocolNameList;
+			opaque ProtocolName<1..2^8-1>;
+		*/
+		exts.AddUint16(extensionALPN)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				exts.AddUint8LengthPrefixed(func(exts *cryptobyte.Builder) {
+					exts.AddBytes([]byte(m.alpnProtocol))
+				})
+			})
+		})
+	}
+
+	if m.serverNameAck {
+		// RFC6066 3. Server Name Indication
+		// 若客户端发送了SNI扩展，服务端找到了对应的证书，则返回该扩展，内容为空
+		exts.AddUint16(extensionServerName)
+		exts.AddUint16(0)
+	}
+
+	extBytes, err := exts.Bytes()
+	if err != nil {
+		return nil, err
 	}
 
 	var b cryptobyte.Builder
@@ -658,9 +710,14 @@ func (m *serverHelloMsg) marshal() ([]byte, error) {
 		})
 		b.AddUint16(m.cipherSuite)
 		b.AddUint8(m.compressionMethod)
-		// 由于GB/T 38636-2016 不支持扩展，因此忽略
+
+		// GM/T 0024-2023 支持扩展
+		if len(extBytes) > 0 {
+			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+				b.AddBytes(extBytes)
+			})
+		}
 	})
-	var err error
 	m.raw, err = b.Bytes()
 	return m.raw, err
 }
@@ -677,8 +734,90 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 		return false
 	}
 
-	// 由于GB/T 38636-2016 不支持扩展，因此忽略
+	// GM/T 0024-2023 扩展字段
+	/*
+		struct {
+			...
+			Extension extensions<0..2^16-1>;
+		} ServerHello;
+	*/
+	var extensions cryptobyte.String
+	if !s.ReadUint16LengthPrefixed(&extensions) || !s.Empty() {
+		return false
+	}
 
+	for !extensions.Empty() {
+		/*
+			struct {
+				ExtensionType extension_type;
+				opaque extension_data<0..2^16-1>;
+			} Extension;
+		*/
+		var extension uint16
+		var extData cryptobyte.String
+		if !extensions.ReadUint16(&extension) ||
+			!extensions.ReadUint16LengthPrefixed(&extData) {
+			return false
+		}
+
+		switch extension {
+		case extensionStatusRequest:
+			// GM/T 0024-2023 A.3 OCSP Status Request OCSP状态请求
+			/*
+				struct {
+					CertificateStatusType status_type;
+					select (status_type) {
+						case ocsp: OCSPStatusResponse;
+					} response;
+				} CertificateStatusRequest;
+				enum { ocsp(1), (255) } CertificateStatusType;
+				opaque OCSPStatusResponse<1..2^24-1>;
+			*/
+			var statusType uint8
+			if !extData.ReadUint8(&statusType) {
+				return false
+			}
+			if statusType != 1 {
+				return false
+			}
+			m.ocspStapling = true
+			if !readUint24LengthPrefixed(&extData, &m.ocspResponse) {
+				return false
+			}
+		case extensionALPN:
+			// GM/T 0024-2023 A.6 Application-Layer Protocol Negotiation (ALPN) 应用层协议协商
+			/*
+				struct {
+					ProtocolName protocol_name_list<1..2^16-1>;
+				} ProtocolNameList;
+				opaque ProtocolName<1..2^8-1>;
+			*/
+			var protoList cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+				return false
+			}
+			var proto cryptobyte.String
+			if !protoList.ReadUint8LengthPrefixed(&proto) ||
+				proto.Empty() || !protoList.Empty() {
+				return false
+			}
+			m.alpnProtocol = string(proto)
+		case extensionServerName:
+			// RFC6066 3. Server Name Indication
+			// 若客户端发送了SNI扩展，服务端找到了对应的证书，则返回该扩展，内容为空
+			if len(extData) != 0 {
+				return false
+			}
+			m.serverNameAck = true
+		default:
+			// 忽略未知的扩展字段
+			continue
+		}
+
+		if !extData.Empty() {
+			return false
+		}
+	}
 	return true
 }
 
@@ -786,153 +925,6 @@ func (m *certificateMsg) debug() {
 	}
 	fmt.Printf("<<<\n")
 }
-
-//
-//type certificateMsgTLS13 struct {
-//	raw          []byte
-//	certificate  Certificate
-//	ocspStapling bool
-//	scts         bool
-//}
-//
-//func (m *certificateMsgTLS13) marshal() []byte {
-//	if m.raw != nil {
-//		return m.raw
-//	}
-//
-//	var b cryptobyte.Builder
-//	b.AddUint8(typeCertificate)
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		b.AddUint8(0) // certificate_request_context
-//
-//		certificate := m.certificate
-//		if !m.ocspStapling {
-//			certificate.OCSPStaple = nil
-//		}
-//		if !m.scts {
-//			certificate.SignedCertificateTimestamps = nil
-//		}
-//		marshalCertificate(b, certificate)
-//	})
-//
-//	m.raw = b.BytesOrPanic()
-//	return m.raw
-//}
-//
-//func marshalCertificate(b *cryptobyte.Builder, certificate Certificate) {
-//	b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//		for i, sigCert := range certificate.Certificate {
-//			b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//				b.AddBytes(sigCert)
-//			})
-//			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//				if i > 0 {
-//					// This library only supports OCSP and SCT for leaf certificates.
-//					return
-//				}
-//				if certificate.OCSPStaple != nil {
-//					b.AddUint16(extensionStatusRequest)
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						b.AddUint8(statusTypeOCSP)
-//						b.AddUint24LengthPrefixed(func(b *cryptobyte.Builder) {
-//							b.AddBytes(certificate.OCSPStaple)
-//						})
-//					})
-//				}
-//				if certificate.SignedCertificateTimestamps != nil {
-//					b.AddUint16(extensionSCT)
-//					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//						b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//							for _, sct := range certificate.SignedCertificateTimestamps {
-//								b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-//									b.AddBytes(sct)
-//								})
-//							}
-//						})
-//					})
-//				}
-//			})
-//		}
-//	})
-//}
-//
-//func (m *certificateMsgTLS13) unmarshal(data []byte) bool {
-//	*m = certificateMsgTLS13{raw: data}
-//	s := cryptobyte.String(data)
-//
-//	var context cryptobyte.String
-//	if !s.Skip(4) || // message type and uint24 length field
-//		!s.ReadUint8LengthPrefixed(&context) || !context.Empty() ||
-//		!unmarshalCertificate(&s, &m.certificate) ||
-//		!s.Empty() {
-//		return false
-//	}
-//
-//	m.scts = m.certificate.SignedCertificateTimestamps != nil
-//	m.ocspStapling = m.certificate.OCSPStaple != nil
-//
-//	return true
-//}
-//
-//func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate) bool {
-//	var certList cryptobyte.String
-//	if !s.ReadUint24LengthPrefixed(&certList) {
-//		return false
-//	}
-//	for !certList.Empty() {
-//		var sigCert []byte
-//		var extensions cryptobyte.String
-//		if !readUint24LengthPrefixed(&certList, &sigCert) ||
-//			!certList.ReadUint16LengthPrefixed(&extensions) {
-//			return false
-//		}
-//		certificate.Certificate = append(certificate.Certificate, sigCert)
-//		for !extensions.Empty() {
-//			var extension uint16
-//			var extData cryptobyte.String
-//			if !extensions.ReadUint16(&extension) ||
-//				!extensions.ReadUint16LengthPrefixed(&extData) {
-//				return false
-//			}
-//			if len(certificate.Certificate) > 1 {
-//				// This library only supports OCSP and SCT for leaf certificates.
-//				continue
-//			}
-//
-//			switch extension {
-//			case extensionStatusRequest:
-//				var statusType uint8
-//				if !extData.ReadUint8(&statusType) || statusType != statusTypeOCSP ||
-//					!readUint24LengthPrefixed(&extData, &certificate.OCSPStaple) ||
-//					len(certificate.OCSPStaple) == 0 {
-//					return false
-//				}
-//			case extensionSCT:
-//				var sctList cryptobyte.String
-//				if !extData.ReadUint16LengthPrefixed(&sctList) || sctList.Empty() {
-//					return false
-//				}
-//				for !sctList.Empty() {
-//					var sct []byte
-//					if !readUint16LengthPrefixed(&sctList, &sct) ||
-//						len(sct) == 0 {
-//						return false
-//					}
-//					certificate.SignedCertificateTimestamps = append(
-//						certificate.SignedCertificateTimestamps, sct)
-//				}
-//			default:
-//				// Ignore unknown extensions.
-//				continue
-//			}
-//
-//			if !extData.Empty() {
-//				return false
-//			}
-//		}
-//	}
-//	return true
-//}
 
 type serverKeyExchangeMsg struct {
 	raw []byte
