@@ -310,3 +310,34 @@ func Test_ResumedSession(t *testing.T) {
 		_ = conn.Close()
 	}
 }
+
+func Test_processClientHello(t *testing.T) {
+	//c, s := mockPipe()
+	//cli := Client(c, &Config{
+	//	InsecureSkipVerify: true,
+	//	Time:               runtimeTime,
+	//})
+	//svr := Server(s, &Config{
+	//	Certificates: []Certificate{sigCert, encCert},
+	//	Time:         runtimeTime,
+	//})
+	//
+	//done := make(chan bool)
+	//
+	//go func() {
+	//	defer close(done)
+	//
+	//	if err := svr.Handshake(); err != nil {
+	//		t.Errorf("server: %s", err)
+	//		return
+	//	}
+	//	s.Close()
+	//}()
+	//if err := cli.Handshake(); err != nil {
+	//	t.Fatalf("client: %s", err)
+	//}
+	//
+	//c.Close()
+	//<-done
+
+}

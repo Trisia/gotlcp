@@ -562,8 +562,7 @@ var errNoCertificates = errors.New("tlcp: no certificates configured")
 // getCertificate 根据 客户端Hello消息中的信息选择最佳的数字证书
 // 默认返还 Config.Certificates[0] 的数字证书
 func (c *Config) getCertificate(clientHello *ClientHelloInfo) (*Certificate, error) {
-	if c.GetCertificate != nil &&
-		(len(c.Certificates) == 0 || len(clientHello.ServerName) > 0) {
+	if c.GetCertificate != nil && len(c.Certificates) == 0 {
 		cert, err := c.GetCertificate(clientHello)
 		if cert != nil || err != nil {
 			return cert, err
@@ -573,6 +572,18 @@ func (c *Config) getCertificate(clientHello *ClientHelloInfo) (*Certificate, err
 	if len(c.Certificates) == 0 {
 		return nil, errNoCertificates
 	}
+
+	//
+	// 域名证书主机名验证交由证书验证阶段完成
+	//
+	//// 如果服务端名称不为空，那么验证证书是否匹配
+	//if clientHello.ServerName != "" {
+	//	err := c.Certificates[0].Leaf.VerifyHostname(clientHello.ServerName)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("tlcp: certificate does not match requested host name: %v", err)
+	//	}
+	//}
+
 	return &c.Certificates[0], nil
 }
 

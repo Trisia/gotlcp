@@ -198,6 +198,11 @@ func (hs *serverHandshakeState) processClientHello() error {
 		}
 		return err
 	}
+	if hs.clientHello.serverName != "" && hs.sigCert != nil {
+		// 服务端证书中的主机名与客户端提供的主机名匹配
+		// 设置主机名ACK标志，发送ACK
+		hs.hello.serverNameAck = true
+	}
 
 	// 选择服务端加密证书
 	hs.encCert, err = c.config.getEKCertificate(helloInfo)
