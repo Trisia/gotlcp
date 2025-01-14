@@ -735,6 +735,11 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 		return false
 	}
 
+	if s.Empty() {
+		// 没有扩展字段
+		return true
+	}
+
 	// GM/T 0024-2023 扩展字段
 	/*
 		struct {
