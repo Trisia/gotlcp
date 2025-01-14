@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"testing"
 )
 
@@ -301,5 +302,18 @@ func TestServerHelloMsg_ServerNameAck(t *testing.T) {
 	}
 	if hello2.serverNameAck != hello.serverNameAck {
 		t.Fatalf("serverNameAck not match")
+	}
+}
+
+func Test_serverHelloMsg_unmarshal(t *testing.T) {
+	// 0000   02 00 00 46 01 01 67 86 4b 24 a0 d8 74 e8 6c ff
+	// 0010   57 3f 81 d7 49 24 10 a5 91 a8 2f fc 10 67 aa 1f
+	// 0020   d0 2d f3 a1 07 52 20 f6 e5 1b 06 8b 9e 11 59 0e
+	// 0030   9b b8 2b 95 35 88 ff 94 d5 7c 44 e1 2e 83 ea a4
+	// 0040   58 f3 9e 82 f6 59 1c e0 53 00
+	noExtRaw, _ := hex.DecodeString("02000046010167864b24a0d874e86cff573f81d7492410a591a82ffc1067aa1fd02df3a1075220f6e51b068b9e11590e9bb82b953588ff94d57c44e12e83eaa458f39e82f6591ce05300")
+	noExt := new(serverHelloMsg)
+	if ok := noExt.unmarshal(noExtRaw); !ok {
+		t.Fatalf("unmarshal failed")
 	}
 }
