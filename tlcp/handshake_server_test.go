@@ -11,62 +11,55 @@ import (
 
 const (
 	ROOT_CERT_PEM = `-----BEGIN CERTIFICATE-----
-MIIB3jCCAYOgAwIBAgIIAs4MAPwpIBcwCgYIKoEcz1UBg3UwQjELMAkGA1UEBhMC
-Q04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t5beeMREwDwYDVQQKDAjm
-tYvor5VDQTAeFw0yMTEyMjMwODQ4MzNaFw0zMTEyMjMwODQ4MzNaMEIxCzAJBgNV
-BAYTAkNOMQ8wDQYDVQQIDAbmtZnmsZ8xDzANBgNVBAcMBuadreW3njERMA8GA1UE
-CgwI5rWL6K+VQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAARKs6B5ZBy753Os
-ZSeIfv8zScbiiXkLjB+Plw+YWvoesRkqYGe/Mqjr8rrmThq6iEWubYK6ZiQQV54k
-Klcva3Hto2MwYTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNV
-HQ4EFgQUNpPjFOdFCfrV7+ovEi3ToZY8wqQwHwYDVR0jBBgwFoAUNpPjFOdFCfrV
-7+ovEi3ToZY8wqQwCgYIKoEcz1UBg3UDSQAwRgIhALDhtLKVziUhXbTedDovRANS
-Cdu6CJ0MAw7Wbl3vAWGOAiEAzCXLcF32DM5Aze9MqpUfQfYPaRTLYkNwSXlw/LUY
-E6E=
+MIIBcTCCARegAwIBAgIBATAKBggqgRzPVQGDdTAfMQswCQYDVQQGEwJDTjEQMA4G
+A1UEAwwHVEVTVF9DQTAgFw0yNTAxMjIxMzAwNTlaGA8yMDU1MDEyMzEzMDA1OVow
+HzELMAkGA1UEBhMCQ04xEDAOBgNVBAMMB1RFU1RfQ0EwWTATBgcqhkjOPQIBBggq
+gRzPVQGCLQNCAATLGG85F2R/VGb21NoJvMA76bdXo7jAItc12MrssTpi9eqVuEQr
+eJFWk3mO8FltQ72iQmPGNHQNKj6hcIGqvGqio0IwQDAOBgNVHQ8BAf8EBAMCAQYw
+DwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUp00Errs8sKqKv2EA/TnE1vJC7Rsw
+CgYIKoEcz1UBg3UDSAAwRQIhAKdlU8wecffSoH/alVUUogSOMoFxSV+QqHvTcRjX
+jKbiAiB+126kkQVjXlc5LMUhLCWB28JvRyrtg7flbEJr1FYMeQ==
 -----END CERTIFICATE-----
+`
+
+	SIG_KEY_PEM = `-----BEGIN SM2 PRIVATE KEY-----
+MHcCAQEEIBbYDi3GR7DIrhwEsgMwmxLeliFOFhYpJHdX5GOSPQzCoAoGCCqBHM9V
+AYItoUQDQgAEWcnwQdvRCF5K+hu6tuFiQoph3cl79pvy+NfBQbRZnkvDsnuvVzWW
+5a1BFIsmSjQAQxWMUtuwCnHmmW8dqVeglQ==
+-----END SM2 PRIVATE KEY-----
 `
 	SIG_CERT_PEM = `-----BEGIN CERTIFICATE-----
-MIICHTCCAcSgAwIBAgIIAs5iVWOA17swCgYIKoEcz1UBg3UwQjELMAkGA1UEBhMC
-Q04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t5beeMREwDwYDVQQKDAjm
-tYvor5VDQTAeFw0yMjA3MTUxMzU5MzhaFw0yMzA3MTUxMzU5MzhaMF4xCzAJBgNV
-BAYTAmNuMQ8wDQYDVQQIDAbmtZnmsZ8xDzANBgNVBAcMBuadreW3njEQMA4GA1UE
-ChMHR08gVExDUDENMAsGA1UECxMEVGVzdDEMMAoGA1UEAxMDMDAxMFkwEwYHKoZI
-zj0CAQYIKoEcz1UBgi0DQgAElcuhLnzaqjMbCGBAg6QZTA6iMCsck90kwh4NK0ro
-+XY0XwzYaD5PQq7VehcucHGvrUL2VK2d+v16i1J2aD+N5aOBhzCBhDAOBgNVHQ8B
-Af8EBAMCBsAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAdBgNV
-HQ4EFgQU77hb1KL698m25EqrGuBHdEN8WEswHwYDVR0jBBgwFoAUNpPjFOdFCfrV
-7+ovEi3ToZY8wqQwDwYDVR0RBAgwBocEfwAAATAKBggqgRzPVQGDdQNHADBEAiB/
-VgNXutPGOqHaaywG6yApn4I5ipd4lQmDzDArHGgPtgIgRtoKKhJzAVknoubSZqKL
-6YtPS7P6mYhCzW3974poADA=
+MIIBzjCCAXagAwIBAgIEZ5I/yjAKBggqgRzPVQGDdTAfMQswCQYDVQQGEwJDTjEQ
+MA4GA1UEAwwHVEVTVF9DQTAgFw0yNTAxMjIxMzEwMzRaGA8yMDU1MDEyMzEzMTAz
+NFowRTELMAkGA1UEBhMCQ04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t
+5beeMRQwEgYDVQQDDAtFbnRpdHlfQ0VSVDBZMBMGByqGSM49AgEGCCqBHM9VAYIt
+A0IABFnJ8EHb0QheSvoburbhYkKKYd3Je/ab8vjXwUG0WZ5Lw7J7r1c1luWtQRSL
+Jko0AEMVjFLbsApx5plvHalXoJWjeDB2MA4GA1UdDwEB/wQEAwIDuDAdBgNVHSUE
+FjAUBggrBgEFBQcDAgYIKwYBBQUHAwEwHwYDVR0jBBgwFoAUp00Errs8sKqKv2EA
+/TnE1vJC7RswJAYDVR0RBB0wG4IJbG9jYWxob3N0ggh0ZXN0LmNvbYcEfwAAATAK
+BggqgRzPVQGDdQNGADBDAh9uv08YiNEYRUQJXtY9CWOJzty+mIqspsz/NTHLzTVi
+AiAtmAwO28Tc/r4KhEa59hihvFt/gCtrqqW+e1WggfNVpw==
 -----END CERTIFICATE-----
 `
+	ENC_KEY_PEM = `-----BEGIN SM2 PRIVATE KEY-----
+MHcCAQEEIAqa7hSnNnbRu3wglY6G+9aHTsOpQPmjjpG19X8uQZsroAoGCCqBHM9V
+AYItoUQDQgAE2X/XKR3nZm03XEZQZw91/YSBXT2VmpdxlWyDPIKtFxB/nRaKbERL
+BC4HjiCdDyBuebAaB1xieQ3puuE5vn8nwg==
+-----END SM2 PRIVATE KEY-----
+`
+
 	ENC_CERT_PEM = `-----BEGIN CERTIFICATE-----
-MIICHjCCAcSgAwIBAgIIAs5iVWOA9lcwCgYIKoEcz1UBg3UwQjELMAkGA1UEBhMC
-Q04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t5beeMREwDwYDVQQKDAjm
-tYvor5VDQTAeFw0yMjA3MTUxMzU5MzhaFw0yMzA3MTUxMzU5MzhaMF4xCzAJBgNV
-BAYTAmNuMQ8wDQYDVQQIDAbmtZnmsZ8xDzANBgNVBAcMBuadreW3njEQMA4GA1UE
-ChMHR08gVExDUDENMAsGA1UECxMEVGVzdDEMMAoGA1UEAxMDMDAxMFkwEwYHKoZI
-zj0CAQYIKoEcz1UBgi0DQgAEeiDKvy4amGMSU6lSmohUwcI4oRAVGSW6ktL2v3mq
-ps8J9JDEfMskknEVWjfrL7OT+EaYm0rO7tvx6oJqrmUd5qOBhzCBhDAOBgNVHQ8B
-Af8EBAMCAzgwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAdBgNV
-HQ4EFgQU9SD+JHfBKpsN/+zbSSkZnw1qVdAwHwYDVR0jBBgwFoAUNpPjFOdFCfrV
-7+ovEi3ToZY8wqQwDwYDVR0RBAgwBocEfwAAATAKBggqgRzPVQGDdQNIADBFAiAD
-29ovbTAIhZgfvAYKXphZSvcMnQ3QdCDyCqb4j8KMQwIhAINoMaInvyMB86C/aa7P
-gqBZDVjZd/X+yWxzRGtLG/AT
+MIIB0DCCAXagAwIBAgIEZ5I/3DAKBggqgRzPVQGDdTAfMQswCQYDVQQGEwJDTjEQ
+MA4GA1UEAwwHVEVTVF9DQTAgFw0yNTAxMjIxMzEwNTJaGA8yMDU1MDEyMzEzMTA1
+MlowRTELMAkGA1UEBhMCQ04xDzANBgNVBAgMBua1meaxnzEPMA0GA1UEBwwG5p2t
+5beeMRQwEgYDVQQDDAtFbnRpdHlfQ0VSVDBZMBMGByqGSM49AgEGCCqBHM9VAYIt
+A0IABNl/1ykd52ZtN1xGUGcPdf2EgV09lZqXcZVsgzyCrRcQf50WimxESwQuB44g
+nQ8gbnmwGgdcYnkN6brhOb5/J8KjeDB2MA4GA1UdDwEB/wQEAwIDuDAdBgNVHSUE
+FjAUBggrBgEFBQcDAgYIKwYBBQUHAwEwHwYDVR0jBBgwFoAUp00Errs8sKqKv2EA
+/TnE1vJC7RswJAYDVR0RBB0wG4IJbG9jYWxob3N0ggh0ZXN0LmNvbYcEfwAAATAK
+BggqgRzPVQGDdQNIADBFAiEAxRW36Sb8rwer4/VmKz/UFbuNVj+IbTRInLQ4a7Cf
+VOYCID1xEk1g/8nprur+bX7jv9t3jTAN7+BeDd6N0x2pRLqp
 -----END CERTIFICATE-----
-`
-	SIG_KEY_PEM = `-----BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqBHM9VAYItBHkwdwIBAQQgC1Sw2Ptopr75mxS/
-R+lT45og/55WuueomJKSXqTmAfKgCgYIKoEcz1UBgi2hRANCAASVy6EufNqqMxsI
-YECDpBlMDqIwKxyT3STCHg0rSuj5djRfDNhoPk9CrtV6Fy5wca+tQvZUrZ36/XqL
-UnZoP43l
------END PRIVATE KEY-----
-`
-	ENC_KEY_PEM = `-----BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqBHM9VAYItBHkwdwIBAQQgpcgOKHIjr+jDTNjc
-mfeSZuYZlwi344P7s7bz1ofThjigCgYIKoEcz1UBgi2hRANCAAR6IMq/LhqYYxJT
-qVKaiFTBwjihEBUZJbqS0va/eaqmzwn0kMR8yySScRVaN+svs5P4RpibSs7u2/Hq
-gmquZR3m
------END PRIVATE KEY-----
 `
 )
 
@@ -98,7 +91,7 @@ func init() {
 
 // 测试时服务器时间，防止证书过期
 func runtimeTime() time.Time {
-	res, _ := time.Parse("2006-01-02 15:04:05", "2022-12-15 00:00:00")
+	res, _ := time.Parse("2006-01-02 15:04:05", "2025-01-23 21:30:00")
 	return res
 }
 
@@ -312,32 +305,32 @@ func Test_ResumedSession(t *testing.T) {
 }
 
 func Test_processClientHello(t *testing.T) {
-	//c, s := mockPipe()
-	//cli := Client(c, &Config{
-	//	InsecureSkipVerify: true,
-	//	Time:               runtimeTime,
-	//})
-	//svr := Server(s, &Config{
-	//	Certificates: []Certificate{sigCert, encCert},
-	//	Time:         runtimeTime,
-	//})
-	//
-	//done := make(chan bool)
-	//
-	//go func() {
-	//	defer close(done)
-	//
-	//	if err := svr.Handshake(); err != nil {
-	//		t.Errorf("server: %s", err)
-	//		return
-	//	}
-	//	s.Close()
-	//}()
-	//if err := cli.Handshake(); err != nil {
-	//	t.Fatalf("client: %s", err)
-	//}
-	//
-	//c.Close()
-	//<-done
+	c, s := mockPipe()
+	cli := Client(c, &Config{
+		InsecureSkipVerify: true,
+		Time:               runtimeTime,
+	})
+	svr := Server(s, &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		Time:         runtimeTime,
+	})
+
+	done := make(chan bool)
+
+	go func() {
+		defer close(done)
+
+		if err := svr.Handshake(); err != nil {
+			t.Errorf("server: %s", err)
+			return
+		}
+		s.Close()
+	}()
+	if err := cli.Handshake(); err != nil {
+		t.Fatalf("client: %s", err)
+	}
+
+	c.Close()
+	<-done
 
 }

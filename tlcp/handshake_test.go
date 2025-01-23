@@ -3,8 +3,16 @@ package tlcp
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"github.com/emmansun/gmsm/sm2"
+	"github.com/emmansun/gmsm/smx509"
 	"io"
+	"math/big"
 	"net"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,4 +139,52 @@ func Test_pipeConn(t *testing.T) {
 	if !bytes.Equal(buf[:n], data) {
 		t.Fatalf("result not match expect, %02X", buf)
 	}
+}
+
+const RootPrv = `-----BEGIN SM2 PRIVATE KEY-----
+MHcCAQEEINi9llASP5IpPDorVE5bZnv5UDpXdtp3oyqPRd6XsIdNoAoGCCqBHM9V
+AYItoUQDQgAEyxhvORdkf1Rm9tTaCbzAO+m3V6O4wCLXNdjK7LE6YvXqlbhEK3iR
+VpN5jvBZbUO9okJjxjR0DSo+oXCBqrxqog==
+-----END SM2 PRIVATE KEY-----
+`
+
+func TestGenSelfSignedCert(t *testing.T) {
+	prvDER, _ := pem.Decode([]byte(RootPrv))
+	rootPrv, _ := smx509.ParseSM2PrivateKey(prvDER.Bytes)
+	rootCert, _ := smx509.ParseCertificatePEM([]byte(ROOT_CERT_PEM))
+
+	key, err := sm2.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	//certTpl := smx509.Certificate{
+	//	SerialNumber:          new(big.Int).SetInt64(1),
+	//	Subject:               pkix.Name{Country: []string{"CN"}, CommonName: "TEST_CA"},
+	//	NotBefore:             time.Now().AddDate(0, 0, -1),
+	//	NotAfter:              time.Now().AddDate(30, 0, 0),
+	//	KeyUsage:              smx509.KeyUsageCertSign | smx509.KeyUsageCRLSign,
+	//	BasicConstraintsValid: true,
+	//	IsCA:                  true,
+	//}
+	certTpl := smx509.Certificate{
+		SerialNumber: new(big.Int).SetInt64(time.Now().Unix()),
+		Issuer:       rootCert.Subject,
+		Subject:      pkix.Name{Country: []string{"CN"}, Province: []string{"浙江"}, Locality: []string{"杭州"}, CommonName: "Entity_CERT"},
+		NotBefore:    time.Now().Add(-time.Hour * 24),
+		NotAfter:     time.Now().AddDate(30, 0, 0),
+		KeyUsage:     smx509.KeyUsageDigitalSignature | smx509.KeyUsageKeyEncipherment | smx509.KeyUsageDataEncipherment | smx509.KeyUsageKeyAgreement,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost", "test.com"},
+	}
+
+	certificate, err := smx509.CreateCertificate(rand.Reader, &certTpl, rootCert, key.Public(), rootPrv)
+	if err != nil {
+		panic(err)
+	}
+
+	privateKey, _ := smx509.MarshalSM2PrivateKey(key)
+	_ = pem.Encode(os.Stdout, &pem.Block{Type: "SM2 PRIVATE KEY", Bytes: privateKey})
+	_ = pem.Encode(os.Stdout, &pem.Block{Type: "CERTIFICATE", Bytes: certificate})
 }
