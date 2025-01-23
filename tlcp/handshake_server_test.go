@@ -334,3 +334,30 @@ func Test_processClientHello(t *testing.T) {
 	<-done
 
 }
+
+// 测试服务端身份认证
+func Test_HelloExt_SNI_ACK(t *testing.T) {
+	cli, svr := tcpPipe(8453)
+
+	conn := Client(cli, &Config{
+		ServerName: "fakeServerName", // 服务端证书中没有包含该域名
+		Time:       runtimeTime,
+		RootCAs:    simplePool,
+	})
+
+	svc := Server(svr, &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		Time:         runtimeTime,
+	})
+	go func() {
+		defer svc.Close()
+		err := svc.Handshake()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err := conn.Handshake(); err == nil {
+		t.Fatalf("Expect server name ack, and bad server alert, but not")
+	}
+
+}

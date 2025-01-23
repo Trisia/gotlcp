@@ -576,11 +576,11 @@ func (c *Config) getCertificate(clientHello *ClientHelloInfo) (*Certificate, err
 	//
 	// 域名证书主机名验证交由证书验证阶段完成
 	//
-	//// 如果服务端名称不为空，那么验证证书是否匹配
+	// 如果服务端名称不为空，那么验证证书是否匹配
 	//if clientHello.ServerName != "" {
 	//	err := c.Certificates[0].Leaf.VerifyHostname(clientHello.ServerName)
 	//	if err != nil {
-	//		return nil, fmt.Errorf("tlcp: certificate does not match requested host name: %v", err)
+	//		return nil, errNoCertificates
 	//	}
 	//}
 

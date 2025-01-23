@@ -7,12 +7,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/smx509"
 	"io"
 	"math/big"
 	"net"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -187,4 +189,36 @@ func TestGenSelfSignedCert(t *testing.T) {
 	privateKey, _ := smx509.MarshalSM2PrivateKey(key)
 	_ = pem.Encode(os.Stdout, &pem.Block{Type: "SM2 PRIVATE KEY", Bytes: privateKey})
 	_ = pem.Encode(os.Stdout, &pem.Block{Type: "CERTIFICATE", Bytes: certificate})
+}
+
+func tcpPipe(port ...int) (cli net.Conn, svr net.Conn) {
+	addr := ""
+	if len(port) > 0 {
+		addr = fmt.Sprintf(":%d", port[0])
+	}
+
+	listen, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, nil
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		conn, err := listen.Accept()
+		if err != nil {
+			return
+		}
+		svr = conn
+	}()
+	go func() {
+		defer wg.Done()
+		conn, err := net.Dial("tcp", listen.Addr().String())
+		if err != nil {
+			return
+		}
+		cli = conn
+	}()
+	wg.Wait()
+	return
 }
