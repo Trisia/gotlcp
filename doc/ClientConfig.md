@@ -32,22 +32,22 @@ TLCP协议服务端对客户端有如下认证类型：
 package main
 
 import (
-	"github.com/emmansun/gmsm/smx509"
-	"github.com/emmansun/gmsm/smx509"
+    "github.com/emmansun/gmsm/smx509"
+    "github.com/emmansun/gmsm/smx509"
 )
 
 func main() {
-	// 构造根证书列表
-	pool := smx509.NewCertPool()
-	pool.AddCert(rootCert)
+    // 构造根证书列表
+    pool := smx509.NewCertPool()
+    pool.AddCert(rootCert)
 
-	config := &tlcp.Config{RootCAs: pool}
-	conn, err := tlcp.Dial("tcp", "127.0.0.1:8445", config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	// do something...
+    config := &tlcp.Config{RootCAs: pool}
+    conn, err := tlcp.Dial("tcp", "127.0.0.1:8445", config)
+    if err != nil {
+        panic(err)
+    }
+    defer conn.Close()
+    // do something...
 }
 ```
 
@@ -68,25 +68,25 @@ func main() {
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
-	"github.com/emmansun/gmsm/smx509"
+    "gitee.com/Trisia/gotlcp/tlcp"
+    "github.com/emmansun/gmsm/smx509"
 )
 
 func main() {
-	// 构造根证书列表
-	pool := smx509.NewCertPool()
-	pool.AddCert(rootCert)
+    // 构造根证书列表
+    pool := smx509.NewCertPool()
+    pool.AddCert(rootCert)
 
-	config := &tlcp.Config{
-		RootCAs:      pool,
-		Certificates: []tlcp.Certificate{authCertKeypair},
-	}
-	conn, err := tlcp.Dial("tcp", "127.0.0.1:8445", config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	// do something...
+    config := &tlcp.Config{
+        RootCAs:      pool,
+        Certificates: []tlcp.Certificate{authCertKeypair},
+    }
+    conn, err := tlcp.Dial("tcp", "127.0.0.1:8445", config)
+    if err != nil {
+        panic(err)
+    }
+    defer conn.Close()
+    // do something...
 }
 ```
 
@@ -105,17 +105,17 @@ func main() {
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
+    "gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {
-	config := &tlcp.Config{InsecureSkipVerify: true}
-	conn, err := tlcp.Dial("tcp", "127.0.0.1:8444", config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	// do something...
+    config := &tlcp.Config{InsecureSkipVerify: true}
+    conn, err := tlcp.Dial("tcp", "127.0.0.1:8444", config)
+    if err != nil {
+        panic(err)
+    }
+    defer conn.Close()
+    // do something...
 }
 
 ```
@@ -153,38 +153,38 @@ TLCP协议支持两种握手握手方式：
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
-	"github.com/emmansun/gmsm/smx509"
+    "gitee.com/Trisia/gotlcp/tlcp"
+    "github.com/emmansun/gmsm/smx509"
 )
 
 func main() {
-	// 构造根证书列表
-	pool := smx509.NewCertPool()
-	pool.AddCert(rootCert)
-	config := &tlcp.Config{
-		RootCAs:      pool,
-		SessionCache: tlcp.NewLRUSessionCache(32),
-	}
+    // 构造根证书列表
+    pool := smx509.NewCertPool()
+    pool.AddCert(rootCert)
+    config := &tlcp.Config{
+        RootCAs:      pool,
+        SessionCache: tlcp.NewLRUSessionCache(32),
+    }
 
-	// 进行完整握手，并缓存会话
-	conn, err := tlcp.Dial("tcp", "127.0.0.1:8448", config)
-	if err != nil {
-		panic(err)
-	}
-	// 主动触发完整握手
-	err = conn.Handshake()
-	if err != nil {
-		panic(err)
-	}
-	_ = conn.Close()
+    // 进行完整握手，并缓存会话
+    conn, err := tlcp.Dial("tcp", "127.0.0.1:8448", config)
+    if err != nil {
+        panic(err)
+    }
+    // 主动触发完整握手
+    err = conn.Handshake()
+    if err != nil {
+        panic(err)
+    }
+    _ = conn.Close()
 
-	// 通过同一个配置对象创建新的TLCP 触发重用握手
-	conn, err = tlcp.Dial("tcp", "127.0.0.1:8448", config)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	// do something...
+    // 通过同一个配置对象创建新的TLCP 触发重用握手
+    conn, err = tlcp.Dial("tcp", "127.0.0.1:8448", config)
+    if err != nil {
+        panic(err)
+    }
+    defer conn.Close()
+    // do something...
 }
 ```
 
@@ -208,20 +208,20 @@ func main() {
 package main
 
 import (
-	"net"
-	"gitee.com/Trisia/gotlcp/tlcp"
+    "net"
+    "gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {
     
-	// 创建TCP连接
-	raw, err := net.Dial("tcp", "127.0.0.1:8447")
-	if err != nil {
-		panic(err)
-	}
-	// 使用TCP连接，运行TLCP协议，构造TLCP连接
-	conn := tlcp.Client(raw, config)
-	defer conn.Close()
+    // 创建TCP连接
+    raw, err := net.Dial("tcp", "127.0.0.1:8447")
+    if err != nil {
+        panic(err)
+    }
+    // 使用TCP连接，运行TLCP协议，构造TLCP连接
+    conn := tlcp.Client(raw, config)
+    defer conn.Close()
 
     // use conn do something...
 }
@@ -253,11 +253,11 @@ ECC系列套件配置方式如下：
 ```go
 config := &tlcp.Config{
     // 省略其它无关配置项...
-	Certificates: []tlcp.Certificate{authCertKeypair},
-	CipherSuites: []uint16{
-		tlcp.ECC_SM4_GCM_SM3,	
-		tlcp.ECC_SM4_CBC_SM3,
-	},
+    Certificates: []tlcp.Certificate{authCertKeypair},
+    CipherSuites: []uint16{
+        tlcp.ECC_SM4_GCM_SM3,    
+        tlcp.ECC_SM4_CBC_SM3,
+    },
 }
 ```
 
@@ -272,12 +272,12 @@ ECDHE系列套件配置方式如下：
 ```go
 config := &tlcp.Config{
     // 省略其它无关配置项...
-	Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
-	CipherSuites: []uint16{
-		tlcp.ECDHE_SM4_GCM_SM3,	
-		tlcp.ECDHE_SM4_CBC_SM3,
-		// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
-	},
+    Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
+    CipherSuites: []uint16{
+        tlcp.ECDHE_SM4_GCM_SM3,    
+        tlcp.ECDHE_SM4_CBC_SM3,
+        // 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
+    },
 }
 ```
 
@@ -290,7 +290,7 @@ config := &tlcp.Config{
 ```go
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-    // 	错误处理...
+    //     错误处理...
 }
 ```
 
@@ -307,11 +307,11 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 ```go
 config := &tlcp.Config{
-	InsecureSkipVerify: true,
-	VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-		// 自定证书的验证流程...
-		return nil
-	},
+    InsecureSkipVerify: true,
+    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+        // 自定证书的验证流程...
+        return nil
+    },
 }
 ```
 
@@ -327,7 +327,7 @@ config := &tlcp.Config{
 
 ```go
 config := &tlcp.Config{
-	// ...
+    // ...
     TrustedCAIndications: []TrustedAuthority{
         {IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
     },
@@ -350,7 +350,7 @@ config := &tlcp.Config{
 
 ```go
 config := &tlcp.Config{
-	// ...
+    // ...
     ServerName: "www.example.com"
 }
 ```

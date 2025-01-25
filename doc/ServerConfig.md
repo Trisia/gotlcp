@@ -31,24 +31,24 @@ TLCP协议服务端对客户端有如下认证类型：
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
+    "gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {
-	config := &tlcp.Config{
-		Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
-	}
-	listen, err := tlcp.Listen("tcp", ":8447", config)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			panic(err)
-		}
-		// do something
-	}
+    config := &tlcp.Config{
+        Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
+    }
+    listen, err := tlcp.Listen("tcp", ":8447", config)
+    if err != nil {
+        panic(err)
+    }
+    for {
+        conn, err := listen.Accept()
+        if err != nil {
+            panic(err)
+        }
+        // do something
+    }
 }
 ```
 
@@ -70,29 +70,29 @@ func main() {
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
-	"github.com/emmansun/gmsm/smx509"
+    "gitee.com/Trisia/gotlcp/tlcp"
+    "github.com/emmansun/gmsm/smx509"
 )
 
 func main() {
-	pool := smx509.NewCertPool()
-	pool.AddCert(rootCert)
-	config := &tlcp.Config{
-		Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
-		ClientAuth:   tlcp.RequireAndVerifyClientCert,
-		ClientCAs:    pool,
-	}
-	listen, err := tlcp.Listen("tcp", ":8449", config)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			panic(err)
-		}
-		// do something...
-	}
+    pool := smx509.NewCertPool()
+    pool.AddCert(rootCert)
+    config := &tlcp.Config{
+        Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
+        ClientAuth:   tlcp.RequireAndVerifyClientCert,
+        ClientCAs:    pool,
+    }
+    listen, err := tlcp.Listen("tcp", ":8449", config)
+    if err != nil {
+        panic(err)
+    }
+    for {
+        conn, err := listen.Accept()
+        if err != nil {
+            panic(err)
+        }
+        // do something...
+    }
 }
 ```
 
@@ -130,25 +130,25 @@ TLCP协议支持两种握手握手方式：
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
+    "gitee.com/Trisia/gotlcp/tlcp"
 )
 
 func main() {
-	config := &tlcp.Config{
-		Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
-		SessionCache: tlcp.NewLRUSessionCache(128),
-	}
-	listen, err := tlcp.Listen("tcp", ":8449", config)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			panic(err)
-		}
-		// do something...
-	}
+    config := &tlcp.Config{
+        Certificates: []tlcp.Certificate{sigCertKey, encCertKey},
+        SessionCache: tlcp.NewLRUSessionCache(128),
+    }
+    listen, err := tlcp.Listen("tcp", ":8449", config)
+    if err != nil {
+        panic(err)
+    }
+    for {
+        conn, err := listen.Accept()
+        if err != nil {
+            panic(err)
+        }
+        // do something...
+    }
 }
 ```
 
@@ -171,24 +171,24 @@ func main() {
 package main
 
 import (
-	"gitee.com/Trisia/gotlcp/tlcp"
-	"net"
+    "gitee.com/Trisia/gotlcp/tlcp"
+    "net"
 )
 
 func main() {
-	listen, err := net.Listen("tcp", ":8450")
-	if err != nil {
-		panic(err)
-	}
-	raw, err := listen.Accept()
-	if err != nil {
-		panic(err)
-	}
+    listen, err := net.Listen("tcp", ":8450")
+    if err != nil {
+        panic(err)
+    }
+    raw, err := listen.Accept()
+    if err != nil {
+        panic(err)
+    }
 
-	conn := tlcp.Server(raw, config)
-	defer conn.Close()
+    conn := tlcp.Server(raw, config)
+    defer conn.Close()
 
-	// use conn do something...
+    // use conn do something...
 }
 ```
 
@@ -215,8 +215,8 @@ func main() {
 ```go
 config := &tlcp.Config{
     // 省略其它无关配置项...
-	ClientAuth:   RequireAndVerifyClientCert,
-	CipherSuites: []uint16{
+    ClientAuth:   RequireAndVerifyClientCert,
+    CipherSuites: []uint16{
         tlcp.ECDHE_SM4_GCM_SM3, 
         tlcp.ECC_SM4_CBC_SM3,   
     },
@@ -250,7 +250,7 @@ config := &tlcp.Config{
 ```go
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-    // 	错误处理...
+    //     错误处理...
 }
 ```
 
@@ -267,11 +267,11 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 ```go
 config := &tlcp.Config{
-	InsecureSkipVerify: true,
-	VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-		// 自定证书的验证流程...
-		return nil
-	},
+    InsecureSkipVerify: true,
+    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+        // 自定证书的验证流程...
+        return nil
+    },
 }
 ```
 
