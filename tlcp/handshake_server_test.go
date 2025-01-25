@@ -1,6 +1,8 @@
 package tlcp
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"testing"
@@ -351,13 +353,117 @@ func Test_HelloExt_SNI_ACK(t *testing.T) {
 	})
 	go func() {
 		defer svc.Close()
+		// 忽略服务端收到的错误
+		_ = svc.Handshake()
+	}()
+	if err := conn.Handshake(); err == nil {
+		t.Fatalf("Expect server name ack, and bad server alert, but not")
+	}
+}
+
+// 测试服务端授信CA指示选择证书
+func Test_HelloExt_TrustedCAKeys(t *testing.T) {
+	sigKeyPEM := `-----BEGIN SM2 PRIVATE KEY-----
+MHcCAQEEIF6AaiYOCERbLdmRrBpZSBUH09ZpMt4lb5RLmqbgQK3zoAoGCCqBHM9V
+AYItoUQDQgAEL8yl88eP/iuFCHbGmUrQZiYvzKK7A9Oy+6wHGyaQrzuS/wdscqVk
+oQNi5FuKlAVHVmVTjkjH7IU5p92rpHj1FQ==
+-----END SM2 PRIVATE KEY-----`
+	sigCertPEM := `-----BEGIN CERTIFICATE-----
+MIIBrDCCAVGgAwIBAgIEZ5RBdDAKBggqgRzPVQGDdTAfMQswCQYDVQQGEwJDTjEQ
+MA4GA1UEAwwHVEVTVF9DQTAgFw0yNTAxMjIyMTMwMDBaGA8yMDU1MDEyNTAxNDIx
+MlowIDELMAkGA1UEBhMCQ04xETAPBgNVBAMTCE15U2VydmVyMFkwEwYHKoZIzj0C
+AQYIKoEcz1UBgi0DQgAEL8yl88eP/iuFCHbGmUrQZiYvzKK7A9Oy+6wHGyaQrzuS
+/wdscqVkoQNi5FuKlAVHVmVTjkjH7IU5p92rpHj1FaN4MHYwDgYDVR0PAQH/BAQD
+AgO4MB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAfBgNVHSMEGDAWgBSn
+TQSuuzywqoq/YQD9OcTW8kLtGzAkBgNVHREEHTAbgglsb2NhbGhvc3SCCHRlc3Qu
+Y29thwR/AAABMAoGCCqBHM9VAYN1A0kAMEYCIQDckhsmNO29hz38NT+b3dv6rRsA
+omGse9kjXdbbakmqXQIhAIL4imB58muF0QASb7aDMF57x7UPnUWlE2qB+u9xfxf+
+-----END CERTIFICATE-----`
+	encKeyPEM := `-----BEGIN SM2 PRIVATE KEY-----
+MHcCAQEEIApbU/lJmWDpqDkpkquTXhsl5EzEE1oI6rSVOzwEngdgoAoGCCqBHM9V
+AYItoUQDQgAErY8lplH1HTupLnc7R423ZTSkaJxoZYyW48naf+2/gLr1rWifdZ4Q
+TMgIEkiLj3riC1Ohyok9XW1iIeru4mRUtg==
+-----END SM2 PRIVATE KEY-----`
+	encCertPEM := `-----BEGIN CERTIFICATE-----
+MIIBqzCCAVGgAwIBAgIEZ5RBkjAKBggqgRzPVQGDdTAfMQswCQYDVQQGEwJDTjEQ
+MA4GA1UEAwwHVEVTVF9DQTAgFw0yNTAxMjIyMTMwMDBaGA8yMDU1MDEyNTAxNDI0
+MlowIDELMAkGA1UEBhMCQ04xETAPBgNVBAMTCE15U2VydmVyMFkwEwYHKoZIzj0C
+AQYIKoEcz1UBgi0DQgAErY8lplH1HTupLnc7R423ZTSkaJxoZYyW48naf+2/gLr1
+rWifdZ4QTMgIEkiLj3riC1Ohyok9XW1iIeru4mRUtqN4MHYwDgYDVR0PAQH/BAQD
+AgO4MB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAfBgNVHSMEGDAWgBSn
+TQSuuzywqoq/YQD9OcTW8kLtGzAkBgNVHREEHTAbgglsb2NhbGhvc3SCCHRlc3Qu
+Y29thwR/AAABMAoGCCqBHM9VAYN1A0gAMEUCIQDpsbE5nCaxcOy41ZEiYKA9Mdfi
+uoaZZ9DpBTasGqCZPwIgEGvmLIB717Cn/3MD2Uqhxm2PqhGQ0hY4lo7J8BG5F4g=
+-----END CERTIFICATE-----`
+	mySigCert, err := X509KeyPair([]byte(sigCertPEM), []byte(sigKeyPEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	myEncCert, err := X509KeyPair([]byte(encCertPEM), []byte(encKeyPEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// cert subject: CN=MyServer,C=CN
+	expectCertX509Name, _ := hex.DecodeString("3020310b300906035504061302434e3111300f060355040313084d79536572766572")
+	//fmt.Println(hex.EncodeToString(expectCertX509Name))
+	//fmt.Println(hex.EncodeToString(mySigCert.Leaf.RawSubject))
+	//fmt.Println(hex.EncodeToString(myEncCert.Leaf.RawSubject))
+
+	cli, svr := tcpPipe(8454)
+	conn := Client(cli, &Config{
+		Time:    runtimeTime,
+		RootCAs: simplePool,
+		TrustedCAIndications: []TrustedAuthority{
+			{IdentifierType: IdentifierTypeX509Name, Identifier: expectCertX509Name},
+		},
+	})
+	// 服务端通过GetCertificate和GetKECertificate选择证书
+	// 在实现中通过 TrustedCAIndications 选择证书
+	svc := Server(svr, &Config{
+		Time: runtimeTime,
+		GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+			if len(info.TrustedCAIndications) > 0 {
+				if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+					// 服务端根据客户端提供的CA指示选择签名证书
+					if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
+						return &mySigCert, nil
+					}
+				}
+			}
+			return &sigCert, nil
+		},
+		GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+			if len(info.TrustedCAIndications) > 0 {
+				if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+					if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
+						return &myEncCert, nil
+					}
+				}
+			}
+			return &encCert, nil
+		},
+	})
+	go func() {
+		defer svc.Close()
 		err := svc.Handshake()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	if err := conn.Handshake(); err == nil {
-		t.Fatalf("Expect server name ack, and bad server alert, but not")
+	if err = conn.Handshake(); err != nil {
+		t.Fatal(err)
 	}
-
+	certificates := conn.PeerCertificates()
+	if len(certificates) == 0 {
+		t.Fatalf("Expect get peer cert, but not")
+	}
+	actualSubject := certificates[0].RawSubject
+	if bytes.Compare(actualSubject, expectCertX509Name) != 0 {
+		t.Fatalf("Expect peer sign cert subject %02x ,but get %02x", expectCertX509Name, actualSubject)
+	}
+	actualSubject = certificates[1].RawSubject
+	if bytes.Compare(actualSubject, expectCertX509Name) != 0 {
+		t.Fatalf("Expect peer enc cert subject %02x ,but get %02x", expectCertX509Name, actualSubject)
+	}
 }

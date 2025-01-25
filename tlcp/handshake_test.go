@@ -173,7 +173,7 @@ func TestGenSelfSignedCert(t *testing.T) {
 		SerialNumber: new(big.Int).SetInt64(time.Now().Unix()),
 		Issuer:       rootCert.Subject,
 		Subject:      pkix.Name{Country: []string{"CN"}, Province: []string{"浙江"}, Locality: []string{"杭州"}, CommonName: "Entity_CERT"},
-		NotBefore:    time.Now().Add(-time.Hour * 24),
+		NotBefore:    runtimeTime().Add(-time.Hour * 24),
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 		KeyUsage:     smx509.KeyUsageDigitalSignature | smx509.KeyUsageKeyEncipherment | smx509.KeyUsageDataEncipherment | smx509.KeyUsageKeyAgreement,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
@@ -189,6 +189,20 @@ func TestGenSelfSignedCert(t *testing.T) {
 	privateKey, _ := smx509.MarshalSM2PrivateKey(key)
 	_ = pem.Encode(os.Stdout, &pem.Block{Type: "SM2 PRIVATE KEY", Bytes: privateKey})
 	_ = pem.Encode(os.Stdout, &pem.Block{Type: "CERTIFICATE", Bytes: certificate})
+}
+
+// svrConn 让服务端监听器与连接绑定，以便在关闭连接时关闭监听器
+type svrConn struct {
+	l net.Listener
+	net.Conn
+}
+
+func (s *svrConn) Close() error {
+	err := s.Conn.Close()
+	if s.l != nil {
+		return s.l.Close()
+	}
+	return err
 }
 
 func tcpPipe(port ...int) (cli net.Conn, svr net.Conn) {
@@ -209,7 +223,8 @@ func tcpPipe(port ...int) (cli net.Conn, svr net.Conn) {
 		if err != nil {
 			return
 		}
-		svr = conn
+		// 服务端监听器与连接绑定，以便在关闭连接时关闭监听器
+		svr = &svrConn{Conn: conn, l: listen}
 	}()
 	go func() {
 		defer wg.Done()

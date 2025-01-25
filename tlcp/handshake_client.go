@@ -68,6 +68,11 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		// 未指定时默认使用SM2
 		hello.supportedCurves = []CurveID{CurveSM2}
 	}
+	// 若用户指定了授信CA指示，则发送 trusted_ca_keys类型扩展
+	if len(config.TrustedCAIndications) > 0 {
+		// 发送扩展
+		hello.trustedAuthorities = config.TrustedCAIndications
+	}
 
 	hasAuthKeyPair := false
 	if len(config.Certificates) > 0 || config.GetClientCertificate != nil {

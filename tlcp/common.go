@@ -266,6 +266,11 @@ type ClientHelloInfo struct {
 	// SupportedVersions 客户端支持的TLCP版本，目前只有 0x0101
 	SupportedVersions []uint16
 
+	// TrustedCAIndications 客户端信任的CA列表
+	// 注意该参数为可选参数，在客户端发送TrustedAuthority扩展字段时才会存在。
+	// 服务端可以使用该参数选择合适的证书，做到证书的动态选择。
+	TrustedCAIndications []TrustedAuthority
+
 	// Conn 底层连接对象，请不要读写该对象，否则会导致TLCP连接异常
 	Conn net.Conn
 
@@ -434,6 +439,14 @@ type Config struct {
 	// 这个配置用于客户端使用ECDHE密码套件时与其他实现进行兼容，如果你在进行ECDHE密码套件的集成测试时失败，可以尝试配置这个变量。
 	// 默认当作structure，起始无两字节长度。
 	ClientECDHEParamsAsVector bool
+
+	// TrustedCAIndications 授信CA指示 Trusted CA Indications
+	// 该参数仅客户端使用，用于指定客户端信任的CA列表，ClientHello 扩展字段的方式发送。
+	// 服务端可选的从该列表中选择一张匹配的证书，以证书消息的方式发送。
+	// 注意：在GoTLCP默认不会使用该参数！
+	// 若需要在服务端识别并且使用该参数，请通过实现 GetCertificate 与 GetKECertificate 方法，
+	// 从 ClientHelloInfo 中获取扩展字段，然后根据扩展字段选择合适的证书。
+	TrustedCAIndications []TrustedAuthority
 }
 
 // Clone 复制一个新的连接配置对象

@@ -314,3 +314,46 @@ config := &tlcp.Config{
 	},
 }
 ```
+
+
+### 2.5 选择授信CA证书
+
+在 GM/T0024-2023《SSL VPN技术规范》中支持了Hello消息扩展字段，通过扩展字段中的TrustedCAKeys就可让服务器根据指定的证书信息选择合适的证书，
+以实现多证书密钥的切换。
+
+**注意：该扩展字段取决于服务端是否实现了证书匹配方法，若未实现参数无效！**
+
+在客户端您可以通过下面方式指定需要CA证书：
+
+```go
+config := &tlcp.Config{
+	// ...
+    TrustedCAIndications: []TrustedAuthority{
+        {IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
+    },
+}
+```
+
+目前支持一下类型的证书信息参数：
+
+| 参数名称 | 参数值 | 参数意义            |
+| :-- | :-- |:----------------|
+| IdentifierTypePreAgreed| 0 | Pre-agreed预先协商  |
+| IdentifierTypeX509Name|2 | X.509证书名称       |
+| IdentifierTypeKeySM3Hash|4 | 密钥SM3哈希         |
+| IdentifierTypeCertSM3Hash|5 | 证书SM3哈希         |
+
+
+### 2.6 验证服务端域名证书
+
+在客户端您可以通过配置ServerName的方式开启校验服务端的域名证书，当服务端的域名证书与ServerName的域名不匹配时将会客户端将会抛出证书错误。
+
+```go
+config := &tlcp.Config{
+	// ...
+    ServerName: "www.example.com"
+}
+```
+
+在配置了该项参数后客户端也会在ClientHello消息中附带SNI扩展供服务器根据域名选择证书，以此实现虚拟主机。（需要服务端支持）
+

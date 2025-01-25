@@ -763,12 +763,13 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) *ClientHelloInfo {
 	supportedVers := supportedVersionsFromMax(clientHello.vers)
 	return &ClientHelloInfo{
-		CipherSuites:      clientHello.cipherSuites,
-		ServerName:        c.serverName,
-		SupportedVersions: supportedVers,
-		Conn:              c.conn,
-		config:            c.config,
-		ctx:               ctx,
+		CipherSuites:         clientHello.cipherSuites,
+		ServerName:           c.serverName,
+		SupportedVersions:    supportedVers,
+		TrustedCAIndications: clientHello.trustedAuthorities,
+		Conn:                 c.conn,
+		config:               c.config,
+		ctx:                  ctx,
 	}
 }
 
@@ -780,7 +781,12 @@ func (c *Conn) tlcpRand() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	unixTime := time.Now().Unix()
+	var unixTime int64
+	if c.config.Time != nil {
+		unixTime = c.config.Time().Unix()
+	} else {
+		unixTime = time.Now().Unix()
+	}
 	rd[0] = uint8(unixTime >> 24)
 	rd[1] = uint8(unixTime >> 16)
 	rd[2] = uint8(unixTime >> 8)

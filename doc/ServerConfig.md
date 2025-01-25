@@ -274,3 +274,50 @@ config := &tlcp.Config{
 	},
 }
 ```
+
+### 2.6 根据TrustedCAKey扩展选择证书
+
+在 GM/T0024-2023《SSL VPN技术规范》中支持了Hello消息扩展字段，通过扩展字段中的TrustedCAKeys就可让服务器根据指定的证书信息选择合适的证书。
+
+目前支持一下类型的证书信息参数：
+
+| 参数名称 | 参数值 | 参数意义            |
+| :-- | :-- |:----------------|
+| IdentifierTypePreAgreed| 0 | Pre-agreed预先协商  |
+| IdentifierTypeX509Name|2 | X.509证书名称       |
+| IdentifierTypeKeySM3Hash|4 | 密钥SM3哈希         |
+| IdentifierTypeCertSM3Hash|5 | 证书SM3哈希         |
+
+
+默认情况下GoTLCP将会忽略TrustedCAKeys扩展，您需要自己实现相应方法来实现证书的选择，主要为实现 `GetCertificate` 与 `GetKECertificate`方法
+
+
+```go
+config := &tlcp.Config{
+    // ...
+    GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+        if len(info.TrustedCAIndications) > 0 {
+            if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+            // 服务端根据客户端提供的CA指示选择签名证书
+                if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
+                    return &mySigCert, nil
+                }
+            }
+        }
+        return &sigCert, nil
+    },
+    GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+        if len(info.TrustedCAIndications) > 0 {
+            if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+                if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
+                    return &myEncCert, nil
+                }
+            }
+        }
+        return &encCert, nil
+    },
+}
+```
+
+以上示例展示如何通过 **X.509证书名称** 寻找证书返回证书方法。
+
