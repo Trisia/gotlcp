@@ -74,6 +74,11 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		hello.trustedAuthorities = config.TrustedCAIndications
 	}
 
+	// 若用户指定应用层协议，则发送ALPN类型扩展
+	if len(config.NextProtos) > 0 {
+		hello.alpnProtocols = config.NextProtos
+	}
+
 	hasAuthKeyPair := false
 	if len(config.Certificates) > 0 || config.GetClientCertificate != nil {
 		hasAuthKeyPair = true
@@ -500,6 +505,14 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 		_ = c.sendAlert(alertUnexpectedMessage)
 		return false, errors.New("tlcp: server selected unsupported compression format")
 	}
+
+	// 检查服务端的应用层协议是否在客户端支持，若不支持的报错。
+	if err := checkALPN(hs.hello.alpnProtocols, hs.serverHello.alpnProtocol); err != nil {
+		_ = c.sendAlert(alertUnsupportedExtension)
+		return false, err
+	}
+	c.clientProtocol = hs.serverHello.alpnProtocol
+
 	if !hs.serverResumedSession() {
 		return false, nil
 	}
@@ -714,4 +727,20 @@ func hostnameInSNI(name string) string {
 		name = name[:len(name)-1]
 	}
 	return name
+}
+
+// checkALPN 检查服务端响应的ALPN协议为客户端列表中的协议
+func checkALPN(clientProtos []string, serverProto string) error {
+	if serverProto == "" {
+		return nil
+	}
+	if len(clientProtos) == 0 {
+		return errors.New("tls: server advertised unrequested ALPN extension")
+	}
+	for _, proto := range clientProtos {
+		if proto == serverProto {
+			return nil
+		}
+	}
+	return errors.New("tls: server selected unadvertised ALPN protocol")
 }

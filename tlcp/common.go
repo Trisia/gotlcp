@@ -196,6 +196,9 @@ type ConnectionState struct {
 	// CipherSuite 该连接所使用的密码套件ID
 	CipherSuite uint16
 
+	// NegotiatedProtocol 协商出的应用层协议
+	NegotiatedProtocol string
+
 	// ServerName 服务端端名称
 	ServerName string
 
@@ -378,6 +381,14 @@ type Config struct {
 	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
 	RootCAs *x509.CertPool
 
+	// NextProtos 支持的应用层协议列表。
+	// 列表中的顺序代表支持协议的优先级索引越小越优先。
+	// 如果对端也支持ALPN，对端将会发送ALPN扩展，并从支持列表中选择出一个协议。
+	// 但是若对端不支持ALPN中的协议，将会导致连接失败。
+	// 若双方中任意一方 NextProtos 为空则表示不进行协议选择，连接将不会收到影响。
+	// 在协商成功后可以在 ConnectionState.NegotiatedProtocol 中获取到协商的协议。
+	NextProtos []string
+
 	// ServerName 【可选】如果不为空，则强制校验证书中的DNS或IP是否存在。
 	// 用于验证主机名与数字证书中的主机名是否匹配
 	// 如果 InsecureSkipVerify 为 true 则跳过该验证
@@ -469,6 +480,7 @@ func (c *Config) Clone() *Config {
 		VerifyPeerCertificate:       c.VerifyPeerCertificate,
 		VerifyConnection:            c.VerifyConnection,
 		RootCAs:                     c.RootCAs,
+		NextProtos:                  c.NextProtos,
 		ServerName:                  c.ServerName,
 		ClientECDHEParamsAsVector:   c.ClientECDHEParamsAsVector,
 		ClientAuth:                  c.ClientAuth,

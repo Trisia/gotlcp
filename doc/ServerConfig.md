@@ -212,14 +212,14 @@ func main() {
 
 可以通过下面方式手动指定握手使用的密码套件：
 
-```go
+```
 config := &tlcp.Config{
-// 省略其它无关配置项...
-ClientAuth:   RequireAndVerifyClientCert,
-CipherSuites: []uint16{
-tlcp.ECDHE_SM4_GCM_SM3,
-tlcp.ECC_SM4_CBC_SM3,
-},
+   // 省略其它无关配置项...
+   ClientAuth:   RequireAndVerifyClientCert,
+   CipherSuites: []uint16{
+      tlcp.ECDHE_SM4_GCM_SM3,
+      tlcp.ECC_SM4_CBC_SM3,
+   },
 }
 ```
 
@@ -247,10 +247,10 @@ tlcp.ECC_SM4_CBC_SM3,
 
 通常您可以通过该错误得知证书的验证失败的类型和描述，如下：
 
-```go
+```
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-//     错误处理...
+    // 错误处理...
 }
 ```
 
@@ -265,13 +265,13 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 示例如下：
 
-```go
+```
 config := &tlcp.Config{
-InsecureSkipVerify: true,
-VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-// 自定证书的验证流程...
-return nil
-},
+    InsecureSkipVerify: true,
+    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+        // 自定证书的验证流程...
+        return nil
+    },
 }
 ```
 
@@ -292,32 +292,50 @@ return nil
 默认情况下GoTLCP将会忽略TrustedCAKeys扩展，您需要自己实现相应方法来实现证书的选择，主要为实现 `GetCertificate` 与 `GetKECertificate`方法
 
 
-```go
+```
 config := &tlcp.Config{
-// ...
-GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
-if len(info.TrustedCAIndications) > 0 {
-if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
-// 服务端根据客户端提供的CA指示选择签名证书
-if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
-return &mySigCert, nil
-}
-}
-}
-return &sigCert, nil
-},
-GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
-if len(info.TrustedCAIndications) > 0 {
-if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
-if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
-return &myEncCert, nil
-}
-}
-}
-return &encCert, nil
-},
+   // ...
+	GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+		if len(info.TrustedCAIndications) > 0 {
+			if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+				// 服务端根据客户端提供的CA指示选择签名证书
+				if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
+					return &mySigCert, nil
+				}
+			}
+		}
+		return &sigCert, nil
+	},
+	GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+		if len(info.TrustedCAIndications) > 0 {
+			if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+				if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
+					return &myEncCert, nil
+				}
+			}
+		}
+		return &encCert, nil
+	},
 }
 ```
 
 以上示例展示如何通过 **X.509证书名称** 寻找证书返回证书方法。
+
+
+### 2.7 协商应用层协议ALPN
+
+TLCP协议通过Hello消息中的ALPN扩展字段来协商应用层协议， 服务器根据支持的协议列表选择一个协议返回给客户端。
+
+配置方法如下：
+
+```
+config := &tlcp.Config{
+   // ...
+   NextProtos:   []string{"h2", "http/1.1"},
+}
+```
+
+若服务端与客户端均无匹配的应用层协议，则将导致握手失败。
+
+若任意一端未配置ALPN协议，那么扩展字段将被忽略。
 

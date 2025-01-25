@@ -315,3 +315,31 @@ func Test_clientHandshake_ECCWithEncCert(t *testing.T) {
 	}
 	testClientHandshake(t, config, "127.0.0.1:8452")
 }
+
+// 测试 ALPN 协议选择
+func Test_ClientHelloExtALPN(t *testing.T) {
+	cli, svr := tcpPipe(8455)
+
+	conn := Client(cli, &Config{
+		Time:       runtimeTime,
+		RootCAs:    simplePool,
+		NextProtos: []string{"h2"},
+	})
+
+	svc := Server(svr, &Config{
+		Certificates: []Certificate{sigCert, encCert},
+		Time:         runtimeTime,
+		NextProtos:   []string{"h2", "http/1.1"},
+	})
+	go func() {
+		defer svc.Close()
+		// 忽略服务端收到的错误
+		_ = svc.Handshake()
+	}()
+	if err := conn.Handshake(); err != nil {
+		t.Fatalf("Expect handshake finish without error but not %v", err)
+	}
+	if conn.ConnectionState().NegotiatedProtocol != "h2" {
+		t.Fatalf("Expect negotiated protocol is h2 but %v", conn.ConnectionState().NegotiatedProtocol)
+	}
+}

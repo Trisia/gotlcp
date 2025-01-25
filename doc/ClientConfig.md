@@ -250,14 +250,14 @@ func main() {
 
 ECC系列套件配置方式如下：
 
-```go
+```
 config := &tlcp.Config{
-// 省略其它无关配置项...
-Certificates: []tlcp.Certificate{authCertKeypair},
-CipherSuites: []uint16{
-tlcp.ECC_SM4_GCM_SM3,
-tlcp.ECC_SM4_CBC_SM3,
-},
+   // ...
+   Certificates: []tlcp.Certificate{authCertKeypair},
+   CipherSuites: []uint16{
+      tlcp.ECC_SM4_GCM_SM3,
+      tlcp.ECC_SM4_CBC_SM3,
+   },
 }
 ```
 
@@ -269,15 +269,15 @@ tlcp.ECC_SM4_CBC_SM3,
 
 ECDHE系列套件配置方式如下：
 
-```go
+```
 config := &tlcp.Config{
-// 省略其它无关配置项...
-Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
-CipherSuites: []uint16{
-tlcp.ECDHE_SM4_GCM_SM3,
-tlcp.ECDHE_SM4_CBC_SM3,
-// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
-},
+    // 省略其它无关配置项...
+    Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
+    CipherSuites: []uint16{
+        tlcp.ECDHE_SM4_GCM_SM3,
+        tlcp.ECDHE_SM4_CBC_SM3,
+        // 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
+    },
 }
 ```
 
@@ -287,10 +287,10 @@ tlcp.ECDHE_SM4_CBC_SM3,
 
 通常您可以通过该错误得知证书的验证失败的类型和描述，如下：
 
-```go
+```
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-//     错误处理...
+   // 错误处理...
 }
 ```
 
@@ -305,32 +305,32 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 示例如下：
 
-```go
+```
 config := &tlcp.Config{
-InsecureSkipVerify: true,
-VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-// 自定证书的验证流程...
-return nil
-},
+    InsecureSkipVerify: true,
+    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+        // 自定证书的验证流程...
+        return nil
+	},
 }
 ```
 
 
 ### 2.5 选择授信CA证书
 
-在 GM/T0024-2023《SSL VPN技术规范》中支持了Hello消息扩展字段，通过扩展字段中的TrustedCAKeys就可让服务器根据指定的证书信息选择合适的证书，
+在GM/T0024-2023《SSL VPN技术规范》中支持了Hello消息扩展字段，通过扩展字段中的TrustedCAKeys就可让服务器根据指定的证书信息选择合适的证书，
 以实现多证书密钥的切换。
 
 **注意：该扩展字段取决于服务端是否实现了证书匹配方法，若未实现参数无效！**
 
 在客户端您可以通过下面方式指定需要CA证书：
 
-```go
+```
 config := &tlcp.Config{
-// ...
-TrustedCAIndications: []TrustedAuthority{
-{IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
-},
+    // ...
+    TrustedCAIndications: []TrustedAuthority{
+        {IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
+	},
 }
 ```
 
@@ -348,12 +348,30 @@ TrustedCAIndications: []TrustedAuthority{
 
 在客户端您可以通过配置ServerName的方式开启校验服务端的域名证书，当服务端的域名证书与ServerName的域名不匹配时将会客户端将会抛出证书错误。
 
-```go
+```
 config := &tlcp.Config{
-// ...
-ServerName: "www.example.com"
+    // ...
+    ServerName: "www.example.com"
 }
 ```
 
 在配置了该项参数后客户端也会在ClientHello消息中附带SNI扩展供服务器根据域名选择证书，以此实现虚拟主机。（需要服务端支持）
 
+
+### 2.7 协商应用层协议ALPN
+
+TLCP通过Hello消息中的ALPN扩展字段来协商应用层协议，
+客户端在ClientHello消息中通过ALPN扩展字段告知服务器支持的协议列表，服务器根据支持的协议列表选择一个协议返回给客户端。
+
+配置方法如下：
+
+```
+config := &tlcp.Config{
+   // ...
+   NextProtos:   []string{"h2", "http/1.1"},
+}
+```
+
+若服务端与客户端均无匹配的应用层协议，则将导致握手失败。
+
+若任意一端未配置ALPN协议，那么扩展字段将被忽略。

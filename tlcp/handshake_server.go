@@ -187,6 +187,17 @@ func (hs *serverHandshakeState) processClientHello() error {
 		c.serverName = hs.clientHello.serverName
 	}
 
+	// 协商出客户端与服务端都支持的应用层协议。
+	// 若双方均任意一端不支持ALPN，则不做协议选择
+	// 若双方都没有适配的协议，则发出错误。
+	selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols)
+	if err != nil {
+		c.sendAlert(alertNoApplicationProtocol)
+		return err
+	}
+	hs.hello.alpnProtocol = selectedProto
+	c.clientProtocol = selectedProto
+
 	// 选择服务端签名证书
 	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
 	hs.sigCert, err = c.config.getCertificate(helloInfo)
@@ -792,4 +803,30 @@ func (c *Conn) tlcpRand() ([]byte, error) {
 	rd[2] = uint8(unixTime >> 8)
 	rd[3] = uint8(unixTime)
 	return rd, nil
+}
+
+// negotiateALPN 按照顺序从客户端的ALPN列表中选择一个双方都支持的协议。
+// 如果客户端或服务端任意一方不支持ALPN则返回空""，不会返回错误。
+func negotiateALPN(serverProtos, clientProtos []string) (string, error) {
+	if len(serverProtos) == 0 || len(clientProtos) == 0 {
+		return "", nil
+	}
+	var http11fallback bool
+	for _, s := range serverProtos {
+		for _, c := range clientProtos {
+			if s == c {
+				return s, nil
+			}
+			if s == "h2" && c == "http/1.1" {
+				http11fallback = true
+			}
+		}
+	}
+
+	// 当客户端协议为 http/1.1 服务端支持http2协议时，
+	// 采取兼容让http2服务端做控制而不是切断连接。
+	if http11fallback {
+		return "", nil
+	}
+	return "", fmt.Errorf("tls: client requested unsupported application protocols (%s)", clientProtos)
 }

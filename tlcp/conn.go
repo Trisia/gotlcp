@@ -70,6 +70,9 @@ type Conn struct {
 	clientFinished [12]byte
 	serverFinished [12]byte
 
+	// clientProtocol  协商出的应用层协议
+	clientProtocol string
+
 	// 单向连接 输入/输出 （加密/解密）
 	in, out   halfConn
 	rawInput  bytes.Buffer // 原始输入数据，以记录层(record)的头开始
@@ -1288,6 +1291,7 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	state.DidResume = c.didResume
 	state.ServerName = c.serverName
 	state.CipherSuite = c.cipherSuite
+	state.NegotiatedProtocol = c.clientProtocol
 	state.PeerCertificates = c.peerCertificates
 	state.VerifiedChains = c.verifiedChains
 	return state
