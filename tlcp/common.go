@@ -444,7 +444,7 @@ type Config struct {
 	// 该参数仅客户端使用，用于指定客户端信任的CA列表，ClientHello 扩展字段的方式发送。
 	// 服务端可选的从该列表中选择一张匹配的证书，以证书消息的方式发送。
 	// 注意：在GoTLCP默认不会使用该参数！
-	// 若需要在服务端识别并且使用该参数，请通过实现 GetCertificate 与 GetKECertificate 方法，
+	// 若需要在服务端识别并且使用该参数，请实现 GetCertificate 与 GetKECertificate 方法，
 	// 从 ClientHelloInfo 中获取扩展字段，然后根据扩展字段选择合适的证书。
 	TrustedCAIndications []TrustedAuthority
 }
@@ -482,6 +482,7 @@ func (c *Config) Clone() *Config {
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 		OnAlert:                     c.OnAlert,
 		EnableDebug:                 c.EnableDebug,
+		TrustedCAIndications:        c.TrustedCAIndications,
 	}
 }
 

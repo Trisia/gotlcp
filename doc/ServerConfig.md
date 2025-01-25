@@ -214,12 +214,12 @@ func main() {
 
 ```go
 config := &tlcp.Config{
-    // 省略其它无关配置项...
-    ClientAuth:   RequireAndVerifyClientCert,
-    CipherSuites: []uint16{
-        tlcp.ECDHE_SM4_GCM_SM3, 
-        tlcp.ECC_SM4_CBC_SM3,   
-    },
+// 省略其它无关配置项...
+ClientAuth:   RequireAndVerifyClientCert,
+CipherSuites: []uint16{
+tlcp.ECDHE_SM4_GCM_SM3,
+tlcp.ECC_SM4_CBC_SM3,
+},
 }
 ```
 
@@ -250,7 +250,7 @@ config := &tlcp.Config{
 ```go
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-    //     错误处理...
+//     错误处理...
 }
 ```
 
@@ -258,20 +258,20 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 1. 配置`tlcp.Config`中的`InsecureSkipVerify`参数为`true`，表示关闭默认证书安全校验。
 2. 实现并设置`tlcp.Config`中的`VerifyPeerCertificate`的校验对端证书方法。
-   - 函数原型`func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error`。
-   - 参数 `rawCerts` 为客户端证书消息中的DER编码的证书数组。
-   - 参数 `verifiedChains` 固定为空。
-   - 返回值 `nil` 表示有效，非`nil`表示证书校验失败。
+    - 函数原型`func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error`。
+    - 参数 `rawCerts` 为客户端证书消息中的DER编码的证书数组。
+    - 参数 `verifiedChains` 固定为空。
+    - 返回值 `nil` 表示有效，非`nil`表示证书校验失败。
 
 示例如下：
 
 ```go
 config := &tlcp.Config{
-    InsecureSkipVerify: true,
-    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-        // 自定证书的验证流程...
-        return nil
-    },
+InsecureSkipVerify: true,
+VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+// 自定证书的验证流程...
+return nil
+},
 }
 ```
 
@@ -294,28 +294,28 @@ config := &tlcp.Config{
 
 ```go
 config := &tlcp.Config{
-    // ...
-    GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
-        if len(info.TrustedCAIndications) > 0 {
-            if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
-            // 服务端根据客户端提供的CA指示选择签名证书
-                if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
-                    return &mySigCert, nil
-                }
-            }
-        }
-        return &sigCert, nil
-    },
-    GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
-        if len(info.TrustedCAIndications) > 0 {
-            if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
-                if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
-                    return &myEncCert, nil
-                }
-            }
-        }
-        return &encCert, nil
-    },
+// ...
+GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+if len(info.TrustedCAIndications) > 0 {
+if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+// 服务端根据客户端提供的CA指示选择签名证书
+if bytes.Compare(info.TrustedCAIndications[0].Identifier, mySigCert.Leaf.RawSubject) == 0 {
+return &mySigCert, nil
+}
+}
+}
+return &sigCert, nil
+},
+GetKECertificate: func(info *ClientHelloInfo) (*Certificate, error) {
+if len(info.TrustedCAIndications) > 0 {
+if info.TrustedCAIndications[0].IdentifierType == IdentifierTypeX509Name {
+if bytes.Compare(info.TrustedCAIndications[0].Identifier, myEncCert.Leaf.RawSubject) == 0 {
+return &myEncCert, nil
+}
+}
+}
+return &encCert, nil
+},
 }
 ```
 

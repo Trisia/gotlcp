@@ -93,7 +93,7 @@ func main() {
 示例见 [client/mutual_auth/main.go](../example/client/mutual_auth/main.go)
 
 
-### 1.3 忽略认证 用于测试 
+### 1.3 忽略认证 用于测试
 
 **注意：该方式仅用于测试，在忽略了服务端的身份认证后可能遭受中间人攻击。**
 
@@ -188,7 +188,7 @@ func main() {
 }
 ```
 
-目前GoTLCP基于LRU策略实现了会话缓存器。 
+目前GoTLCP基于LRU策略实现了会话缓存器。
 
 如您有自己的缓存策略请在 **保证密钥安全的前提下** 根据 [tlcp.SessionCache](../tlcp/session.go) 接口实现属于您自己的缓存器。
 
@@ -213,7 +213,7 @@ import (
 )
 
 func main() {
-    
+
     // 创建TCP连接
     raw, err := net.Dial("tcp", "127.0.0.1:8447")
     if err != nil {
@@ -252,12 +252,12 @@ ECC系列套件配置方式如下：
 
 ```go
 config := &tlcp.Config{
-    // 省略其它无关配置项...
-    Certificates: []tlcp.Certificate{authCertKeypair},
-    CipherSuites: []uint16{
-        tlcp.ECC_SM4_GCM_SM3,    
-        tlcp.ECC_SM4_CBC_SM3,
-    },
+// 省略其它无关配置项...
+Certificates: []tlcp.Certificate{authCertKeypair},
+CipherSuites: []uint16{
+tlcp.ECC_SM4_GCM_SM3,
+tlcp.ECC_SM4_CBC_SM3,
+},
 }
 ```
 
@@ -271,13 +271,13 @@ ECDHE系列套件配置方式如下：
 
 ```go
 config := &tlcp.Config{
-    // 省略其它无关配置项...
-    Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
-    CipherSuites: []uint16{
-        tlcp.ECDHE_SM4_GCM_SM3,    
-        tlcp.ECDHE_SM4_CBC_SM3,
-        // 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
-    },
+// 省略其它无关配置项...
+Certificates: []tlcp.Certificate{authCertKeypair, encCertKeypair},
+CipherSuites: []uint16{
+tlcp.ECDHE_SM4_GCM_SM3,
+tlcp.ECDHE_SM4_CBC_SM3,
+// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
+},
 }
 ```
 
@@ -290,7 +290,7 @@ config := &tlcp.Config{
 ```go
 err := conn.Read(buf);
 if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
-    //     错误处理...
+//     错误处理...
 }
 ```
 
@@ -307,11 +307,11 @@ if err != nil && errors.As(err, &tlcp.CertificateVerificationError{}) {
 
 ```go
 config := &tlcp.Config{
-    InsecureSkipVerify: true,
-    VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
-        // 自定证书的验证流程...
-        return nil
-    },
+InsecureSkipVerify: true,
+VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
+// 自定证书的验证流程...
+return nil
+},
 }
 ```
 
@@ -327,10 +327,10 @@ config := &tlcp.Config{
 
 ```go
 config := &tlcp.Config{
-    // ...
-    TrustedCAIndications: []TrustedAuthority{
-        {IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
-    },
+// ...
+TrustedCAIndications: []TrustedAuthority{
+{IdentifierType: tlcp.IdentifierTypeX509Name, Identifier: expectCertX509Name},
+},
 }
 ```
 
@@ -350,8 +350,8 @@ config := &tlcp.Config{
 
 ```go
 config := &tlcp.Config{
-    // ...
-    ServerName: "www.example.com"
+// ...
+ServerName: "www.example.com"
 }
 ```
 

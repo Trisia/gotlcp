@@ -112,13 +112,9 @@ func main() {
 
 ## 文档
 
-- [《关于 TLCP协议》](./doc/AboutTLCP.md)
-- [《GoTLCP 数字证书及密钥》](./doc/CertAndKey.md)
-- [《GoTLCP 客户端 配置》](./doc/ClientConfig.md) 
-- [《GoTLCP 服务端 配置》](./doc/ServerConfig.md)
-- [《GoTLCP HTTPS 配置》](./doc/HTTPsConfig.md)
-- [《GoTLCP 协议适配器》](./pa/README.md)
-
-## 进展
-
-[>> 项目进展](./releasenote.md)
+- [关于 TLCP协议](./doc/AboutTLCP.md)
+- [GoTLCP 数字证书及密钥](./doc/CertAndKey.md)
+- [GoTLCP 客户端 配置](./doc/ClientConfig.md) 
+- [GoTLCP 服务端 配置](./doc/ServerConfig.md)
+- [GoTLCP HTTPS 配置](./doc/HTTPsConfig.md)
+- [GoTLCP 协议适配器](./pa/README.md)

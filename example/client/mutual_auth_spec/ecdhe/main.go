@@ -30,7 +30,7 @@ func main() {
 			tlcp.ECDHE_SM4_CBC_SM3,
 			// 注意：不能出现 ECC 系列套件，否则服务端可能选择ECC系列套件。
 		},
-		Time: runtimeTime,
+		Time:        runtimeTime,
 		EnableDebug: true,
 	}
 	//// 兼容向量模式的密钥交换参数
