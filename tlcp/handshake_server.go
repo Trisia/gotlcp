@@ -789,8 +789,8 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 func (c *Conn) tlcpRand() ([]byte, error) {
 	rd := make([]byte, 32)
 	_, err := io.ReadFull(c.config.rand(), rd)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return rd, err
 	}
 	var unixTime int64
 	if c.config.Time != nil {
