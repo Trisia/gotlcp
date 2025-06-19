@@ -775,7 +775,7 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 	supportedVers := supportedVersionsFromMax(clientHello.vers)
 	return &ClientHelloInfo{
 		CipherSuites:         clientHello.cipherSuites,
-		ServerName:           c.serverName,
+		ServerName:           clientHello.serverName,
 		SupportedVersions:    supportedVers,
 		TrustedCAIndications: clientHello.trustedAuthorities,
 		Conn:                 c.conn,
