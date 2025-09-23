@@ -75,6 +75,7 @@ type Conn struct {
 
 	// 单向连接 输入/输出 （加密/解密）
 	in, out   halfConn
+	workKey   []byte       // TLCP工作密钥，用于在断开连接时对密钥置零
 	rawInput  bytes.Buffer // 原始输入数据，以记录层(record)的头开始
 	input     bytes.Reader // application data waiting to be read, from rawInput.Next
 	hand      bytes.Buffer // handshake data waiting to be read
@@ -1141,6 +1142,9 @@ func (c *Conn) Close() error {
 			alertErr = fmt.Errorf("tlcp: failed to send closeNotify alert (but connection was closed anyway): %w", err)
 		}
 	}
+	// 对工作密钥置零
+	setZero(c.workKey)
+	c.workKey = nil
 
 	if err := c.conn.Close(); err != nil {
 		return err

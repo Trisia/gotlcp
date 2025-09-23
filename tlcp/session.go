@@ -99,6 +99,12 @@ func (c *lruSessionCache) Put(sessionKey string, cs *SessionState) {
 
 	elem := c.q.Back()
 	entry := elem.Value.(*lruSessionCacheEntry)
+	oldCs := entry.state
+	if oldCs != nil {
+		// 清理旧的主密钥
+		setZero(oldCs.masterSecret)
+		oldCs.masterSecret = nil
+	}
 	delete(c.m, entry.sessionKey)
 	entry.sessionKey = sessionKey
 	entry.state = cs

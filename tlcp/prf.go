@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"github.com/emmansun/gmsm/sm3"
 	"hash"
+	"runtime"
 )
 
 // pHash implements the P_hash function, as defined in RFC 4346, Section 5.
@@ -106,13 +107,13 @@ func masterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecr
 // keysFromMasterSecret 生成 工作密钥
 // 工作密钥包括校验密钥和加密秘钥，具体长度由选用的密码算法决定。由主密钥、客户端随机数、服务端随机数、字符串常量，经PRF计算生成。
 // 详见 GBT 38636-2020 6.5.2
-func keysFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clientRandom, serverRandom []byte, macLen, keyLen, ivLen int) (clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV []byte) {
+func keysFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clientRandom, serverRandom []byte, macLen, keyLen, ivLen int) (keyMaterial, clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV []byte) {
 	seed := make([]byte, 0, len(serverRandom)+len(clientRandom))
 	seed = append(seed, serverRandom...)
 	seed = append(seed, clientRandom...)
 
 	n := 2*macLen + 2*keyLen + 2*ivLen
-	keyMaterial := make([]byte, n)
+	keyMaterial = make([]byte, n)
 	prfForVersion(version, suite)(keyMaterial, masterSecret, keyExpansionLabel, seed)
 	clientMAC = keyMaterial[:macLen]
 	keyMaterial = keyMaterial[macLen:]
@@ -126,6 +127,29 @@ func keysFromMasterSecret(version uint16, suite *cipherSuite, masterSecret, clie
 	keyMaterial = keyMaterial[ivLen:]
 	serverIV = keyMaterial[:ivLen]
 	return
+}
+
+// setZero 设置字节切片所有字节为0，防止敏感信息残留在内存中，重复3次依次写入0xFF与0x00
+// data: 待清零的字节切片
+func setZero(data []byte) {
+	if data == nil {
+		return
+	}
+	for j := 0; j < 3; j++ {
+		// 先写入0xFF
+		for i := range data {
+			data[i] = 0xFF
+		}
+		// 内存屏障，确保写入0xFF完成
+		runtime.KeepAlive(data)
+
+		// 再写入0
+		for i := range data {
+			data[i] = 0x00
+		}
+		// 再次内存屏障，确保写入0完成
+		runtime.KeepAlive(data)
+	}
 }
 
 func newFinishedHash(version uint16, cipherSuite *cipherSuite) finishedHash {

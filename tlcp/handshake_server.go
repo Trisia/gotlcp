@@ -115,6 +115,10 @@ func (hs *serverHandshakeState) handshake() error {
 	}
 	atomic.StoreUint32(&c.handshakeStatus, 1)
 
+	// 握手成功，对主密钥置零，握手重用基于会话缓存中的主密钥
+	setZero(hs.masterSecret)
+	hs.masterSecret = nil
+
 	return nil
 }
 
@@ -521,6 +525,9 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 	hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.clientHello.random, hs.hello.random)
 
+	// 对预主密钥进行内存清零
+	setZero(preMasterSecret)
+
 	// If we received a client sigCert in response to our certificate request message,
 	// the client will send us a certificateVerifyMsg immediately after the
 	// clientKeyExchangeMsg. This message is a digest of all preceding
@@ -570,8 +577,9 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 func (hs *serverHandshakeState) establishKeys() error {
 	c := hs.c
 
-	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
+	workKey, clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
 		keysFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.clientHello.random, hs.hello.random, hs.suite.macLen, hs.suite.keyLen, hs.suite.ivLen)
+	c.workKey = workKey
 
 	var clientCipher, serverCipher interface{}
 	var clientHash, serverHash hash.Hash
@@ -651,11 +659,13 @@ func (hs *serverHandshakeState) createSessionState() {
 	}
 
 	sessionKey := hex.EncodeToString(hs.hello.sessionId)
+	masterSecretCopy := make([]byte, len(hs.masterSecret))
+	copy(masterSecretCopy, hs.masterSecret)
 	cs := &SessionState{
 		sessionId:        hs.hello.sessionId,
 		vers:             hs.hello.vers,
 		cipherSuite:      hs.hello.cipherSuite,
-		masterSecret:     hs.masterSecret,
+		masterSecret:     masterSecretCopy,
 		peerCertificates: hs.peerCertificates,
 		createdAt:        time.Now(),
 	}

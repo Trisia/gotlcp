@@ -30,7 +30,7 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 
 ## 安装
 
-为了安装使用GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的Go环境，GoTLCP至少需要您的Go版本在 **1.18及以上**。
+为了安装使用GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的Go环境，GoTLCP至少需要您的Go版本在 **1.24及以上**。
 
 通过下面命令就可以安装 GoTLCP:
 

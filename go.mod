@@ -1,10 +1,8 @@
 module gitee.com/Trisia/gotlcp
 
-go 1.18
+go 1.24
 
 require (
-	github.com/emmansun/gmsm v0.29.7
-	golang.org/x/crypto v0.32.0
+	github.com/emmansun/gmsm v0.33.0
+	golang.org/x/crypto v0.41.0
 )
-
-require golang.org/x/sys v0.29.0 // indirect
