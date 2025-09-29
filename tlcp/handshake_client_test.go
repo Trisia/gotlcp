@@ -177,25 +177,30 @@ func Test_resumedSession(t *testing.T) {
 	config := &Config{RootCAs: pool, SessionCache: NewLRUSessionCache(2), Time: runtimeTime}
 
 	buff := make([]byte, 1024)
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 5; i++ {
 		conn, err := Dial("tcp", "127.0.0.1:8448", config)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer conn.Close()
+
 		err = conn.Handshake()
 		if err != nil {
+			_ = conn.Close()
 			t.Fatal(err)
 		}
 		n, err := conn.Read(buff)
 		if err != nil && err != io.EOF {
+			_ = conn.Close()
 			t.Fatal(err)
 		}
 		peerCertificates := conn.PeerCertificates()
 		if len(peerCertificates) < 2 {
+			_ = conn.Close()
 			t.Fatal("peerCertificates no found, it should be 2 (sig cert,enc cert)")
 		}
-		fmt.Printf(">> %02X\n", buff[:n])
+		_ = n
+		_ = conn.Close()
+		//fmt.Printf(">> %02X\n", buff[:n])
 	}
 }
 

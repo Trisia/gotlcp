@@ -536,7 +536,14 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	// 根据会话恢复 会话密钥 以及 证书
-	hs.masterSecret = hs.session.masterSecret
+	if len(hs.session.masterSecret) > 0 {
+		hs.masterSecret = make([]byte, len(hs.session.masterSecret))
+		copy(hs.masterSecret, hs.session.masterSecret)
+	} else {
+		_ = c.sendAlert(alertInternalError)
+		return false, errors.New("tlcp: server resumed a session without a master secret")
+	}
+
 	c.peerCertificates = hs.session.peerCertificates
 	return true, nil
 }

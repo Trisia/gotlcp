@@ -377,7 +377,13 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 		}
 	}
 
-	hs.masterSecret = hs.sessionState.masterSecret
+	if len(hs.sessionState.masterSecret) > 0 {
+		hs.masterSecret = make([]byte, len(hs.sessionState.masterSecret))
+		copy(hs.masterSecret, hs.sessionState.masterSecret)
+	} else {
+		_ = c.sendAlert(alertInternalError)
+		return errors.New("tlcp: invalid master secret in session state")
+	}
 
 	return nil
 }

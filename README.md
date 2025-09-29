@@ -7,7 +7,7 @@
 
 Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
 
-GoTLCP采用Go语言实现的传输层密码协议(TLCP，也称GMSSL) ，其协议遵循《GB/T 38636-2020 信息安全技术 传输层密码协议》。
+GoTLCP采用Go语言实现的传输层密码协议(TLCP，也称GMSSL) ，其协议遵循GB/T 38636-2020《信息安全技术 传输层密码协议》。
 
 GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计算，支持完整TLCP握手、会话重用、传输保护、单向身份认证（认证服务端）双向身份认证。
 
@@ -21,12 +21,6 @@ GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计�
 **在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
 
 *若clone和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
-
-> 致谢：
-> 
-> - 项目中的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集优化了算法效率。
-> - 项目TLCP协议代码裁剪自 go 1.19版本 [golang/src/crypto/tls](https://github.com/golang/go/tree/go1.19/src/crypto/tls) 模块。
-
 
 ## 安装
 
@@ -108,7 +102,7 @@ func main() {
 
 - 完整代码见 [quickstart/server/main.go](./example/quickstart/server/main.go)
 
-> 若您需要同时支持TLCP/TLS协议，请参考[《GoTLCP 协议适配器》](./pa/README.md)相关内容。
+> 若您需要同时支持TLCP/TLS协议，请参考[“GoTLCP 协议适配器”](./pa/README.md)相关内容。
 
 ## 文档
 
@@ -118,3 +112,10 @@ func main() {
 - [GoTLCP 服务端 配置](./doc/ServerConfig.md)
 - [GoTLCP HTTPS 配置](./doc/HTTPsConfig.md)
 - [GoTLCP 协议适配器](./pa/README.md)
+
+
+## 致谢
+
+- 项目中的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集优化了算法效率。
+- 项目TLCP协议代码裁剪自 go 1.19版本 [golang/src/crypto/tls](https://github.com/golang/go/tree/go1.19/src/crypto/tls) 模块。
+
