@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "github.com/emmansun/gmsm"
+    groups:
+      gmsm-dependencies:
+        patterns:
+          - "github.com/emmansun/gmsm"
