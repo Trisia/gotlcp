@@ -26,28 +26,6 @@ import (
 )
 
 // =============================================================================
-// 桩类型（来自被删除的 stubs.go，Phase 4 将正确定义）
-// =============================================================================
-
-// keyAgreementProtocol 密钥协商接口，Phase 4 在 key_agreement.go 中正确定义
-type keyAgreementProtocol interface{}
-
-// eccKeyAgreement SM2 密钥交换（ECC 模式），Phase 4 正确定义
-type eccKeyAgreement struct {
-	version uint16
-}
-
-// sm2ECDHEKeyAgreement SM2 ECDHE 密钥交换，Phase 4 正确定义
-type sm2ECDHEKeyAgreement struct{}
-
-// serverHandshakeState 服务端握手状态，Phase 4 在 handshake_server.go 中正确定义
-type serverHandshakeState struct{}
-
-// clientHandshakeState 客户端握手状态，Phase 4 在 handshake_client.go 中正确定义
-type clientHandshakeState struct{}
-
-
-// =============================================================================
 // Conn — DTLCP 连接对象
 // =============================================================================
 
