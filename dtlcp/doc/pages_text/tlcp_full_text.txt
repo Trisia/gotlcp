@@ -1,0 +1,2163 @@
+
+============================================================
+PAGE 1
+============================================================
+ICS 35.040
+L 80
+
+中华人民共和国国家标准
+
+GB/T 38636—2020
+
+信息安全技术“传输层密码协议(TLCP)
+
+Information security technology—Transport layer cryptography protocol(TLCP )
+
+2020-04-28 发布                                                    2020-11-01 实施
+国家市场监督管理总局 公关
+国家标准化管理委员会
+
+============================================================
+PAGE 2
+============================================================
+GB/T 38636—2020
+
+Ill
+
+ee oi
+
+必 wo bd
+
+ol
+
+5.3 BAR
+
+6.2 数据类型定义
+
+6.4 握手协议族 ……
+6.5 密钥计算 .……….
+附录 A (规范性附录)
+
+GCM
+
+密码算法和密钥种奖 Nt
+
+5.1 概述 本
+
+党
+
+ra
+
+ak FF FF w wh WD
+
+MD一
+wo Oo
+
+wi Ww
+Se of
+
+============================================================
+PAGE 3
+============================================================
+GB/T 38636一2020
+
+Il
+
+前
+
+本标准按照 GB/T 1.1—2009 给出的规则起草。
+
+请注意本文件的某些内容可能涉及专利。本文件的发布机构不承担识别这些专利的责任。
+
+本标准由全国信息安全标准化技术委员会(SAC/VTC 260)提出并归口 。
+
+本标准起草单位:山东得安信息技术有限公司、格尔软件股份有限公司 .北京信安世纪科技有限公
+司 .成都卫士通信息产业股份有限公司 .长春吉大正元信息技术股份有限公司 .北京握奇智能科技有限
+公司 .北京三未信安科技发展有限公司 .北京海泰方圆科技有限公司、国家密码管理局商用密码检测中
+心`北京江南天安科技有限公司.中金金融认证中心有限公司 .北京天融信和网络安全技术有限公司。
+
+本标准主要起草人 :郑强 .马洪富、汪宗滤、罗俊、赵丽丽、`张立廷、汪雪林、田敏求,张岳公、将红宇、
+昌春梅、.李国、孙圣男、雷晓锋。
+
+
+============================================================
+PAGE 4
+============================================================
+GB/T 38636一2020
+
+信息安全技术”传输层密码协议CTLCP)
+
+1 范围
+
+本标准规定了传输层密码协议 ,包括记录层协议 .握手协议族和密钥计算 。
+本标准适用于传输层密码协议相关产品(如 SSL VPN 网关 浏览器等)的研制,也可用于指导传输
+层密码协议相关产品的检测 .管理和使用。
+
+2 规范性引用文件
+
+下列文件对于本文件的应用是必不可少的。几是注日期的引用文件,仅注日期的版本适用于本文
+件。几是不注日期的引用文件 ,其最新版本(包括所有的修改单)适用于本文件。
+
+GB/T 20518 信息安全技术 ”公钥基础设施”数字证书格式规范
+
+GB/T 35275 ”信息安全技术 SM2 密码算法加密签名消息语法规范
+
+GB/T 35276 信息安全技术 SM2 密码算法使用规范
+
+3 术语和定义
+
+下列术语和定义适用于本文件。
+3.1
+
+数字证书 digital certificate
+
+由证书认证机构(CA)签名的包含公开密钥拥有者信息.公开密钥.签发者信息`有效期以及扩展信
+息的一种数据结构 。
+
+注: 按类别可分为个人证书、机构证书和设备证书,按用途可分为签名证书和加密证书。
+3.2
+
+IBC 算法 identity based cryptography algorithm
+
+— PH AE LA AE Rn PAE ZS 5 ABS rs BEF CE EF ZS BS TE Od is 8 BS EE
+3.3
+
+IBC 标识 IBC identity
+表示实体身份或属性的字符串。
+
+i
+a
+
+3.4
+IBC 公共参数 IBC public parameter
+包含了 IBC 密钥管理中心的名称 .运算曲线 .标识编码方式和密钥生成算法等公开参数信息。
+HE: 参数信息用于将实体标识转换为公开密钥 。
+3.5
+初始化向量/值 initialization vector; initialization value;IV
+
+在密码变换中 ,为增加安全性或使密码设备同步而引入的用作数据变换的起始数据。
+
+4 符号和缩略语
+
+4.1 符号
+
+下列符号适用于本文件。
+
+============================================================
+PAGE 5
+============================================================
+GB/T 38636—2020
+
+十:串联。
+
+四 :异或运算 。
+
+O° :包含 个“0比特的比特串。
+
+CIPHx«(X) :对于密钥为 K,分组为 X 的分组密文的输出。
+
+GCTRr(CICB,X):对于比特串为 X ,初始技术分组为 ICB ,密钥为玉的GCTR 函数的输出。
+
+GHASHa(CX) :对于杂凑密钥为 卫,比特串为再的GHASH 的输出。
+HMACCX,Y) :以X 为密钥对YY进行密码杂凑运算 。
+inc, (X) : HORRAR X 的最右边* 比特的递增输出。
+int(X) :比特串 X 的整数表示 。
+
+len(CX ) :比特串 X 的长度。
+
+LSB,(CX) :比特串 X 的最右段的* 位比特串。
+MSB,(CX) :比特串 X 的最左端的 位比特串。
+X||Y: ERE OX 与比特串Y的连接。
+
+A:附加可鉴别的数据。
+
+C:密文。
+
+H: Age F 4H 。
+
+K: 420 BH.
+
+P:明文。
+
+及:算法中用于分组乘法运算的常数。
+
+工:鉴别标签 。
+
+:鉴别标签的长度。
+
+4.2 缩略语
+下列缩略语适用于本文件。
+
+AEAD:带额外数据的认证加密(Authenticated Encryption with Addation Data)
+
+ADD:附加鉴别数据(Additional Authenticated Data)
+
+CBC:密码分组链接工作模式(Cipher Block Chaining)
+
+CTR: i S048 (Counter)
+
+DN: i HI (Distinguished Name)
+
+GCM: Galois 计数器模式(Galois Counter Mode)
+HMAC:采用杂凑算法计算的消息验证码(Hash-based Message Authenti
+IBC :标识密码算法 〈Identity-Based Cryptography)
+
+ICB :初始计数咒分组(CInitial Counter Block)
+
+IV :初始向量(Initialization Vector)
+
+LSB:最低端比特(Least Significant Bit)
+
+MSB, :最高端比特(Most Significant Bit)
+
+TLCP :传输层密码协议(Transport Layer Cryptography Protocol)
+XOR: Fee (Exclusive-OR)
+
+5 密码算法和密钥种类
+
+5.1 概述
+
+TLCP 是利用密码技术 ,为两个应用程序之间提供保密性和数据的完整公
+2
+
+cation Code)
+
+E 。协议用到的密码算法
+
+============================================================
+PAGE 6
+============================================================
+GB/T 38636一2020
+
+包含非对称密码算法、分组密码算法 .密码杂凑算法 .数据扩展函数和伪随机函数,协议用到的密钥种类
+包含服务端密钥 `客户端密钥 `预主密钥 .主密钥和工作密钥。
+5.2 密码算法
+5.2.1 非对称密码算法
+
+用于身份鉴别.数字签名 `密钥交换等。
+5.2.2 ”分组密码算法
+
+用于密钥交换数据的加密保护和报文数据的加密保护。采用的工作模式应为 GCM 或 CBC 模式。
+
+5.2.3 密码杂凑算法
+
+用于对称密钥生成和完整性校验。
+
+5.2.4 数据扩展函数 P_hash
+
+P_hash pK 27 CMF :
+P_hash(secret, seed) = HMAC (secret, A(1) + seed) +
+HMAC (secret, A(2) + seed) +
+HMAC (secret, A(3) + seed) +
+
+其中 :
+
+secret 是进行计算所需要的密钥 。
+
+seed 是进行计算所需要的数据。
+
+A(O) = seed
+
+AG) = HMAC (secret, AG—1))
+
+P_hash fi6 Se 52 38 (0 A ABT AE BOR AR BEY BE
+
+5.2.5 伪随机函数PRF
+
+PRF 的计算方法如下 :
+PRF(secret, label, seed) = P_hash(secret, label + seed)
+
+5.3 密钥种类
+5.3.1 概述
+
+采用非对称密码算法进行身份鉴别和密钥交换,身份鉴别通过后协商预主密钥 ,双方各自计算主密
+钥 ,进而推导出工作密钥。使用工作密钥进行加解密和完整性校验。
+
+5.3.2 ”服务端密钥
+
+服务端密钥为非对称密码算法的密钥对,包括签名密钥对和加密密钥对,其中签名密钥用于握手过
+程中服务端身份鉴别,加密密钥对用于预主密钥的协商。
+
+5.3.3 客户端密角
+
+客户端密钥为非对称密码算法的密钥对,包括签名密钥对和加密密钥对,其中签名密钥用于握手过
+程中客户端身份鉴别,加密密钥对用于预主密钥的协商。
+
+
+============================================================
+PAGE 7
+============================================================
+GB/T 38636—2020
+
+5.3.4 预主密钥
+
+预主密钥(pre_master_secret)是双方协商生成的密钥素材,用于生成主密钥 。
+
+5.3.5 ESA
+
+主密钥(master_secret)由预主密钥 .客户端随机数、服务端随机数、. 常量字符串,经计算生成的
+48 字节密钥素材,用于生成工作密钥。
+
+5.3.6 工作密钥
+
+工作密钥包括数据加密密钥和校验密钥。其中数据加密密钥用于数据的加密和解密,校验密钥用
+于数据的完整性计算和校验。发送方使用的工作密钥称为写密钥 ,接收方使用的工作密钥称为读密钥 。
+
+6 协议
+6.1 概述
+
+TLCP 包括记录层协议和握手协议族 ,握手协议族包含密码规格变更协议.报警协议及握手协议 。
+6.2 数据类型定义
+6.2.1 基本数据类型
+
+定义了六种基本数据类型 ,分别为 opaque uint8 uintl16 .uint24、uint32 .uint64。所有类型都以网
+络字节顺序表示 ,最小数据的大小是一个 8 位字节 。
+
+opaque: 任意类型数据,1 个字节。
+
+uint8; 无符号的 8 位整数,1 个字节。
+
+uintl6; 无符号的 16 位整数,2 个字节。
+
+uint24: 无符号的 24 位整数,3 个字节。
+uint32: 无符号的 32 位整数,4个字节。
+uint64: 无符号的 64 位整数,8 个字节。
+
+一、          一、
+33
+
+6.2.2 向量
+
+向量(Vectors)是给定类型的数据序列。向量分为两种:定长和变长。定长向量以[xj来表示:;变长
+向量以 x..y)来表示,其中x代表下限,y 代表上限 ,如果只需表达上限时,用4y表示。所有向量的长
+度都以字节为单位。变长向量首部表示向量实际长度,其首部大小为能够容纳变长向量最大长度的最
+IN FT BL.
+
+6.2.3 masse
+
+枚举(Enumerateds)是一系列特定值的字段集合,通常每个字段都包括一个名称和值。如果包含
+一个未命名的值 ,这个值表示指定的最大值。如果只包含了名称而不定义值,只能用来指代状态值,不
+在实际编码中使用。例如,enum{red(0),green(1),(255) }color。枚举变量大小为能够容纳最大枚
+举值的最小字节数。
+
+6.2.4 结构类型
+
+% RB
+
+结构类型(Constructed Types) struct来定义,与 C 语言的 struct PAW. struct 中的字段按
+4
+
+============================================================
+PAGE 8
+============================================================
+GB/T 38636一2020
+
+照先后顺序串连起来进行编码 。如果一个 struct 包含于另一个 struct 中,则可以省略该 struct WHF.
+
+6.2.5 变体类型
+
+变体(Variants)类型用 select case来定义,用于定义依赖外部信息而变化的结构,类似于 C 语言
+的 union BE ASN.1 AY CHOICE,
+
+6.3 记录层协议
+
+6.3.1 概述
+
+记录层协议是分层次的,每一层都包括长度字段 .描述字段和内容字段。记录层协议接收将要被传
+输的消息 ,将数据分块.压缩(可选)计算 MAC, Uae ,然后传输。接收到的数据经过解密、验证.解压
+缩(可选) .重新封装然后传送给高层应用。
+
+记录层协议包括 :握手 .报警.密码规格变更等类型。为了支持协议的扩展,记录层协议可支持其他
+的记录类型。任何新的记录类型都应在针对上述类型分配的内容类型值之外去分配。如果接收到一个
+不能识别的记录类型应忽略。
+
+6.3.2 连接状态
+
+连接状态是记录层协议的操作环境。包括四种典型的连接状态:当前读状态、写状态.未决的读状
+AS .未决的写状态。其中 ,读表示接收数据,写表示发送数据。所有记录都是在当前读写状态下处理的。
+未决状态的安全参数可以由握手协议设定,而密码规格变更消息可使未决状态变为当前状态。除了最
+初的当前状态外 ,当前状态应包含经过协商的安全参数。
+
+连接状态的安全参数结构如下 :
+
+struct {
+ConnectionEnd                 entity;
+BulkCipherAlgorithm        bulk_cipher_algorithm;
+CipherType                      cipher_type;
+uint8                       key_material_length;
+MACAlgorithm                mac_algorithm;
+uint8                       hash_size;
+CompressionMethod         compression_algorithm;
+opaque                             master_secret[ 48 ];
+opaque                             client_random|[ 32 |;
+opaque                             server_random| 32];
+uint8                       record_iv_length;
+uint8                                fixed_iv_length;
+uint8                                mac_length;
+
+} SecurityParameters;
+其中 :
+a) ConnectionEnd
+表示本端在连接中的角色 ,为客户端或服务端。定义为:
+enum { server,client } ConnectionEnd,
+b) BulkCipherAlgorithm
+用于数据加解密的密码算法。定义为:
+
+
+============================================================
+PAGE 9
+============================================================
+GB/T 38636—2020
+
+enum {sm4} BulkCipherAlgorithm,
+c) CipherType
+表示密码算法的类型。定义为:
+enum { block 》CipherType。
+
+d) key_material_length
+表示密钥材料的长度。
+e) MACAlgorithm
+用于计算和校验消息完整性的密码杂凑算法。定义为:
+enum { sha_256,sm3} MACAlgorithm 。
+f) hash_size
+表示杂凑的长度。
+g) CompressionMethod
+用于数据压缩的算法。定义为:
+enum { null(0),(255) } CompressionMethod,
+h) master_secret
+在协商过程中由预主密钥 .客户端随机数、服务端随机数计算出的 48 ST 。
+i) client_random
+由客户端产生的 32 字节随机数据。
+j)  server_random
+由服务端产生的 32 字节随机数据。
+k) record_iv_length
+初始向量的长度。
+1]) fixed_iv_length
+固定的初始向量长度。
+m) mac_length
+MAC 长度。
+记录层将使用上述安全参数来生成下列内容，
+一一客户端写校验密钥 client write MAC secret,
+一一服务端写校验密钥 server write MAC secret,
+一一客户端写密钥 client write key,
+一一服务端写密钥 server write key。
+一一客户端写初始向量 client write iv.
+一一服务端写初始向量 server write iv,
+服务端接收和处理记录时使用客户端写参数 ,客户端接收和处理记录时使用服务端写参数。用安
+全参数生成这些密钥的算法 ,见 6.5。密钥生成后 ,连接状态就可以改变为当前状态。
+
+6.3.3 ”记录层
+
+6.3.3.1 概述
+
+记录层接收从高层来的任意大小的非空连续数据,将数据分段.压缩`.计算校验码 .加密,然后传输。
+接收到的数据经过解密、验证、解压缩.重新封装然后传送给高层应用。
+
+6.3.3.2 ai
+
+记录层将数据分成 25字节或者更小的片段。
+6
+
+============================================================
+PAGE 10
+============================================================
+GB/T 38636一2020
+
+每个片段结构如下 :
+
+struct {
+
+ContentType type;
+ProtocolVersion version;
+uint16 length;
+opaque fragment TLSPlaintext.length ];
+} TLSPlaintext;
+Crp,
+a) Type:
+片段的记录层协议类型 。定义为:
+
+enum {
+
+Vid
+
+change_cipher_spec(20),alert(21),handshake(22) ,
+application_data(23) , (255)
+} ContentType;
+b) Version;
+所用协议的版本号。这里的版本号为 1.1。定义为:
+struct {
+uint8 major=0x01,
+uint8 minor=0x01;
+} ProtocolVersion;
+c) length
+以字节为单位的片段长度 NPA HF 2"
+d) fragment
+将传输的数据。记录层协议不关心具体数据内容。
+6.3.3.3 压缩和解压缩
+所有的记录都使用当前会话状态指定的压缩算法进行压缩。当前会话状态指定的压缩算法被初始
+化为空算法。
+压缩算法将一个 TLSPlaintext 结构的数据转换成一个 TLSCompressed 结构的数据。
+压缩后的数据长度最多只能增加 1 024 个字节。如果解压缩后的数据长度超过了 22 个字节,则报
+
+告一个 decompression failure 致命错误。
+压缩后数据结构如下 :
+struct {
+
+ContentType type;
+
+ProtocolVersion version;
+
+uint16 length;
+
+opaque fragmentL TLSCompressed. length ] ;
+} TLSCompressed;
+
+其中 :
+a) type,version 的定义同 6.3.3.2 中的 a)、b) 。
+b) length
+
+以字节为单位的 TLSCompressed. fragment 长度 ,小于或等于 24 +1 024,
+
+c) fragment
+
+============================================================
+PAGE 11
+============================================================
+GB/T 38636—2020
+
+TLSPlaintext.fragment 的压缩形式 。
+
+6.3.3.4 加密和校验
+
+6.3.3.4.1 概述
+
+加密运算和校验运算把一个TSCompressed 结构的数据转化为一个TLSCiphertext 结构的数据。
+解密运算则是执行相反的操作 。
+加密后数据结构如下 :
+struct {
+ContentType type;
+ProtocolVersion version;
+uint16 length;
+select (CipherSpec.cipher_type) {
+case block: GenericBlockCipher ;
+case aead; Generic AEADCipher;
+} fragment;
+
+} TLSCiphertext;
+
+其中 :
+a) type,version 的定义同 6.3.3.2 中 a) 、b) 。
+b) length
+
+以字节为单位的 TLSCiphertext.fragment 长度 ,小于或等于 2十2 048,
+c) fragment
+
+带有校验码的 TLSCompressed.fragment 加密形式。
+6.3.3.4.2”校验算法的数据处理
+
+校验码的计算是在加密之前进行,运算方法如下 :
+HMAC_hash(MAC_write_secret.,seq_num-+ TLSCompressed. type+ TLSCompressed. version+
+TLSCompressed.length+ TLSCompressed. fragment)
+
+中，
+
+a) seq_num
+序列号 。每一个读写状态都分别维持一个单调递增序列号。序列号的类型为 uint64,序列号
+初始值为零 ,最大不能超出 2”一1。序列号不能回绕。如果序列号溢出,那就应重新开始
+握手 。
+
+b) hash
+
+计算校验码时使用的杂凑算法。
+
+6.3.3.4.3 ”分组密码算法的数据处理
+
+使用分组密码算法加解密数据时,加密运算和校验运算用于将一个 TLSCompressed.fragment 结
+构的数据转换成一个 TLSCiphertext fragment 结构的数据.被加密的数据包括了校验运算的结果。
+加密处理前数据结构如下 :
+struct {
+opaque IV[ SecurityParameters, record_iv_length ];
+
+block-ciphered struct {
+
+============================================================
+PAGE 12
+============================================================
+GB/T 38636一2020
+
+opaque contentLTLScompressed.length |];
+
+opaque MACLSecurityParameters.mac_length |;
+
+uint8 padding_length;
+
+uint8 padding[ GenericBlockCipher. padding_length ];
+
+hs
+}GenericBlockCipher;
+其中 :
+a) IV
+
+在 GenericBlockCipher 中传输的初始化向量。该向量应随机产生。
+
+b) SecurityParameters.record_iv_length
+
+上
+
+TV 的长度,其缺省值与使用的密码套件相关。
+
+c) SecurityParameters.mac_length
+
+MAC 的长度,其缺省值与使用的密码套件相关 。
+
+d) Content
+
+加密前的明文数据。
+e) MAC
+
+Content 的校验值。
+f) Padding
+
+填充的数据。在数据加密前需要将数据填充为密码算法分组长度的整数倍,填充的长度不能
+
+超过 255 个字节 。填充的每个字节的内容是填充的字节数。接收者应检查这个填充,如果出
+
+错,发送 bad_record_mac 报警消息 。
+
+6.3.3.4.4 认证加密算法(AEAD)的数据处理
+
+使用认证加密算法加解密时,认证加密函数在 TLSCompressed.fragment 结构和认证加密 TLSCi-
+
+phertext.fragment 结构之间进行转换。
+
+认证加密 AEAD 密码的输入是一个密钥 .一个随机数、.明文和额外认证数据。密钥是客户端写密
+钥或服务端写密钥 ,根据是哪一端进行加密来确定。
+
+struct {
+
+opaque nonce_explicitL SecurityParameters.record_iv_length];
+
+aead-ciphered struct {
+
+opaque contentL TLSCompressed. length];
+
+hs
+} GenericAEADCipher;
+
+每个 AEAD 密码套件应指定怎样构造提供给 AEAD 操作的随机数,以及 GenericAEADCipher.
+nonce_explicit 部分的长度大小。AEAD 加密模式一般采用计数器模式。AEAD 使用的随机数应由显
+
+式和隐式两部分组成,显式部分即 nonce explicit ,客户端和服务端使用的隐式部分分别来自 client_
+write_iv 和 server_write_iv, AEAD 使用的随机数和计数器的构造方式参见 RFC 5116,
+
+额外认证数据CadditionalL_data)定义如下 :
+
+additional_data = seq_num + TLSCompressed.type 十
+
+TLSCompressed.version + TLSCompressed.length;
+AEAD 的输出是由AEAD 加密操作的密文输出组成。其长度通常比 TLSCompressed. length 长，
+
+但是多出的长度在 AEAD 密码算法中并不统一。
+
+因为密码算法可能包括了填充,所以开销的数量可能
+
+随着不同的 TLSCompressed.length 值而不同。每个 AEAD 密码算法生成的扩展应不能多于 1 024
+
+9
+
+============================================================
+PAGE 13
+============================================================
+GB/T 38636—2020
+
+比特。
+
+AEADEncrypted = AEAD—Encrypt(write_key, nonce, plaintext,additional_data)
+
+为了解密和验证,密码算法把密钥 BEL BX additional_data 和 AEADEncrypted 值当作输入。输出
+为明文或者一个指示解密失败的错误。没有另外的完整性检查 。即 :
+
+TLSCompressed.fragment = AEAD一Decrypt (write_key, nonce,
+
+AEADEncrypted, additional_data)
+如果解密失败,应生成一个致命的 bad_record_mac 警告。
+GCM 可鉴别加密模式见附录 A
+
+6.4 ”握手协议族
+6.4.1 概述
+
+握手协议族由密码规格变更协议 .握手协议和报警协议三个子协议组成,用于双方协商出供记录层
+使用的安全参数 ,进行身份验证以及向对方报告错误等。
+
+握手协议族负责协商出一个会话,这个会话包含
+
+a) 会话标识:由服务端选取的随意的字节序列 ,用于识别活跃或可恢复的会话。
+
+b) 证书:X509 v3 格式的数字证书 ,符合 GB/T 20518,
+
+c) 压缩方法:压缩数据的算法。
+
+d) 密码规格:指定的密码算法。
+
+e) 主密钥 :客户端和服务端共享的 48 个字节的密钥。
+
+f 重用标识:标明能否用该会话发起一个新连接的标识。本标准仅支持会话标识的重用模式 ,表
+
+明是否能重用已有的或者现在的会话,不重新协商安全参数。
+利用以上数据可以产生安全参数。利用握手协议的重用特性,可以使用相同的会话建立多个连接。
+
+6.4.2 ”密码规格变更协议
+
+密码规格变更协议用于通知密码规格的改变,即通知对方使用刚协商好的安全参数来保护接下来
+的数据。该协议由一条消息组成,该消息用当前的压缩算法压缩,并用当前的密码规格加密,如果是让
+次协商,该消息为明文。
+
+该消息的长度为一个字节,其值为 1。客户端和服务端都要在安全参数协商完毕之后.握手结束消
+息之前发送此消息。
+
+对于刚协商好的密钥,写密钥在此消息发送之后立即启用;读密钥在收到此消息之后立即启用。
+
+密码规格变更消息结构定义如下 :
+
+struct {
+
+enum { change_cipher_spec(1),(255) } type;
+} ChangeCipherSpec;
+
+6.4.3 ”报警协议
+
+6.4.3.1 结构定义
+
+报警协议用于关闭连接的通知以及对整个连接过程中出现的错误进行报警,其中关闭通知由发起
+者发送,错误报警由错误的发现者发送。该协议由一条消息组成,该消息用当前的压缩算法压缩,并用
+当前的密码规格加密 ,如果是首次协商,该消息为明文。
+报警消息的长度为两个字节,分别为报警级别和报警内容。
+报警消息结构定义如下 :
+10
+
+
+============================================================
+PAGE 14
+============================================================
+enum { warning(1),fatal(2
+
+enum {
+
+GB/T 38636—2020
+
+),(€255) } AlertLevel;
+
+close_notify(0),
+
+unexpect
+
+bad_reco
+
+ed_message(10),
+rd_mac(20),
+
+decryption_failed(21),
+
+record_overflow(22),
+
+decompression_failure(30) ,
+handshake_failure(40) ,
+bad_certificate(42) ,
+
+unsupported_certificate(43) ，
+
+certificat
+certificat
+
+certificat
+
+e_revoked(44),
+e_expired(45),
+
+e_unknown(46) ,
+
+illegal_parameter(47),
+
+unknown_ca(48),
+
+access_denied(49),
+
+decode_e
+
+rror(50),
+
+decrypt_error(51),
+
+protocol_
+
+version(70),
+
+insufficient_security(71),
+
+internal_
+
+error(80),
+
+user_canceled(90),
+
+no_renegotiation(100),
+
+unsupported_siteZsite(200),
+
+no_area(
+
+201),
+
+unsupported_areatype(202),
+
+bad_ibcp
+
+aram(203),
+
+unsupported_ibcparam (204)
+
+identity_
+(255)
+} AlertDescription;
+
+struct {
+AlertLevel
+
+need(205),
+
+level;
+
+AlertDescription description;
+
+} Alert;
+
+6.4.3.2 关闭通知
+
+除非出现致命报警 ,客户端和服务端任何一方在结束连接之前都应发送关闭通知消，
+
+息。对于该消
+
+息的发送方 ,该消息通知对方不
+
+接 ,不再接收和发送数据。
+
+下发送任何数据,可以等待接收方回应的关闭通知消息后,关闭本次连
+
+接,也可以立即关闭本次连接。对于接收方,收到该消息后应回应一个关闭通知消息,然后关闭本次连
+
+============================================================
+PAGE 15
+============================================================
+GB/T 38636—2020
+
+6.4.3.3 ”错误报警
+
+当发送或接收到一个致命级别报
+
+警之后,双方都应
+
+钥 ,被致命报警关闭的连接是不能复月
+
+错误报警名称
+
+unexpected_message
+
+HA. mE AYIA UL
+
+立即关闭连接,废弃出错连接的会话标识和密
+
+表 1 错误报警表
+
+赦收到一个不符合上下文关系的消息
+
+bad_record_mac
+
+MAC 校验错误或解密错误
+
+decryption_failed
+
+解密失败
+
+record_overflow
+
+报文过长
+
+decompression_failure
+
+解压缩失败
+
+handshake failure
+
+协商失败
+
+bad certificate
+
+证书被破坏
+
+unsupported certificate
+
+不文持证书类型
+
+certificate revoked
+
+证书被撤销
+
+certificate expired
+
+证书过期或未生效
+
+certificate unknown
+
+未知证书错误
+
+illegal parameter
+
+EE BS Be
+
+unknown ca
+
+BIE BART A
+
+access denied
+
+名访问
+
+decode error
+
+消息解码失败
+
+decrypt error
+
+消息解密失败
+
+protocol version
+
+版本不匹配
+
+insufficient security
+
+安全性不足
+
+internal error
+
+内部错误
+
+user canceled
+
+j户取消操作
+
+no renegotiation
+
+把绝重新协商
+
+unsupported_site2site
+
+支持 site2site
+
+no_area
+
+没有保护域
+
+unsupported_areatype
+
+不支持的保护域类型
+
+bad_ibcparam
+
+接收到一个无效的 ibe 公共参数
+
+unsupported_ibcparam
+
+不支持 ibe 公共参数中定义的信息
+
+identity_need
+
+对于没有明确指出级别的错误报警
+
+缺少对方的 ibe 标识
+
+,发送者可以自
+
+行决定是否致命,如果发送者认为是致命的,应
+
+向接收者发出关闭通知,最后关闭本次连接;如果接收到一个警告级别的报警,接收者可以 自行天定是
+否致命,如果接收者认为是致命的,应向发起者发出关闭通知,最后关闭本次连接。
+
+12
+
+
+============================================================
+PAGE 16
+============================================================
+GB/T 38636一2020
+
+6.4.4 握手协议总览
+
+握手协议涉及以下过程:
+交换 hello 消息来协商密码套件 ,交换随机数 ,决定是否会话重用。
+交换证书或 IBC 信息,用于验证对方。
+一一使用预主密钥和交换的随机数生成主密钥。
+向记录层提供安全参数。
+验证双方计算的安全参数的一致性.握手过程的真实性和完整性。
+
+握手过程如下 :客户端发送客户端 hello 消息给服务端,服务端应回应服务端 hello 消息 ,否则产生
+一个致命错误并且断开连接。客户端 hello 和服务端 hello 用于在客户端和服务端进行基于 SM2 、RSA
+或 IBC 的密码算法协商,以及确定安全传输能力,包括协议版本会话标识、密码套件等属性,并且产生
+和交换随机数。
+
+在客户端 hello 和服务端 hello 消息之后是身份验证和密钥交换过程。包括服务端证书、.服务端密
+钥交换,客户端证书、客户端密钥交换。
+
+在服务端发送完 hello 消息之后 ,接着发送自己的证书消息 ,服务端密钥交换消息。如果服务端需
+要验证客户端的身份,则向客户端发送证书请求消息。然后发送服务端 hello 完成消息,表示 hello 消
+息阶段已经结束 ,服务端等待客户端的返回消息。如果服务端发送了一个证书请求消息 ,客户端应返回
+一个证书消息。然后客户端发送密钥交换消息 ,消息内容取决于客户端 hello 消息和服务端 hello 消息
+协商出的密钥交换算法。如果客户端发送了证书消息 ,那么也应发送一个带数字签名的证书验证消息
+供服务端验证客户端的身份。
+接着客户端发送密码规格变更消息,然后客户端立即使用刚协商的算法和密钥 ,加密并发送握手结
+束消息。服务端则回应密码规格变更消息 ,使用刚协商的算法和密钥 ,加密并发送握手结束消息。至此
+握手过程结束 ,服务端和客户端可以开始数据安全传输。
+
+握手消息流程如图 1 所示。
+
+客户端                                                                           服务端
+
+ClientHelo >
+ServerHello
+Certificate
+ServerKeyExchange*
+CertificateRequest*
+
+《一一一一                 ServerHelloDone
+Certificate*
+
+ClientkeyExchange
+Certificate Verify*
+
+[ChangeCipherSpec]
+
+Finished 一一 >
+[ChangeCipherSpec]
+《 一一一一                Finished
+Application Data                          《一一一 >               Application Data
+
+注: * 表示可选或依赖于上下文关系的消息 ,不是每次都发送。[ ]不属于握手协议消息。
+
+ 1 握手消息流程
+
+============================================================
+PAGE 17
+============================================================
+GB/T 38636—2020
+
+如果客户端和服务端决定重用之前的会话,可不必重新协商安全参数。客户端发送客户端 hello
+消息 ,并且带上要重用的会话标识。如果服务端有匹配的会话存在,服务端则使用相应的会话状态接受
+连接,发送一个具有相同会话标识的服务端 ello 消息。然后客户端和服务端各自发送密码规格变更
+消息和握手结束消息。至此握手过程结束 ,服务端和客户端可以开始数据安全传输。如果服务端没有
+匹配的会话标识,服务端会生成一个新的会话标识进行一个完整的握手过程。
+
+会话重用的握手消息流程如图 2 Bras
+
+客户端                                                                      服务端
+ClientHello < 一一一 >
+ServerHello
+[ChangeCipherSpec]
+《一一一一                Finished
+[ChangeCipherSpec]
+Finished 2  >
+Application Data                       <--> >              Application Data
+
+图2 重用的握手消息流程
+
+6.4.5 “握手协议
+6.4.5.1 结构定义
+
+握手协议是在记录层协议之上的协议,用于协商安全参数。握手协议的消息通过记录层协议传输。
+握手消息结构定义如下 :
+
+struct {
+HandshakeType msg_type;
+uint24 length;
+select (msg_type) {
+case client_hello:                   ClientHello;
+case server_hello;                  ServerHello;
+case certificate;                     Certificate;
+case server_key_exchange;          ServerKeyExchange;
+case certificate_request;            CertificateRequest;
+case server_hello_done;             ServerHelloDone;
+case certificate_verify;              Certificate Verify ;
+case client_key_exchange;          ClientKeyExchange;
+case finished;                        Finished;
+} body;
+} Handshake;
+
+握手消息类型定义如下 :
+
+enum {
+client_hello(1) ,server_hello(2),
+certificate(11),server_key_exchange (12),
+certificate_request(13),server_hello_done(14),
+
+certificate_verify(15) ,client_key_exchange(16),
+
+============================================================
+PAGE 18
+============================================================
+GB/T 38636一2020
+
+finished(20),(255)
+} HandshakeType;
+握手协议消息应按照规定的流程顺序进行发送 ,和否则将会导致致命的错误。不需要的握手消息可
+以被接收方忽略。
+
+6.4.5.2 Hello 消息
+
+6.4.5.2.1 Client Hello 消息
+
+该消息为客户端 hello 消息。
+客户端 hello 消息作为握手协议的第一条消息。
+客户端在发送客户端 hello 消息之后，  全   等服务端回应服务端 hello 消息。
+客户端 hello 消息结构定义如下 :
+
+struct {
+
+ProtocolVersion client_version;
+Random random;
+SessionID session_id;
+
+CipherSuite cipher_suites(2..2° 16-1) ;
+
+CompressionMethod compression_methods<1..2° 8-1) ;
+} ClientHello
+cH
+a) client_version
+客户端在这个会话中使用的协议版本。在本标准中,协议版本号是 1.1。
+b) random
+客户端产生的随机信息,其内容包括时钟和随机数,结构定义如下 :
+
+struct {
+
+uint32 gmt_unix_time;
+opaque random_bytes[ 28 ];
+} Random;
+gmt_unix_time 为标准 UNIX 32 位格式表示的发送者时钟,其值为从格林威治时间的 1970 年
+1月1日零点到当前时间的秒数。
+random_bytes 为 28 个字节的随机数。
+
+c) session_id
+客户端在连接中使用的会话标识,定义为:
+opaque SessionID(<0..32)
+session_id 是一个可变长字段,其值由服务端决定。如果 eee 的会话标识或希望协商
+安全参数 ,该字段应为空 ,否则表示客户端希望重用该会话。这个会话标识可能是之前的连接
+标识 、.当前连接标识.或其他处于连接状态的连接标识。 公庄标识生必后应_直保持到被志上
+删除或与这个会话相关的连接遇到致命错误被关闭 。一个会话失效或被关闭时则与其相关的
+连接都应被强制关闭。
+
+d) cipher_suites
+客户端所支持的密码套件列表 ,客户端应按照密码套件使用的优先级顺序排列,优先级最高的
+密码套件应排在首位。如果会话标识字段不为空 ,本字段应至少包含将重用的会话所使用的
+密码套件。
+
+
+============================================================
+PAGE 19
+============================================================
+GB/T 38636—2020
+
+密码套件定义如下 :
+
+uint8 CipherSuite[ 2 ];
+
+每个密码套件包括一个密钥交换算法 .一个加密算法及密钥长度和一个校验算法。服务端将
+在密码套件列表中选择一个与之匹配的密码套件 ,如果没有可匹配的密码套件 ,应返回握手失
+败报警消息 handshake_failure 并且关闭连接。
+
+支持的密码套件见表 2。
+
+表 2 密码套件列表
+
+效验
+
+ECDHE_SM4_CBC_SM3          ECDHE                                    M:                 {Oxe0 ,Oxl11}
+
+ECDHE_SM4_GCM_SM3          ECDHE                                    M:                 {Oxe0 ,0x51}
+
+ECC_SM4_CBC_SM3              ECC                                      M:                 {Oxe0 ,0x13}
+
+ECC_SM4_GCM_SM3                         ECC                                                                           M:                                  {Oxe0 ,0x53}
+
+IBSDH_SM4_CBC_SM3           IBSDH                                    ML                 {0xe0,0x15}
+
+IBSDH_SM4_GCM_SM3          IBSDH                                    M:                 {Oxe0 ,0x55}
+
+IBC_SM4_CBC_SM3               IBC                                        M:                 {Oxe0 ,0x17}
+
+IBC_SM4_GCM_SM3              IBC                                        M3                 {0xe0 ,0x57}
+
+RSA_SM4_CBC_SM3              RSA                                       M3                 {0xe0,0x19}
+
+S
+S
+S
+S
+S
+S
+S
+S
+S
+S
+
+RSA_SM4_GCM_SM3                     RSA                                                               M3                           {0xe0 0x59}
+
+RSA_SM4_CBC_SHA256          RSA                 SM4_C              SHA256             {0xe0 .0xl1c}
+
+RSA_SM4_GCM_SHA256         RSA                SM     ,            SHA256             {0xe0,0x5a》
+
+本标准实现 ECC 和 ECDHE 的算法为 SM2;实现 IBC 和 IBSDH 的算法为 SM9。
+e) compression_methods
+客户端所支持的压缩算法列表 ,客户端应按照压缩算法使用的优先级顺序排列,优先级最高的
+压缩算法应排在首位。
+定义如下 :
+enum { null(0) ,(255) } CompressionMethod;
+服务端将在压缩算法列表中选择一个与之匹配的压缩算法。列表中应包含空压缩算法,这样
+客户端和服务端总能协商出一致的压缩算法。
+
+6.4.5.2.2 Server Hello 消息
+
+该消息为服务端 hello 消息。
+
+如果能从客户端 hello 消息中找到匹配的密码套件,服务端发送这个消息作为对客户端 hello 消，
+的回复。如果找不到匹配的密码套件,服务端将回应 handshake failure 报警消息。
+
+服务端 hello 消息结构定义如下:
+
+struct {
+
+证
+
+ProtocolVersion server_version;
+Random random;
+SessionID session_id;
+
+CipherSuite cipher_suite;
+
+============================================================
+PAGE 20
+============================================================
+GB/T 38636一2020
+
+CompressionMethod compression_method;
+
+} ServerHello;
+
+a)
+
+b)
+
+c)
+
+d)
+
+f)
+
+6.4.5.3
+
+该消
+服务
+的密码套
+中的密码
+服务端协
+证书
+类型的关
+
+其中 :
+
+server_version
+
+该字段表示服务端支持的协议版本。本标准的版本号是 1.1。
+
+random
+
+服务端产生的随机数。
+
+session_id
+
+服务端使用的会话标识,如果客户端 hello 消息中的会话标识不为空,且服务端存在匹配的会
+话标识,则服务端重用与该标识对应的会话建立新连接,并在回应的服务端 hello 消息中带上
+与客户端一致的会话标识,否则服务端产生一个新的会话标识,用来建立一个新的会话。
+cipher_suite
+服务端从客户端 hello 消息中选取的一个密码套件。对于重用的会话 ,本字段存放重用会话使
+用的密码套件。
+
+compression_method
+
+服务端从客户端 hello 消息中选取的一个压缩算法,对于重用的会话 ,本字段存放重用会话使
+用的压缩算法。
+
+Server Certificate 消息
+
+息为服务端证书消息。
+
+端应发送一个服务端证书消息给客户端,该消息总是紧跟在服务端 hello 消息之后。当选中
+件使用RSA 或ECC或ECDHE算法时,本消息的内容为服务端的签名证书和加密证书;当选
+套件使用 IBC或IBSDH 算法时,本消息的内容为服务端标识和 IBC 公共参数,用于客户端与
+商 IBC 公开参数。
+
+格式为 X.509 v3 ,证书类型应能适用于已经确定的密钥交换算法。密钥交换算法与证书密钥
+ANWR 3。
+
+表 3 密钥交换算法与证书密钥类型关系表
+
+密钥交换算法                    证书密钥类型
+RSA                         RSA 公钥 ,应使用加密证书中的公铀
+
+IBC                                     服务端标识和 IBC 公共参数
+
+IBSDH                            服务端标识和 IBC 公共参数
+
+ECC                  ECC 23-49) ,应使用加密证书中的公铀
+
+ECDHE            ECC 23-49) ,应使用加密证书中的公铀
+
+对于证书消息结构如下 :
+opaque ASN.1Cert(1..27-1);
+
+Cert
+
+struct {
+ASN.1Cert certificate(0..27°-1) ;       } Certificate;
+
+ificate;
+
+ARF te WES :签名证书在前,加密证书在后。
+
+IBC
+
+标识及公共参数结构 :
+
+============================================================
+PAGE 21
+============================================================
+GB/T 38636—2020
+
+opaque ASN.1IBCParam(1..2-1);
+struct {
+opaque ibc_id¢1..2'°-1);
+ASN.1IBCParam ibc_parameter;
+} Certificate;
+其中 :
+a) ibc_id
+服务端标识。
+b) ibc_parameter
+
+IBC 公共参数 ,遵循 ASN.1 编码。
+
+6.4.5.4 Server Key Exchange 消息
+
+本消息为服务端密钥交换消息。本消息传送的信息用于客户端计算产生 48 字节的预主密钥 。
+服务端密钥交换消息结构定义如下:
+enum { ECDHE,ECC,IBSDH,IBC,RSA} KeyExchangeAlgorithm;
+
+struct {
+
+select (KeyExchangeAlgorithm) {
+case ECDHE;
+ServerECDHEParams params;
+Digitally-signed struct {
+opaque client_random[ 32 ];
+opaque server_random|[ 32 ];
+ServerECDHEParams params;
+}signed_params;
+case ECC;
+digitally-signed struct {
+opaque client_random[ 32 ];
+opaque server_random|[ 32 |;
+opaque ASN.1Cert(1..27-1);
+}signed_params;
+case IBSDH:
+ServerIBSDHParams params;
+digitally-signed struct {
+opaque client_random|[ 32 |;
+opaque server_random[ 32 ];
+ServerIBSDHParams params;
+}signed_params;
+Case IBC;
+ServerIBCParams params;
+digitally-signed struct {
+opaque client_random|[ 32 |;
+opaque server_random|[ 32 |;
+
+ServerIBCParams params;
+
+============================================================
+PAGE 22
+============================================================
+GB/T 38636一2020
+
+opaque IBCEncryptionKey[ 1 024 ];
+}signed_params;
+Case RSA;
+digitally-signed struct {
+opaque client_random[ 32 ];
+opaque server_random| 32 ];
+opaque ASN.1Cert(1..27'-1);
+}signed_params;
+bs
+} ServerKeyExchange;
+
+a) ServerECDHEParams
+服务端的密钥交换参数 ,当使用 SM2 算法时,交换的参数见 GB/T 35276, Ee P fe # sim WY ZS 4A
+不需要交换,客户端直接从服务端的加密证书中获取。
+
+struct {
+
+ECParameters     curve_params;
+ECPoint            public;
+} ServerECDHParams;
+如果使用 SM2 @yeERY , AK as —4 BA ECParameters,
+b) ServerIBSDHParams
+使用 IBSDH 算法时,服务端的密钥交换参数,密钥交换参数格式参见 SM9 算法。
+c) ServerIBCParams
+使用 IBC 算法时,服务器的密钥交换参数,密钥交换参数格式参见 SM9 算法。
+d) IBCEncyptionKey
+使用 IBC 算法时,服务端的加密公钥 ,长度为 1 024 字节 。
+e) signed_params
+当密钥交换方式为ECDHE IBSDH 和 IBC 时,signed_params 是服务端对双方随机数和服务
+端密钥交换参数的签名;当密钥交换方式为 ECC 和RSA 时,singed_params 是服务端对双方
+随机数和服务问加密证书的签名 。
+
+6.4.5.5 Certificate Request 消息
+
+本消息为证书请求消息。
+
+如果服务端要求认证客户端,则应发送此消息 ,要求客户端发送自己的证书。
+该消息紧跟在服务端密钥交换消息之后。
+
+证书请求消息的结构定义如下 :
+
+struct {
+
+ClientCertificateType certificate_types(1..2°-1);
+DistinguishedName certificate_authorities(0..2'°-1);
+} CertificateRequest;
+Crp,
+a) certificate_types
+要求客户端提供的证书类型的列表 。
+
+enum {
+
+Vid
+
+
+============================================================
+PAGE 23
+============================================================
+GB/T 38636—2020
+
+rsa_sign(1),ecdsa_sign(64) ,ibc_params(80) , (255)
+} ClientCertificateType;
+b) certificate_authorities
+如果 ClientCertificateType 是 ibc_params,本字段的内容是 IBC 密钥管理中心的信任域名列
+表。和否则是服务端信任的 CA 的证书 DN 列表,包括根 CA 或者二级 CA 的 DN,
+定义如下 :
+opaque DistinguishedName(1..2'°-1) ;
+
+6.4.5.6 Server Hello Done 消息
+
+表示握手过程的 hello 消息阶段完成。发送完该消息后服务端会等待客户端的响应消息。
+
+客户端接收到服务端的 hello 完成消息之后,应验证服务端证书是否有效,并检验服务端的 hello
+消息参数是否可以接受。如果可以接受 ,客户端继续握手过程 。否则发送一个 Handshake failure 致命
+报警。
+
+服务端 hello 完成消息结构如下 :
+
+struct { } ServerHelloDone;
+
+6.4.5.7. Client Certificate 消息
+
+AS TE Ly 25 Pg TE PTE, 0 WN AR AB SS Sn Te ORS PE gE A hg BE iB ACHE AS TAL,
+
+如果协商的密码套件使用 IBC 或 IBSDH 算法,此消息的内容为客户端标识和 IBC 公共参数,用于
+客户端与服务端协商 IBC 公开参数。
+
+客户端证书消息的结构同 6.4.5.3 定义的结构 。
+
+6.4.5.8 Client Key Exchange 消息
+
+本消息为客户端密钥交换消息。
+
+如果服务端请求客户端证书,本消息紧跟于客户端证书消息之后 ,和否则本消息是客户端接收到服务
+端 hello 完成消息后所发送的第一条消息。
+
+如果密钥交换算法使用RSA UE ECC 算法和 IBC 算法,本消息中包含预主密钥 ,该预主密钥由
+客户端产生 ,采用服务端的加密公钥进行加密。当服务端收到加密后的预主密钥后 ,利用相应的私钥进
+行解密,获取所述预主密钥的明文 。如果是 IBC 算法 ,客户端利用获取的服务端标识和 IBC 公开参数，
+产生服务端公钥。如果是 RSA 算法 ,建议使用PKCS#1版本 1.5 对了SA 加密后的密文进行编码。如
+果密钥交换算法使用 ECDHE 算法或 IBSDH 算法,本消息中包含计算预主密钥的客户端密钥交换
+
+客户端密钥交换消息结构定义如下 :
+
+struct {
+
+select (KeyExchangeAlgorithm) {
+
+case ECDHE;
+opaque ClientECDHEParams\‘1..2'°-1);
+case IBSDH:
+opaque ClientIBSDHParams(1..2'°-1) ;
+case ECC;
+opaque ECCEncryptedPreMasterSecret(0..2'°-1) ;
+case IBC;
+opaque IBCEncryptedPreMasterSecret(0..2'°-1);
+
+20
+
+============================================================
+PAGE 24
+============================================================
+GB/T 38636一2020
+
+case RSA;
+opaque RSAEncryptedPreMasterSecret(0..2'°-1) ;
+
+} exchange_keys;
+
+} ClientKeyExchange;
+
+Crp,
+a) ChentECDHEParams
+使用ECDHE 算法时,要求客户端发送证书。客户端的密钥交换参数,当使用 SM2 算法时,交
+换的参数见 GB/T 35276 。
+其结构如下 :
+struct {
+ECParameters     curve_params;
+ECPoint           public;
+} ClientECDHParams;
+如果使用 SM2 算法时,第一个参数不效验。
+b) ClientIBSDHParams
+使用 IBSDH 算法时,客户端的密钥交换参数。
+c) ECCEncryptedPreMasterSecret
+使用 ECC Jan es 925 OP FR Sh JN BE ZS DO BY HB EP
+d) IBCEncryptedPreMasterSecret
+使用 UBC 加密算法时,用服务端公钥加密的预主密钥。
+e) RSAEncryptedPreMasterSecret
+使用 RSA 加蜜算法时 ,用服务端加密公钥加密的预主密钥。
+预主密钥的数据结构如下 :
+struct {
+ProtocolVersion client_version;
+opaque random[46 ];
+} PreMasterSecret;
+其中，
+a) client_version
+客户端所文持的版本号。服务端要检查这个值是否跟客户端 hello 消息中所发送的值相匹配 。
+b) random
+46 字节的随机数。
+6.4.5.9 Certificate Verify 消息
+本消息为证书校验消息。
+该消息用于鉴别客户端是否为证书的合法持有者,只有 Client Certificate 消息发送时才发送此消
+
+息,紧跟于客户端密钥交换消息之后。
+
+证书校验消息的数据结构如下 :
+
+struct {
+
+Signature signature;
+
+} Certificate Verify;
+
+21
+
+============================================================
+PAGE 25
+============================================================
+GB/T 38636—2020
+
+Crp,
+Signature 的结构如下 :
+
+enum { rsa_sha256,rsa_sm3,
+
+Vid
+
+ecc_sm3,
+
+ibs_sm3 } SignatureAlgorithm;
+
+struct {
+select (SignatureAlgorithm)
+{
+case rsa_sha256;
+
+digitally-signed struct {
+
+opaque sha256_hash[ 20 ];
+
+bs
+case rsa_sm3;:
+digitally-signed struct {
+opaque sm3_hash| 32 ]
+bs
+
+3
+
+case ecc_sm3://24 ECC 为 SM2 算法时,用这个套件
+
+digitally-signed struct {
+opaque sm3_hash[ 32 ]
+
+bs
+
+case ibs_sm3;
+
+digitally-signed struct {
+opaque sm3_hash| 32 ]
+
+bs
+
+bs
+
+} Signature;
+
+sm3_hash 和 sha256_hash 是指 hash 运算日
+息为止(不包括本消息)的所有与握手有关的消息(加密证书要包在签名计算中) ,包括握手消息的类型
+
+和长度域。
+
+的结果 ,运算的内容是自客户端 hello 消息开始直到本消
+
+当使用 SM2 算法签名时 ,使用客户端的签名密钥 ,签名方法见 GB/工 35275 。
+
+6.4.5.10 Finished 消息
+
+本消息为握手结束消息。
+
+服务端和客户端各自在密码规格变更消息之后发送本消息 ,用于验证密钥交换过程是否成功,并校
+
+验握手过程的完整性。
+
+本消息用本次握手过程协商出的算法和密钥保护。
+
+本消息的接收方应检验消息内容的正确性。
+
+一且一方发送了握手结束消
+
+握手结束消息并通过校验,就可以使用该连接进行数据安全传输。
+
+握手结束消息数据结构如下 :
+struct {
+opaque verify_data[12];
+} Finished;
+22
+
+=I
+
+way 9
+
+并
+
+且接收到了对方的
+
+
+============================================================
+PAGE 26
+============================================================
+6.
+
+6.
+
+6.
+
+证
+TT
+
+GB/T 38636—2020
+
+其中，
+verify_data 为校验数据 ,该数据产生方法如下 :
+PRF(master_secret, finished_label, SM3(handshake_messages) ) [0..11].
+表达式中 :
+a) finished_label
+对于由客户端发送的结束消息 ,该标签是字符串“client finished”。对于服务端 ,该标签是字符
+FB “server finished” ,
+b) handshake_messages
+指自客户端 hello 消息开始直到本消息为止(不包括本消息、密码规格变更消息和 hello 请求
+消息)的所有与握手有关的消息 ,包括握手消息 RIAN HEB.
+
+5 密钥计算
+
+5.1 主密钥计算
+主密钥由 48 个字节组成,由预主密钥、客户端随机数、服务端随机数、常量字符串,经 PRF 计算
+
+生成。
+计算方法如下 :
+master_secret = PRF(pre_master_secret, "master secret",
+ClientHello.random + ServerHello.random) [0..47 ]
+5.2 工作密铀
+
+工作密钥包括校验密钥和加密密钥 ,具体密钥长度由选用的密码算法决定。由主密钥 、客户端随机
+
+数、服务端随机数 .常量字符串,经 PRE 计算生成。
+
+计算方法如下 :
+
+key_block = PRF(SecurityParameters.master_secret, "key expansion",
+SecurityParameters.server_random +SecurityParameters.client_random) ;
+
+直到生成所需长度的输出,然后按顺序分割得到所需的密钥 :
+
+client_write_MAC_secret[ SecurityParameters.hash_size |
+
+server_write_MAC_secret[ SecurityParameters. hash_size |
+client_write_key[ SecurityParameters. key_material_length ]
+server_write_key| SecurityParameters.key_material_length ]
+client_write_IV[SecurityParameters. fixed_iv_length ]
+
+server_write_IV[SecurityParameters. fixed_iv_length ]
+
+23
+
+============================================================
+PAGE 27
+============================================================
+GB/T 38636—2020
+
+Mt 录 A
+(规范性附录)
+GCM 可鉴别加密模式
+
+A.1 GCM 可鉴别加密模式
+A.1.1. GCM 简介
+
+伽罗瓦/计数器模式(GCM)是一种对数据的加密鉴别模式,GCM 使用了加密的计数器运算模式来
+确保数据的机密性,并且通过使用有限域上的通用的杂凑函数来保证机密数据的完整性。GCM 对于
+无需加密的附加数据提供了认证,确保其没有被修改。
+
+如果 GCM 的输入被限制为没有加密的数据,那么 GCM 的输出结果可被称为 GMAC,GMAC 是
+对输入的数据提供可鉴别模式。
+
+GCM 有两个相关函数分别被称为鉴别加密和鉴别解密 ,每一个函数都相对高效的,并且能够并行
+化的处理。
+
+罗
+
+A.1.2 GCM 的要素
+A.1.2.1 分组密码
+
+GCM 的工作依赖于底层的对称密钥分组密码的选择,因而可以被看作是分组密码的工作模式。
+GCM 密钥是分组密码密钥 。
+
+对于任何给定的密钥 ,模式的底层分组密码由两个互送函数组成。分组密码的选择包括将分组密
+码的两个函数之一指定为前向密码函数。
+
+前向密码函数是一个定长的比特串上的置换,这个串被称为分组,分组的长度称为分组大小。密钥
+用天 表示,由此产生的分组密码的前向密码函数表示为 CIPHr 。
+
+底层分组密码的分组大小应为 128 比特,密钥长度应至少为 128 比特。密钥应随机均匀 ,或近似随
+机均匀生成。因此,密钥有很高的概率不同于任何以前的密钥。并且密钥仅用于 GCM 所选的分组
+密码。
+
+A.1.2.2 GCM 的两个要素
+A.1.2.2.1 可鉴别加密函数
+A.1.2.2.1.1 输入数据
+
+根据分组密码和密钥的选择 ,可鉴别加密函数有三个输入字符串 :
+
+一一明文 ,表示为 P;
+
+一一附加的可鉴别数据(AAD) ,表示为 A;
+
+一一初始向量 ,表示为 IV 。
+
+明文和AAD 是 GCM 保护的两类数据。GCM 保护明文和 AAD 的真实性;GCM 也保护明文的机
+密性,而 AAD 则被保留是明文的。
+
+示例:在网络协议中,AAD 可以包括地址.端口 .序列号 .协议版本号,以及说明如何处理明文的其他字段。
+
+24
+
+
+============================================================
+PAGE 28
+============================================================
+GB/T 38636一2020
+
+IV 本质上是一个 nonce,即 ,在指定上下文中唯一的一个值。
+
+可鉴别加密函数的输入字符串的比特长度应满足以下要求，
+len(P)<2* 一256
+
+len(A)<2%—]
+
+1<len(IlV)<2" —1
+
+GCM 是在比特串上定义的,明文.AAD # IV 的比特长度都是 8 的倍数。
+对于 IV ,建议实现上限制对 96 比特长度的文持,以提升设计的互操作性`有效性和容易性。
+
+A.1.2.2.1.2 ”输出数据
+
+120
+
+下面的两个比特串组成了可鉴别加密函数的输出数据:
+
+一一密文 ,表示为C,其比特长度与明文相同 。
+
+别标签(或简称标签) ,表示为 工。
+
+标签的比特长度(表示为 妃是一个安全参数。一般来说,: 可以是下列五个值中的任何一个:128、
+
+\112、104 或 96。对于某些应用程序注可以是 64或32。
+
+A.1.2.2.2 ”可鉴别解密函数
+
+根据分组密码、密钥和相关联的标签长度的选择,可鉴别解密函数的输入为IV\A.C和工的值,如
+
+上面 A.1.2.1 所述。输出是下列之一:
+
+一一与密文 C 相对应的明文了,或
+一一一个特殊错误代码,在本文档中表示为 FAIL。
+输出P表明工是IV、A和CC的正确的可鉴别标签;否则 ,输出是FAIL。
+
+A.1.3 GCM 的数学基础
+
+A.1.3.1 比特串的基本运算和函数
+
+0011
+
+对于一个实数 z,| z |表示三z 的最小整数,例如| 2.1 ]=3.[4]=4.
+
+给定一个正整数,0 表示包含 个"07的比特串,例如 O* =00000000,,
+
+比特串之间的拼接操作用“| 1?表示,例如 001|110111王00110111。
+
+给定两个相同长度的比特串 ,它们的异或运算用"四”表示,又称为模 2 加,例如 10011 @ 10101=
+0.
+
+oh — 7S ERB X ,其长度用 len(CX)表示,例如 len(00010)一5。
+
+给定一个比特串 X 和一个非负整数*,其中len(X)三*,LSB,(CX)和 MSB,(CX)分别表示比特串 X
+
+的最低位(最右)s 比特和最高位(最左)s 比特。例如 LSB; (111011010) =010, MSB, (111011010) =
+
+1110。
+
+给定一个比特串 X ,单比特右移函数表示为 X疙1,其右移结果为 MSBieucx) (0|11X) ,例如 0110111 >
+
+1=0011011,
+
+示为二进
+
+给定一个正整数y 和一个非负整数 过,其中近2* ,整数转比特串的函数记为Lzjs,即将整数二表
+井制字符串。例如 ,一个十进制整数 39 ,其二进制表示为 100111,[39]8王00100111。
+给定一个非空比特串 X ,比特串转整数的函数记为 int(X) ,例如 int(00011010) = 26,
+
+a
+
+A.1.3.2 ”递增函数 inc,(X)
+
+i
+
+SE — PIE ER s F— 7 BX EE len (X) Ss, i inc, (XI A—F s 比特递增函数,其定
+25
+
+
+============================================================
+PAGE 29
+============================================================
+GB/T 38636—2020
+
+SH:
+inc, CX ) = MSBracxy) —s (x) | | LintCLSB, (X))+1 mod 2s js
+此函数将 X AYA s LEED 1 ta RE 2s. ZEW len(X) —s 比特不变。
+
+A.1.3.3 分组之间的乘法运算
+
+We R 是一个比特串 111000011102 ,给定两个分组 X 和了,算法 1 计算乘积 X .了:
+算法 1:计算 X。Y。
+
+输入 :分组 X.Y.
+
+输出:X。Y。
+
+开始
+
+a) 令 zzi…zi27表示X的比特序列;
+
+b) 令 Z,=0'%,V.=Y;
+
+c) Fi WK O~127
+
+计算分组 2和 Vi MP
+
+1Z，     4% X,=0
+Zi 一:4
+\Z, OV; 4 X,=1
+7    (Vi >1      “% LSB, (V;)=0
+1 DeR “4 LSB,(V,)=1
+d)  返回 Z 128 0
+
+Ty AACE 1s FE + BEAN ABR BY 2! oc ze A Fee FTE NAR 确定了有限域的
+
+模二进制多项式的表示。从比特串到二进制多项式之间的转换是小端格式(little endian) ,
+
+即如果令 wu
+
+为多项式的变量 ,则分组 Xo yk] X07 ME BH ch To十ZU十127 yl?! °  异或运算用于多项式的相同
+
+次数项的系数的模 2 相加。模约多项式是一个次数为 128 的多项式,即尺||1。
+对于一个正整数?分组X 的第; 次方表示为X ,例如 A’ =H + H,H*=H+H+H
+
+A.1.3.4. GHASH 泛杂凌函数
+
+算法 2;GHASHy(X).
+已知 :分组 互 ,作为杂凑运算的子密钥 。
+输入 :比特串 X ,其中 len(X) =128m ,7 是一个正整数。
+输出:分组GHASHa(CX)。
+开始
+a) 设X ,XXX 为比特串X 的分组序列 HE X= X)||X2| for] |X,
+b) Y,=0"%;
+c) 对于zz 从1一六
+到一(7四X)， 万;
+d) 返回冯。
+事实上,GHASH 72 288 pa UT IE Xs A" OX, + AH" (OO X,, + HWA
+
+26
+
+°
+
+A.1 BAR .
+
+============================================================
+PAGE 30
+============================================================
+X
+
+ A.1 GHASH 72423 HAREA
+
+A.1.3.5 GCTR 函数
+
+算法 3:GCTRrK (ICB,X)
+
+已知 :分组密码算法 CIP瑞,其分组长度为 128 比特;密钥为 天;
+输入 :初始计数器分组 ICB ,任意长度的比特串 X。
+
+输出 :比特串立,其长度为 lan(CX ) 。
+
+开始
+
+a) 如果X 是空比特串,则返回空比特串 Y;
+
+b) 4 n=f len(X)/128];
+
+c)  设 Xi,X…X X，为比特串 x 的分组序列 ,满足 X=X, | |X, | | +++ | |X. | |X,” 9 只
+
+HH — 1 Sop A a ee EEK) AY OP As
+d) 4 CB,=ICB;
+e) XFih2~n
+
+CB; = inex, CCB;_1) ;
+f) “对于从1一(2一1)
+
+也一X, 中CIPHCCB;);
+g) Y,* =X,* ® MSBrcx, ,CCIPHKCCB,) );
+hy YSYi/lYollerl¥,al las
+i) 返回Y。
+
+GB/T 38636一2020
+
+=
+a
+
+在步骤 b)和 c)中 ,将任意长度的比特串划分成若干个分组的序列，
+
+其最后部分 X，有可能不足一
+
+个分组。在步骤 d)和 e)中,使用 32 比特的递增函数,生成一系列循环计数分组。在步又所和g)中,进
+
+行各个分组与计数分组的异或操作。步骤 b)进行输出结果的拼接,如图
+
+A.2 所示。
+
+27
+
+============================================================
+PAGE 31
+============================================================
+GB/T 38636—2020
+
+ -和| inc |=] CB, ~~   -和| CB,-; |—» | inc |» CB,
+|        |        |        |
+
+|      |      |
+|                                                            |
+[可一@     Esa     ia J~®     w]~@
+
+|                    |                    |                    |
+
+ A.2 GCTR 函数流程图
+
+A.1.4 GCM 描述
+
+A.1.4.1
+
+可鉴别加密函数算法
+
+算法 4摘述了可鉴别加密函数的流程。
+
+算法 4:GCM-AE(CIV,P,A)。
+已知:分组密码算法 CIPH ,其分组长度为 128 比特;
+
+密钥 K;
+输入-输出长度定义;
+与密钥 K 相关的标签 tag KE rt.
+
+输入 :初始向量 TV
+
+明文 P;
+附加的鉴别数据 A。
+
+输出 BE SC C;
+
+开始
+
+a)
+b)
+
+c)
+d)
+
+e)
+f)
+g)
+
+鉴别标签 T
+
+令 H=CIPHk(C02 );
+
+定义一个分组 Jo:
+
+4 len(dV)=96, Ill] Jo =1V| [0° | {15
+
+4 len(IV) 496. Ill] Jo =GHASHy IV {0° | | Llen dV) «J;
+len(IV);
+
+C=GCTRx (ines; (Jo) +P) 5
+
+u=128 * [ len(C)/128 ]—len(C) ;
+
+v=128 + [ len(A)/128 ]—len(A);
+
+定义一个分组 S,S=GHASH gy (Al |0°| |C] 0" | | Llen(A) 5. J] | Llen(C) oi J
+T=MSB, (GCTRx (Jo +S) 5
+
+返回(CC,T) 。
+
+在步骤 a)中,通过对“07分组的加密得到 GHASH 22 28 8 PAR PR. PEPE DE b)中
+
+其中一128 [ len(IV)/128 ]—
+
+,由初始向
+
+始的计数器时钟。步又 d) .e)和
+
+28
+
+民据分组 Jo 和明文 P,利用32 位递增函数inc OA GCTR 函数生成初
+g)生成鉴别标签 工。步又7 返回密文 C 和鉴别标签 工,如图 A.3 所示。
+
+
+============================================================
+PAGE 32
+============================================================
+GB/T 38636一2020
+
+    0”                    C                0"                [len(A)]ea            [len(C)]e4
+    =
+-Ce
+         |
+
+ A.3 GCM 可鉴定加密算法流程图
+
+A.1.4.2 ”可鉴别解密函数算法
+
+算法 5 fas FY AS all fee BF PRI OC HY Vit Fe.
+算法 5:GCM-AD, (IV.C.A.T).
+已知 :分组密码算法 CIPH RAPA REN 128 比特;
+密钥 K;
+输入-输出长度定义;
+与密钥 K 相关的标签 tag KE rt.
+输入 :初始向量 TV;
+明文 P;
+附加的鉴别数据 A。
+输出 :明文 P;
+鉴别结果(成功或失败)。
+开始
+a) 如果IV、A或CC的比特长度不文持,或者 len(T)天上,则返回“失败”;
+b) 令H=CIPHK(COI2 ) ;
+c) 定义一个分组 Jo:
+当 len(IV)王96,则Jo=IV|1021118
+% len(IV) 496. Ml) J, =GHASHy, CIV] [0° | | len), J. £42 s =128 | len(IV)/128 |一
+len(IV) ;
+
+29
+
+============================================================
+PAGE 33
+============================================================
+GB/T 38636—2020
+
+d) P=GCTRx (ines: (Jo) +C);
+
+e) u=128+ [ len(C)/128 ]—len(C);
+
+v=128 + [ len(A)/128 ]—len(A);
+
+f) 定义一个分组 S,S=GHASH,(A]|0°| | C| | 0"] | en(A) oi J | Llen(C) 5s Js
+
+g) T'=MSB,(GCTR,x(Jo+S))3
+
+h) 如果工=T,则返回明文 P;和否则 ,返回“失败”。
+
+在步骤 a)中,验证初始向量、密文以及鉴别标签等的长度是否支持。在步又 b)中,通过对"02分组
+的加密得到GHASH 泛杂凑函数的子密钥 。在步骤 c)中,由初始向量 TV 生成分组 J 。在步骤 DP,
+根据分组J 和密文 C,利用32 位递增函数inc OF GCTR 函数生成初始的计数器时钟。步又 e) .D)和
+g)生成鉴别标签 工。步又Pb)比较工和T是否相等,并根据结果返回明文 P 或“失败”,如图 A.4 所示 。
+
+四       [L
+Hp       [ |]一
+
+  0           C          0         [len(A)]ez | | [len(C)]oa
+C                                                                           _
+
+FAIL
+
+  A.4 GCM 可鉴别解密算法流程图
+
+30
+
+============================================================
+PAGE 34
+============================================================
+GB/T 38636一2020
+
+参考 MXM 献
+
+J GB/T 32905一2016 ”信息安全技术 SM3 密码杂凑算法
+
+J GB/工32907一2016 ”信息安全技术 SM4 分组密码算法
+
+[3] GB/T 32918(所有部分) 信息安全技术 SM2 椭圆曲线公钥密码算法
+
+[4] GM/T 0044—2016 SM9 标识密码算法
+
+[5] RFC 4346 The Transport Layer Security (TLS) Protocol Version 1.1
+
+[6] RFC 4492 Elliptic Curve Cryptography(ECC) Cipher Suites for Transport Layer Security
+
+(TLS)
+
+[7] RFC5116 An Interface and Algorithms for Authenticated Encryption
+
+8| RFC 5246 The Transport Layer Security (TLS) Protocol Version 1.2
+
