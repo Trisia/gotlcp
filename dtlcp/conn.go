@@ -46,17 +46,6 @@ type serverHandshakeState struct{}
 // clientHandshakeState 客户端握手状态，Phase 4 在 handshake_client.go 中正确定义
 type clientHandshakeState struct{}
 
-// serverKeyExchangeMsg 服务端密钥交换消息，Phase 4 在 handshake_messages.go 中正确定义
-type serverKeyExchangeMsg struct{}
-
-// clientKeyExchangeMsg 客户端密钥交换消息，Phase 4 在 handshake_messages.go 中正确定义
-type clientKeyExchangeMsg struct{}
-
-// transcriptHash 握手消息哈希接口，Phase 4 在 prf.go 或 handshake_messages.go 中正确定义
-type transcriptHash interface {
-	Write([]byte) (int, error)
-	Sum() []byte
-}
 
 // =============================================================================
 // Conn — DTLCP 连接对象
@@ -932,33 +921,79 @@ func (c *Conn) writeChangeCipherRecord() error {
 	return err
 }
 
-// readHandshake 从记录层读取下一个握手消息（Phase 4 完善分片重组）。
+// readHandshake 从记录层读取下一个 DTLCP 握手消息（支持分片重组）。
 func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
-	for c.handBuf.Len() < 4 {
+	for c.handBuf.Len() < dtlcpHeaderLen {
 		if err := c.readRecord(); err != nil {
 			return nil, err
 		}
 	}
 
 	data := c.handBuf.Bytes()
-	n := int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-	if n > maxHandshake {
+	bodyLen := int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+	fragOff := int(data[6])<<16 | int(data[7])<<8 | int(data[8])
+	fragLen := int(data[9])<<16 | int(data[10])<<8 | int(data[11])
+
+	if bodyLen > maxHandshake {
 		c.sendAlertLocked(alertInternalError)
-		return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: handshake message of length %d bytes exceeds maximum of %d bytes", n, maxHandshake))
+		return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: handshake message of length %d bytes exceeds maximum of %d bytes", bodyLen, maxHandshake))
 	}
-	for c.handBuf.Len() < 4+n {
+	if fragOff+fragLen > bodyLen {
+		c.sendAlertLocked(alertDecodeError)
+		return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: fragment out of bounds: offset %d + length %d > total %d", fragOff, fragLen, bodyLen))
+	}
+
+	// 等待足够的分片数据
+	for c.handBuf.Len() < dtlcpHeaderLen+fragLen {
 		if err := c.readRecord(); err != nil {
 			return nil, err
 		}
 	}
-	data = c.handBuf.Next(4 + n)
+
+	data = c.handBuf.Next(dtlcpHeaderLen + fragLen)
 	if c.config.EnableDebug {
 		fmt.Printf("[read] %v, len=%v\n", HandshakeMessageTypeName(data[0]), len(data))
 	}
+
+	// 分片重组支持（非分片消息直接处理）
+	if fragLen < bodyLen || fragOff > 0 {
+		// 消息被分片，存到 pendingFragments 中
+		msgSeq := uint16(data[4])<<8 | uint16(data[5])
+		fb, exists := c.pendingFragments[msgSeq]
+		if !exists {
+			fb = newFragmentBuffer(uint24(bodyLen), fragLen)
+			c.pendingFragments[msgSeq] = fb
+		}
+		fb.addFragment(uint24(fragOff), uint24(fragLen), data[dtlcpHeaderLen:])
+		if !fb.complete() {
+			// 分片未收齐，继续读取
+			ret, err := c.retryReadHandshake(transcript)
+			return ret, err
+		}
+		// 分片收齐，重组消息
+		fragmentData := fb.assembled()
+		// 用原始头部的 type + msgSeq + fragOff/fragLen 重新构造完整消息
+		fullHeader := make([]byte, dtlcpHeaderLen)
+		fullHeader[0] = data[0]
+		fullHeader[1] = data[1]
+		fullHeader[2] = data[2]
+		fullHeader[3] = data[3]
+		fullHeader[4] = data[4]
+		fullHeader[5] = data[5]
+		// fragOff=0, fragLen=bodyLen
+		fullHeader[9] = data[1]
+		fullHeader[10] = data[2]
+		fullHeader[11] = data[3]
+		data = append(fullHeader, fragmentData...)
+		delete(c.pendingFragments, msgSeq)
+	}
+
 	var m handshakeMessage
 	switch data[0] {
 	case typeClientHello:
 		m = new(clientHelloMsg)
+	case typeHelloVerifyRequest:
+		m = new(helloVerifyRequestMsg)
 	case typeServerHello:
 		m = new(serverHelloMsg)
 	case typeCertificate:
@@ -993,58 +1028,11 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 	return m, nil
 }
 
-// =============================================================================
-// 握手消息桩类型（Phase 4 在 handshake_messages.go 中正确定义）
-// =============================================================================
+// retryReadHandshake 递归读取下一条记录（用于分片重组场景）。
+func (c *Conn) retryReadHandshake(transcript transcriptHash) (interface{}, error) {
+	return c.readHandshake(transcript)
+}
 
-type clientHelloMsg struct{}
-
-func (m *clientHelloMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: clientHelloMsg not implemented") }
-func (m *clientHelloMsg) unmarshal(data []byte) bool  { return false }
-func (m *clientHelloMsg) messageType() uint8          { return typeClientHello }
-func (m *clientHelloMsg) debug()                      {}
-
-type serverHelloMsg struct{}
-
-func (m *serverHelloMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: serverHelloMsg not implemented") }
-func (m *serverHelloMsg) unmarshal(data []byte) bool  { return false }
-func (m *serverHelloMsg) messageType() uint8          { return typeServerHello }
-func (m *serverHelloMsg) debug()                      {}
-
-type certificateMsg struct{}
-
-func (m *certificateMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: certificateMsg not implemented") }
-func (m *certificateMsg) unmarshal(data []byte) bool  { return false }
-func (m *certificateMsg) messageType() uint8          { return typeCertificate }
-func (m *certificateMsg) debug()                      {}
-
-type certificateRequestMsg struct{}
-
-func (m *certificateRequestMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: certificateRequestMsg not implemented") }
-func (m *certificateRequestMsg) unmarshal(data []byte) bool  { return false }
-func (m *certificateRequestMsg) messageType() uint8          { return typeCertificateRequest }
-func (m *certificateRequestMsg) debug()                      {}
-
-type serverHelloDoneMsg struct{}
-
-func (m *serverHelloDoneMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: serverHelloDoneMsg not implemented") }
-func (m *serverHelloDoneMsg) unmarshal(data []byte) bool  { return false }
-func (m *serverHelloDoneMsg) messageType() uint8          { return typeServerHelloDone }
-func (m *serverHelloDoneMsg) debug()                      {}
-
-type certificateVerifyMsg struct{}
-
-func (m *certificateVerifyMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: certificateVerifyMsg not implemented") }
-func (m *certificateVerifyMsg) unmarshal(data []byte) bool  { return false }
-func (m *certificateVerifyMsg) messageType() uint8          { return typeCertificateVerify }
-func (m *certificateVerifyMsg) debug()                      {}
-
-type finishedMsg struct{}
-
-func (m *finishedMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: finishedMsg not implemented") }
-func (m *finishedMsg) unmarshal(data []byte) bool  { return false }
-func (m *finishedMsg) messageType() uint8          { return typeFinished }
-func (m *finishedMsg) debug()                      {}
 
 // =============================================================================
 // Conn — 报警发送
@@ -1435,14 +1423,3 @@ func (c *Conn) VerifyHostname(host string) error {
 	return c.peerCertificates[0].VerifyHostname(host)
 }
 
-// handshakeMessage 实现桩方法，满足接口要求
-
-func (m *serverKeyExchangeMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: serverKeyExchangeMsg not implemented") }
-func (m *serverKeyExchangeMsg) unmarshal(data []byte) bool  { return false }
-func (m *serverKeyExchangeMsg) messageType() uint8          { return typeServerKeyExchange }
-func (m *serverKeyExchangeMsg) debug()                      {}
-
-func (m *clientKeyExchangeMsg) marshal() ([]byte, error)   { return nil, errors.New("dtlcp: clientKeyExchangeMsg not implemented") }
-func (m *clientKeyExchangeMsg) unmarshal(data []byte) bool  { return false }
-func (m *clientKeyExchangeMsg) messageType() uint8          { return typeClientKeyExchange }
-func (m *clientKeyExchangeMsg) debug()                      {}

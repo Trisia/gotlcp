@@ -735,6 +735,8 @@ type handshakeMessage interface {
 	unmarshal([]byte) bool
 	messageType() uint8
 	debug()
+	setMessageSeq(seq uint16)
+	getMessageSeq() uint16
 }
 
 // emptyConfig 默认的空配置对象
