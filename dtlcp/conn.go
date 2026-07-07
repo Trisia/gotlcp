@@ -569,165 +569,182 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	if len(c.readBuf) != 0 {
 		return c.in.setErrorLocked(errors.New("dtlcp: internal error: attempted to read record with pending application data"))
 	}
-	c.readBuf = nil
 
-	// 读取一个 UDP 数据报
-	if err := c.readDatagram(); err != nil {
-		if e, ok := err.(net.Error); !ok || !e.Temporary() {
-			c.in.setErrorLocked(err)
-		}
-		return err
-	}
+	// 循环处理数据报中的所有记录（DTLS/DTLCP 允许一个数据报包含多条记录）
+	for {
+		c.readBuf = nil
 
-	if len(c.rawInputBuf) < recordHeaderLen {
-		return c.in.setErrorLocked(errors.New("dtlcp: record too short"))
-	}
-
-	hdr := c.rawInputBuf[:recordHeaderLen]
-	typ := recordType(hdr[0])
-
-	// 检查 SSLv2 兼容性
-	if !handshakeComplete && typ == 0x80 {
-		c.sendAlert(alertProtocolVersion)
-		return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "unsupported SSLv2 handshake received"))
-	}
-
-	vers := uint16(hdr[1])<<8 | uint16(hdr[2])
-	epoch := uint16(hdr[3])<<8 | uint16(hdr[4])
-	seqNum := uint48(hdr[5])<<40 | uint48(hdr[6])<<32 | uint48(hdr[7])<<24 |
-		uint48(hdr[8])<<16 | uint48(hdr[9])<<8 | uint48(hdr[10])
-	n := int(hdr[11])<<8 | int(hdr[12])
-
-	// 版本检查
-	if c.haveVers && vers != c.vers {
-		c.sendAlert(alertProtocolVersion)
-		msg := fmt.Sprintf("received record with version %x when expecting version %x", vers, c.vers)
-		return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, msg))
-	}
-	if !c.haveVers {
-		if (typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000 {
-			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "first record does not look like a TLCP handshake"))
-		}
-	}
-
-	// 长度检查
-	if n > maxCiphertext {
-		c.sendAlert(alertRecordOverflow)
-		msg := fmt.Sprintf("oversized record received with length %d", n)
-		return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, msg))
-	}
-	if recordHeaderLen+n > len(c.rawInputBuf) {
-		return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, fmt.Sprintf("record length %d exceeds datagram", n)))
-	}
-
-	// 将 epoch + seq_num 写入 in.seq（供 decrypt 中的 MAC/AAD 使用）
-	c.in.seq[0] = hdr[3]  // epoch hi
-	c.in.seq[1] = hdr[4]  // epoch lo
-	c.in.seq[2] = hdr[5]  // seq_num [40:48]
-	c.in.seq[3] = hdr[6]  // seq_num [32:40]
-	c.in.seq[4] = hdr[7]  // seq_num [24:32]
-	c.in.seq[5] = hdr[8]  // seq_num [16:24]
-	c.in.seq[6] = hdr[9]  // seq_num [8:16]
-	c.in.seq[7] = hdr[10] // seq_num [0:8]
-
-	// 解密 + MAC 验证
-	record := c.rawInputBuf[:recordHeaderLen+n]
-	data, typ, err := c.in.decrypt(record)
-	if err != nil {
-		return c.in.setErrorLocked(c.sendAlert(err.(alert)))
-	}
-
-	// 重放检查（解密成功后执行）
-	if c.replayWindow != nil {
-		if epoch < c.readEpoch {
-			// 旧 epoch：静默丢弃
-			return nil
-		}
-		if epoch > c.readEpoch {
-			// 新 epoch：重置滑动窗口
-			c.readEpoch = epoch
-			c.readSeq = 0
-			windowSize := 64
-			if c.config != nil && c.config.ReplayWindow > 0 {
-				windowSize = c.config.ReplayWindow
+		// 如果没有待处理数据，读取一个新的 UDP 数据报
+		if len(c.rawInputBuf) < recordHeaderLen {
+			if err := c.readDatagram(); err != nil {
+				if e, ok := err.(net.Error); !ok || !e.Temporary() {
+					c.in.setErrorLocked(err)
+				}
+				return err
 			}
-			c.replayWindow = newReplayWindow(windowSize)
-		}
-		if !c.replayWindow.check(seqNum) {
-			// 重放检测：静默丢弃
-			return nil
-		}
-	}
-
-	if len(data) > maxPlaintext {
-		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
-	}
-
-	// 应用数据必须总是受保护的
-	if c.in.cipher == nil && typ == recordTypeApplicationData {
-		return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-	}
-
-	if typ != recordTypeAlert && typ != recordTypeChangeCipherSpec && len(data) > 0 {
-		// 状态推进消息：重置重试计数
-		c.retryCount = 0
-	}
-
-	switch typ {
-	default:
-		return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-
-	case recordTypeAlert:
-		if len(data) != 2 {
-			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-		}
-		if alert(data[1]) == alertCloseNotify {
-			return c.in.setErrorLocked(io.EOF)
-		}
-		switch data[0] {
-		case alertLevelWarning:
-			// 丢弃警告级告警，继续读
-			return c.retryReadRecord(expectChangeCipherSpec)
-		case alertLevelError:
-			return c.in.setErrorLocked(&net.OpError{Op: "remote error", Err: alert(data[1])})
-		default:
-			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 		}
 
-	case recordTypeChangeCipherSpec:
-		if len(data) != 1 || data[0] != 1 {
-			return c.in.setErrorLocked(c.sendAlert(alertDecodeError))
+		if len(c.rawInputBuf) < recordHeaderLen {
+			return c.in.setErrorLocked(errors.New("dtlcp: record too short"))
 		}
-		if c.handBuf.Len() > 0 {
-			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+
+		hdr := c.rawInputBuf[:recordHeaderLen]
+		typ := recordType(hdr[0])
+
+		// 检查 SSLv2 兼容性
+		if !handshakeComplete && typ == 0x80 {
+			c.sendAlert(alertProtocolVersion)
+			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "unsupported SSLv2 handshake received"))
 		}
-		if !expectChangeCipherSpec {
-			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+
+		vers := uint16(hdr[1])<<8 | uint16(hdr[2])
+		epoch := uint16(hdr[3])<<8 | uint16(hdr[4])
+		seqNum := uint48(hdr[5])<<40 | uint48(hdr[6])<<32 | uint48(hdr[7])<<24 |
+			uint48(hdr[8])<<16 | uint48(hdr[9])<<8 | uint48(hdr[10])
+		n := int(hdr[11])<<8 | int(hdr[12])
+
+		// 版本检查
+		if c.haveVers && vers != c.vers {
+			c.sendAlert(alertProtocolVersion)
+			msg := fmt.Sprintf("received record with version %x when expecting version %x", vers, c.vers)
+			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, msg))
 		}
-		if err := c.in.changeCipherSpec(); err != nil {
+		if !c.haveVers {
+			if (typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000 {
+				return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "first record does not look like a TLCP handshake"))
+			}
+		}
+
+		// 长度检查
+		if n > maxCiphertext {
+			c.sendAlert(alertRecordOverflow)
+			msg := fmt.Sprintf("oversized record received with length %d", n)
+			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, msg))
+		}
+		if recordHeaderLen+n > len(c.rawInputBuf) {
+			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, fmt.Sprintf("record length %d exceeds datagram", n)))
+		}
+
+		// 将 epoch + seq_num 写入 in.seq（供 decrypt 中的 MAC/AAD 使用）
+		c.in.seq[0] = hdr[3]
+		c.in.seq[1] = hdr[4]
+		c.in.seq[2] = hdr[5]
+		c.in.seq[3] = hdr[6]
+		c.in.seq[4] = hdr[7]
+		c.in.seq[5] = hdr[8]
+		c.in.seq[6] = hdr[9]
+		c.in.seq[7] = hdr[10]
+
+		// 解密 + MAC 验证
+		record := c.rawInputBuf[:recordHeaderLen+n]
+		data, typ, err := c.in.decrypt(record)
+		if err != nil {
 			return c.in.setErrorLocked(c.sendAlert(err.(alert)))
 		}
-		// 递增读取 epoch，重置 seq
-		c.readEpoch++
-		c.readSeq = 0
 
-	case recordTypeApplicationData:
-		if !handshakeComplete || expectChangeCipherSpec {
+		// 重放检查（解密成功后执行）
+		if c.replayWindow != nil {
+			if epoch < c.readEpoch {
+				// 旧 epoch：静默丢弃，继续下一条记录
+				c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
+				continue
+			}
+			if epoch > c.readEpoch {
+				c.readEpoch = epoch
+				c.readSeq = 0
+				windowSize := 64
+				if c.config != nil && c.config.ReplayWindow > 0 {
+					windowSize = c.config.ReplayWindow
+				}
+				c.replayWindow = newReplayWindow(windowSize)
+			}
+			if !c.replayWindow.check(seqNum) {
+				// 重放检测：静默丢弃
+				c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
+				continue
+			}
+		}
+
+		if len(data) > maxPlaintext {
+			return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
+		}
+
+		// 应用数据必须总是受保护的
+		if c.in.cipher == nil && typ == recordTypeApplicationData {
 			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 		}
-		if len(data) == 0 {
-			return c.retryReadRecord(expectChangeCipherSpec)
-		}
-		c.readBuf = data
 
-	case recordTypeHandshake:
-		if len(data) == 0 || expectChangeCipherSpec {
-			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+		if typ != recordTypeAlert && typ != recordTypeChangeCipherSpec && len(data) > 0 {
+			c.retryCount = 0
 		}
-		c.handBuf.Write(data)
+
+		// 消费当前记录，将 rawInputBuf 指针前移
+		c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
+
+		switch typ {
+		default:
+			return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+
+		case recordTypeAlert:
+			if len(data) != 2 {
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			if alert(data[1]) == alertCloseNotify {
+				return c.in.setErrorLocked(io.EOF)
+			}
+			switch data[0] {
+			case alertLevelWarning:
+				c.rawInputBuf = nil
+				return c.retryReadRecord(expectChangeCipherSpec)
+			case alertLevelError:
+				return c.in.setErrorLocked(&net.OpError{Op: "remote error", Err: alert(data[1])})
+			default:
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+
+		case recordTypeChangeCipherSpec:
+			if len(data) != 1 || data[0] != 1 {
+				return c.in.setErrorLocked(c.sendAlert(alertDecodeError))
+			}
+			if c.handBuf.Len() > 0 {
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			if !expectChangeCipherSpec {
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			if err := c.in.changeCipherSpec(); err != nil {
+				return c.in.setErrorLocked(c.sendAlert(err.(alert)))
+			}
+			c.readEpoch++
+			c.readSeq = 0
+			// CCS 后如果还有数据（如 Finished 在同一数据报中），继续处理
+			if len(c.rawInputBuf) > 0 {
+				continue
+			}
+			return nil
+
+		case recordTypeApplicationData:
+			if !handshakeComplete || expectChangeCipherSpec {
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			if len(data) == 0 {
+				continue
+			}
+			c.readBuf = data
+			return nil
+
+		case recordTypeHandshake:
+			if len(data) == 0 || expectChangeCipherSpec {
+				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			c.handBuf.Write(data)
+			// 如果还有未处理记录，继续循环处理
+			if len(c.rawInputBuf) > 0 {
+				continue
+			}
+			return nil
+		}
 	}
-
-	return nil
 }
 
 // retryReadRecord 递归进入 readRecordOrCCS 以丢弃非推进记录。

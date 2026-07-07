@@ -109,6 +109,9 @@ const dtlcpHeaderLen = 12
 // dtlcpMarshalHeader 构造 DTLCP 12 字节握手消息头。
 // 返回追加了 body 后的完整字节序列。
 func dtlcpMarshalHeader(msgType uint8, body []byte, msgSeq uint16, fragOff, fragLen uint24) ([]byte, error) {
+	if fragLen == 0 {
+		fragLen = uint24(len(body))
+	}
 	var b cryptobyte.Builder
 	b.AddUint8(msgType)
 	b.AddUint24(uint32(len(body)))
@@ -131,11 +134,13 @@ func dtlcpUnmarshalHeader(data []byte) (msgType uint8, bodyLen uint32, messageSe
 		return 0, 0, 0, 0, 0, nil, false
 	}
 	if fragmentLength > 0 {
-		if int(fragmentLength) > len(s) {
-			return 0, 0, 0, 0, 0, nil, false
+			if int(fragmentLength) > len(s) {
+				return 0, 0, 0, 0, 0, nil, false
+			}
+			body = []byte(s[:fragmentLength])
+		} else {
+			body = []byte(s)
 		}
-		body = []byte(s[:fragmentLength])
-	}
 	return msgType, bodyLen, messageSeq, fragmentOffset, fragmentLength, body, true
 }
 
@@ -773,6 +778,10 @@ func (m *certificateMsg) marshal() ([]byte, error) {
 	}
 
 	bodyLength := 3 + 3*len(m.certificates) + i
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(bodyLength)
+	}
 	x := make([]byte, dtlcpHeaderLen+bodyLength)
 	x[0] = typeCertificate
 	x[1] = uint8(bodyLength >> 16)
@@ -783,9 +792,9 @@ func (m *certificateMsg) marshal() ([]byte, error) {
 	x[6] = uint8(m.fragmentOffset >> 16)
 	x[7] = uint8(m.fragmentOffset >> 8)
 	x[8] = uint8(m.fragmentOffset)
-	x[9] = uint8(m.fragmentLength >> 16)
-	x[10] = uint8(m.fragmentLength >> 8)
-	x[11] = uint8(m.fragmentLength)
+	x[9] = uint8(fragLen >> 16)
+	x[10] = uint8(fragLen >> 8)
+	x[11] = uint8(fragLen)
 
 	certificateOctets := bodyLength - 3
 	x[12] = uint8(certificateOctets >> 16)
@@ -888,6 +897,10 @@ func (m *serverKeyExchangeMsg) marshal() ([]byte, error) {
 		return m.raw, nil
 	}
 	length := len(m.key)
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(length)
+	}
 	x := make([]byte, dtlcpHeaderLen+length)
 	x[0] = typeServerKeyExchange
 	x[1] = uint8(length >> 16)
@@ -898,9 +911,9 @@ func (m *serverKeyExchangeMsg) marshal() ([]byte, error) {
 	x[6] = uint8(m.fragmentOffset >> 16)
 	x[7] = uint8(m.fragmentOffset >> 8)
 	x[8] = uint8(m.fragmentOffset)
-	x[9] = uint8(m.fragmentLength >> 16)
-	x[10] = uint8(m.fragmentLength >> 8)
-	x[11] = uint8(m.fragmentLength)
+	x[9] = uint8(fragLen >> 16)
+	x[10] = uint8(fragLen >> 8)
+	x[11] = uint8(fragLen)
 	copy(x[dtlcpHeaderLen:], m.key)
 
 	m.raw = x
@@ -964,6 +977,10 @@ func (m *certificateRequestMsg) marshal() ([]byte, error) {
 	}
 	length += casLength
 
+fragLen := m.fragmentLength
+if fragLen == 0 {
+	fragLen = uint24(length)
+}
 	x := make([]byte, dtlcpHeaderLen+length)
 	x[0] = typeCertificateRequest
 	x[1] = uint8(length >> 16)
@@ -974,9 +991,9 @@ func (m *certificateRequestMsg) marshal() ([]byte, error) {
 	x[6] = uint8(m.fragmentOffset >> 16)
 	x[7] = uint8(m.fragmentOffset >> 8)
 	x[8] = uint8(m.fragmentOffset)
-	x[9] = uint8(m.fragmentLength >> 16)
-	x[10] = uint8(m.fragmentLength >> 8)
-	x[11] = uint8(m.fragmentLength)
+	x[9] = uint8(fragLen >> 16)
+	x[10] = uint8(fragLen >> 8)
+	x[11] = uint8(fragLen)
 
 	x[12] = uint8(len(m.certificateTypes))
 	copy(x[13:], m.certificateTypes)
@@ -1177,6 +1194,10 @@ func (m *clientKeyExchangeMsg) marshal() ([]byte, error) {
 		return m.raw, nil
 	}
 	length := len(m.ciphertext)
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(length)
+	}
 	x := make([]byte, dtlcpHeaderLen+length)
 	x[0] = typeClientKeyExchange
 	x[1] = uint8(length >> 16)
@@ -1187,9 +1208,9 @@ func (m *clientKeyExchangeMsg) marshal() ([]byte, error) {
 	x[6] = uint8(m.fragmentOffset >> 16)
 	x[7] = uint8(m.fragmentOffset >> 8)
 	x[8] = uint8(m.fragmentOffset)
-	x[9] = uint8(m.fragmentLength >> 16)
-	x[10] = uint8(m.fragmentLength >> 8)
-	x[11] = uint8(m.fragmentLength)
+	x[9] = uint8(fragLen >> 16)
+	x[10] = uint8(fragLen >> 8)
+	x[11] = uint8(fragLen)
 	copy(x[dtlcpHeaderLen:], m.ciphertext)
 
 	m.raw = x
