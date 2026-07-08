@@ -24,6 +24,7 @@ DTLCP 服务端需要两对国密 SM2 证书和密钥：
 package main
 
 import (
+    "fmt"
     "gitee.com/Trisia/gotlcp/dtlcp"
 )
 
@@ -109,12 +110,17 @@ func handleConn(conn *dtlcp.Conn) {
     if err != nil {
         return
     }
-    conn.Write([]byte("Hello DTLCP Client!"))
-    _ = buf[:n]
+    fmt.Printf(">> %s\n", buf[:n])
+    _, err = conn.Write([]byte("Hello DTLCP Client!"))
+    if err != nil {
+        fmt.Printf("conn.Write error: %v\n", err)
+        return
+    }
 }
 ```
 
 完整代码见 [example/dtlcp/quickstart/server/main.go](../example/dtlcp/quickstart/server/main.go)。
+<!-- 此示例文件将由 Task 6 创建，当前尚不存在。 -->
 
 ## 4. 客户端快速开始
 
@@ -153,6 +159,7 @@ func main() {
 ```
 
 完整代码见 [example/dtlcp/quickstart/client/main.go](../example/dtlcp/quickstart/client/main.go)。
+<!-- 此示例文件将由 Task 6 创建，当前尚不存在。 -->
 
 ## 5. 运行与验证
 
