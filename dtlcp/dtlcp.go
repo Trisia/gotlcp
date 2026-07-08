@@ -22,8 +22,9 @@ import (
 	x509 "github.com/emmansun/gmsm/smx509"
 )
 
-// Server 使用现有连接对象构造一个新的 DTLCP 服务端连接对象。
-// 配置参数对象 config 不能为空，且至少提供签名密钥对和加密密钥以及签名证书和加密证书。
+// Server 基于现有 PacketConn 创建 DTLCP 服务端连接。
+// pconn 为底层 UDP 连接，addr 为对端地址，config 为 DTLCP 配置。
+// 返回的 Conn 尚未完成握手，首次 Read/Write 时自动触发。
 func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 	c := &Conn{
 		pconn:            pconn,
@@ -44,7 +45,9 @@ func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 	return c
 }
 
-// Client 使用现有连接对象构造一个新的 DTLCP 客户端连接对象。
+// Client 基于现有 PacketConn 创建 DTLCP 客户端连接。
+// pconn 为底层 UDP 连接，addr 为服务端地址，config 为客户端配置。
+// 返回的 Conn 尚未完成握手，首次 Read/Write 时自动触发。
 func Client(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 	c := &Conn{
 		pconn:            pconn,
@@ -108,7 +111,10 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 	return &listener{Listener: inner, config: config}
 }
 
-// Listen 在指定的网络协议上，监听指定地址的端口，创建一个 DTLCP Listener。
+// Listen 在指定网络地址上创建 DTLCP 监听器。
+// network 为网络类型（如 "udp"），laddr 为本地监听地址。
+// config 不能为空且至少需要提供签名证书和加密证书（Certificates）。
+// 返回的 net.Listener 可用于 Accept DTLCP 连接。
 func Listen(network, laddr string, config *Config) (net.Listener, error) {
 	if config == nil || len(config.Certificates) == 0 &&
 		config.GetCertificate == nil && config.GetConfigForClient == nil {
@@ -121,12 +127,17 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 	return NewListener(l, config), nil
 }
 
-// Dial 建立 DTLCP 客户端连接
+// Dial 使用默认配置发起 DTLCP 客户端连接。
+// network 为网络类型（如 "udp"），addr 为服务端地址。
+// config 为客户端配置，若为 nil 则使用默认配置。
+// 返回已完成握手的 Conn。
 func Dial(network, addr string, config *Config) (*Conn, error) {
 	return DialContext(context.Background(), network, addr, config)
 }
 
-// DialContext 在给定上下文中建立 DTLCP 客户端连接
+// DialContext 在给定上下文中建立 DTLCP 客户端连接。
+// ctx 可用于设置拨号超时。若 ctx 被取消，连接将被关闭。
+// 返回已完成握手的 Conn。
 func DialContext(ctx context.Context, network, addr string, config *Config) (*Conn, error) {
 	rawConn, err := net.Dial(network, addr)
 	if err != nil {
@@ -151,11 +162,11 @@ func DialContext(ctx context.Context, network, addr string, config *Config) (*Co
 	return conn, nil
 }
 
-// Dialer DTLCP 客户端拨号器
+// Dialer 是 DTLCP 客户端拨号器，支持配置底层 net.Dialer 和 DTLCP Config。
 type Dialer struct {
-	// NetDialer 底层网络拨号器，默认使用 net.Dialer
+	// NetDialer 底层网络拨号器，默认使用 net.Dialer。
 	NetDialer *net.Dialer
-	// Config DTLCP 配置
+	// Config DTLCP 配置，若为 nil 则使用默认配置。
 	Config *Config
 }
 

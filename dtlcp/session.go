@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-// SessionState 包含了TLCP会话相关的密码参数，用于会话重用
+// SessionState 包含了 TLCP 会话重用的密码参数。
+// 由握手完成后产生，可用于后续会话重用握手中快速恢复连接。
 type SessionState struct {
 	sessionId        []byte              // 会话ID
 	vers             uint16              // TLCP 版本号
@@ -27,10 +28,11 @@ type SessionState struct {
 	createdAt        time.Time           // Session创建时间
 }
 
-// SessionCache 会话缓存器，用于缓存TLCP连接建立后的会话信息 SessionState
-// 用于在 TLCP 协议的握手重用过程中提供会话相关的信息。
+// SessionCache 会话缓存器接口，用于存储和检索会话状态。
+// 实现必须支持多 goroutine 并发访问。
 //
-// 会话缓存器的实现应该考虑到多 goroutines 并发访问的问题。
+// Get 根据 sessionKey 查找会话，若 sessionKey 为空则返回最近一个会话。
+// Put 存储会话，若 cs 为 nil 则删除该会话。
 type SessionCache interface {
 
 	// Get 缓存中 sessionKey 的 SessionState，若不存在则 返回 ok  false
@@ -57,10 +59,9 @@ type lruSessionCacheEntry struct {
 	state      *SessionState
 }
 
-// NewLRUSessionCache 返回一个指定容量的 最近最少使用缓存（LRU）对象。
-// 在缓存空间不足时，优先淘汰最近最少使用的缓存部分。
-//
-// 当 capacity 小于1时，使用默认容量 64
+// NewLRUSessionCache 创建指定容量的 LRU 会话缓存器。
+// 参数 capacity 为最大缓存条目数。若 capacity < 1，使用默认值 64。
+// 当缓存满时，优先淘汰最近最少使用的条目，并置零对应的主密钥。
 func NewLRUSessionCache(capacity int) SessionCache {
 	const defaultSessionCacheCapacity = 64
 

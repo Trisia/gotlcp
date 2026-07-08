@@ -5,8 +5,10 @@ package dtlcp
 
 import "time"
 
-// RetransmitTimer DTLCP 重传定时器
-// 支持指数退避：每次超时加倍，直到 max
+// RetransmitTimer DTLCP 重传定时器，支持指数退避策略。
+// 初始超时 = Config.InitialRetransmitTimeout（默认 1s）。
+// 每次超时后超时值翻倍，上限 = Config.MaxRetransmitTimeout（默认 64s）。
+// 通过 Config.NewTimer 注入，便于测试 mock。
 type RetransmitTimer struct {
 	initial  time.Duration
 	current  time.Duration

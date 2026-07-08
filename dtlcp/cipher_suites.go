@@ -37,7 +37,8 @@ var (
 	supportedOnlyTLCP = []uint16{VersionTLCP}
 )
 
-// CipherSuites 返回支持的密码算法套件列表
+// CipherSuites 返回支持的密码算法套件列表。
+// 按优先级排序：ECC_SM4_GCM_SM3 > ECC_SM4_CBC_SM3 > ECDHE_SM4_GCM_SM3 > ECDHE_SM4_CBC_SM3。
 func CipherSuites() []*CipherSuite {
 	return []*CipherSuite{
 		{ECDHE_SM4_CBC_SM3, "ECDHE_SM4_CBC_SM3", supportedOnlyTLCP, false},
@@ -47,13 +48,14 @@ func CipherSuites() []*CipherSuite {
 	}
 }
 
-// InsecureCipherSuites 已知的不安全的密码套件列表
+// InsecureCipherSuites 返回已知不安全的密码套件列表，当前为空。
 func InsecureCipherSuites() []*CipherSuite {
 	return []*CipherSuite{}
 }
 
-// CipherSuiteName 通过密码套件ID返还密码套件的标准名称。
-// （如： "ECC_SM4_CBC_SM3"）
+// CipherSuiteName 通过密码套件 ID 返回标准名称。
+// 例如输入 0xe013 返回 "ECC_SM4_CBC_SM3"。
+// 若 ID 未知，返回 "0xXXXX" 格式的十六进制表示。
 func CipherSuiteName(id uint16) string {
 	for _, c := range CipherSuites() {
 		if c.ID == id {

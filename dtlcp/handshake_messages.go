@@ -507,6 +507,9 @@ func (m *clientHelloMsg) getMessageSeq() uint16 {
 // helloVerifyRequestMsg — DTLCP 新增消息类型
 // =============================================================================
 
+// HelloVerifyRequest DTLCP Hello 验证请求消息（type = 3）。
+// 服务端在收到无 cookie 的 ClientHello 后发送，用于无状态防 DoS。
+// 包含一个 cookie，客户端须在重发的 ClientHello 中携带此 cookie。
 type helloVerifyRequestMsg struct {
 	raw            []byte
 	serverVersion  uint16   // 0x0101
