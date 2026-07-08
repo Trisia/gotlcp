@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 820" width="960" height="820">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="mc" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="ms" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="mo" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/>
+    </marker>
+    <marker id="mv" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c3aed"/>
+    </marker>
+  </defs>
+  <rect width="960" height="820" fill="#ffffff"/>
+  <text x="480" y="22" text-anchor="middle" fill="#111827" font-size="17" font-weight="600">DTLCP 会话重用流程</text>
+
+  <rect x="20" y="84" width="920" height="122" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="98" fill="#94a3b8" font-size="9" font-weight="600">第1步: Cookie 验证</text>
+  <line x1="120" y1="129" x2="840" y2="129" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="118" width="130" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="199" y="134" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">ClientHello</text>
+  <text x="134" y="150" fill="#6b7280" font-size="9">cookie = 空</text>
+  <line x1="840" y1="171" x2="120" y2="171" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="626" y="160" width="200" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="726" y="176" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">HelloVerifyRequest</text>
+  <text x="826" y="192" text-anchor="end" fill="#6b7280" font-size="9">HMAC-SM3 Cookie</text>
+  <rect x="20" y="224" width="920" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="238" fill="#94a3b8" font-size="9" font-weight="600">第2步: 会话重用请求</text>
+  <line x1="120" y1="269" x2="840" y2="269" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="258" width="130" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="199" y="274" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">ClientHello</text>
+  <text x="134" y="290" fill="#6b7280" font-size="9">携带 Cookie + session_id (旧会话)</text>
+  <rect x="20" y="322" width="920" height="164" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="336" fill="#94a3b8" font-size="9" font-weight="600">第3步: 服务端确认重用</text>
+  <line x1="840" y1="367" x2="120" y2="367" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="696" y="356" width="130" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="761" y="372" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">ServerHello</text>
+  <text x="826" y="388" text-anchor="end" fill="#6b7280" font-size="9">相同 session_id</text>
+  <line x1="120" y1="409" x2="840" y2="409" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#mo)"/>
+  <rect x="134" y="398" width="200" height="22" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="234" y="414" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">[ChangeCipherSpec]</text>
+  <line x1="840" y1="451" x2="120" y2="451" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="726" y="440" width="100" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="776" y="456" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">Finished</text>
+  <rect x="20" y="504" width="920" height="122" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="518" fill="#94a3b8" font-size="9" font-weight="600">第4步: 客户端确认</text>
+  <line x1="120" y1="549" x2="840" y2="549" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#mo)"/>
+  <rect x="134" y="538" width="200" height="22" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="234" y="554" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">[ChangeCipherSpec]</text>
+  <line x1="120" y1="591" x2="840" y2="591" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="580" width="100" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="184" y="596" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">Finished</text>
+  <rect x="20" y="646" width="920" height="66" rx="6" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="35" y="660" fill="#7c3aed" font-size="9" font-weight="600">APPLICATION DATA</text>
+  <line x1="120" y1="674" x2="840" y2="674" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mv)"/>
+  <rect x="134" y="663" width="44" height="22" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="156" y="679" text-anchor="middle" fill="#7c3aed" font-size="11" font-weight="600">Data</text>
+  <line x1="840" y1="690" x2="120" y2="690" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mv)"/>
+  <rect x="782" y="679" width="44" height="22" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="804" y="695" text-anchor="middle" fill="#7c3aed" font-size="11" font-weight="600">Data</text>
+  <text x="480" y="706" text-anchor="middle" fill="#6b7280" font-size="8">跳过证书交换和密钥协商, 直接恢复加密通信</text>
+  <rect x="180" y="722" width="600" height="28" rx="5" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="480" y="741" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">会话重用减少 1 RTT, 省去证书传输和密钥协商开销</text>
+  <line x1="120" y1="44" x2="120" y2="760" stroke="#bfdbfe" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <rect x="90" y="44" width="60" height="26" rx="5" fill="#2563eb"/>
+  <text x="120" y="62" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Client</text>
+  <line x1="840" y1="44" x2="840" y2="760" stroke="#bbf7d0" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <rect x="810" y="44" width="60" height="26" rx="5" fill="#16a34a"/>
+  <text x="840" y="62" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Server</text>
+  <g transform="translate(30, 775)">
+    <rect x="0" y="0" width="24" height="12" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+    <text x="28" y="10" fill="#6b7280" font-size="8">Client → Server</text>
+    <rect x="130" y="0" width="24" height="12" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+    <text x="158" y="10" fill="#6b7280" font-size="8">Server → Client</text>
+    <rect x="260" y="0" width="24" height="12" rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.5"/>
+    <text x="288" y="10" fill="#6b7280" font-size="8">CCS</text>
+  </g>
+</svg>

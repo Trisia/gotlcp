@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1260" width="960" height="1260">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="mc" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="ms" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="mo" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/>
+    </marker>
+  </defs>
+  <rect width="960" height="1260" fill="#ffffff"/>
+  <text x="480" y="22" text-anchor="middle" fill="#111827" font-size="17" font-weight="600">DTLCP 完整握手流程 (6 Flight)</text>
+
+  <rect x="20" y="84" width="920" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="98" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 1 · Client → Server (epoch=0)</text>
+  <line x1="120" y1="129" x2="840" y2="129" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="118" width="130" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="199" y="134" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">ClientHello</text>
+  <text x="134" y="150" fill="#6b7280" font-size="9">cookie = 空</text>
+  <rect x="20" y="182" width="920" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="196" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 2 · Server → Client</text>
+  <line x1="840" y1="227" x2="120" y2="227" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="626" y="216" width="200" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="726" y="232" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">HelloVerifyRequest</text>
+  <text x="826" y="248" text-anchor="end" fill="#6b7280" font-size="9">HMAC-SM3 Cookie</text>
+  <rect x="20" y="280" width="920" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="294" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 3 · Client → Server (epoch=0)</text>
+  <line x1="120" y1="325" x2="840" y2="325" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="314" width="130" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="199" y="330" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">ClientHello</text>
+  <text x="134" y="346" fill="#6b7280" font-size="9">携带 Cookie</text>
+  <rect x="20" y="378" width="920" height="248" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="392" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 4 · Server → Client (epoch=0)</text>
+  <line x1="840" y1="423" x2="120" y2="423" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="696" y="412" width="130" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="761" y="428" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">ServerHello</text>
+  <line x1="840" y1="465" x2="120" y2="465" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="686" y="454" width="140" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="756" y="470" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">Certificate*</text>
+  <text x="826" y="486" text-anchor="end" fill="#6b7280" font-size="9">签名证书 + 加密证书</text>
+  <line x1="840" y1="507" x2="120" y2="507" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="626" y="496" width="200" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="726" y="512" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">ServerKeyExchange*</text>
+  <line x1="840" y1="549" x2="120" y2="549" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="616" y="538" width="210" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="721" y="554" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">CertificateRequest*</text>
+  <line x1="840" y1="591" x2="120" y2="591" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="656" y="580" width="170" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="741" y="596" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">ServerHelloDone</text>
+  <rect x="20" y="644" width="920" height="248" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="658" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 5 · Client → Server (epoch 0→1)</text>
+  <line x1="120" y1="689" x2="840" y2="689" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="678" width="140" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="204" y="694" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">Certificate*</text>
+  <line x1="120" y1="731" x2="840" y2="731" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="720" width="190" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="229" y="736" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">ClientKeyExchange</text>
+  <line x1="120" y1="773" x2="840" y2="773" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="762" width="200" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="234" y="778" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">CertificateVerify*</text>
+  <line x1="120" y1="815" x2="840" y2="815" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#mo)"/>
+  <rect x="134" y="804" width="200" height="22" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="234" y="820" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">[ChangeCipherSpec]</text>
+  <text x="134" y="836" fill="#6b7280" font-size="9">epoch 翻转为 1</text>
+  <line x1="120" y1="857" x2="840" y2="857" stroke="#2563eb" stroke-width="1.2" marker-end="url(#mc)"/>
+  <rect x="134" y="846" width="150" height="22" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="209" y="862" text-anchor="middle" fill="#1e40af" font-size="11" font-weight="600">Finished (加密)</text>
+  <rect x="20" y="910" width="920" height="122" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="35" y="924" fill="#94a3b8" font-size="9" font-weight="600">FLIGHT 6 · Server → Client (epoch=1)</text>
+  <line x1="120" y1="955" x2="840" y2="955" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#mo)"/>
+  <rect x="134" y="944" width="200" height="22" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="234" y="960" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">[ChangeCipherSpec]</text>
+  <line x1="840" y1="997" x2="120" y2="997" stroke="#16a34a" stroke-width="1.2" marker-end="url(#ms)"/>
+  <rect x="676" y="986" width="150" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="751" y="1002" text-anchor="middle" fill="#166534" font-size="11" font-weight="600">Finished (加密)</text>
+  <text x="480" y="1044" text-anchor="middle" fill="#15803d" font-size="13" font-weight="600">✓ 握手完成</text>
+  <rect x="20" y="1068" width="920" height="66" rx="6" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="35" y="1082" fill="#7c3aed" font-size="9" font-weight="600">APPLICATION DATA (epoch=1)</text>
+  <line x1="120" y1="1096" x2="840" y2="1096" stroke="#7c3aed" stroke-width="1.2"/>
+  <rect x="134" y="1085" width="44" height="22" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="156" y="1101" text-anchor="middle" fill="#7c3aed" font-size="11" font-weight="600">Data</text>
+  <line x1="840" y1="1112" x2="120" y2="1112" stroke="#7c3aed" stroke-width="1.2"/>
+  <rect x="782" y="1101" width="44" height="22" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="804" y="1117" text-anchor="middle" fill="#7c3aed" font-size="11" font-weight="600">Data</text>
+  <text x="480" y="1128" text-anchor="middle" fill="#6b7280" font-size="8">双向加密通信</text>
+  <line x1="120" y1="44" x2="120" y2="1144" stroke="#bfdbfe" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <rect x="90" y="44" width="60" height="26" rx="5" fill="#2563eb"/>
+  <text x="120" y="62" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Client</text>
+  <line x1="840" y1="44" x2="840" y2="1144" stroke="#bbf7d0" stroke-width="1.2" stroke-dasharray="6,4"/>
+  <rect x="810" y="44" width="60" height="26" rx="5" fill="#16a34a"/>
+  <text x="840" y="62" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Server</text>
+  <g transform="translate(30, 1159)">
+    <rect x="0" y="0" width="28" height="14" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+    <text x="34" y="11" fill="#6b7280" font-size="9">Client → Server</text>
+    <rect x="150" y="0" width="28" height="14" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+    <text x="184" y="11" fill="#6b7280" font-size="9">Server → Client</text>
+    <rect x="300" y="0" width="28" height="14" rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.5"/>
+    <text x="334" y="11" fill="#6b7280" font-size="9">CCS</text>
+  </g>
+</svg>

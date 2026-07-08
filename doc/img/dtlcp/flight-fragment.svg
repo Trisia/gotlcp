@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <filter id="sh" x="-2%" y="-3%" width="104%" height="110%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="960" height="400" fill="#ffffff"/>
+  <text x="480" y="28" text-anchor="middle" fill="#111827" font-size="18" font-weight="600">Flight 与分片关系示例</text>
+  <text x="480" y="48" text-anchor="middle" fill="#6b7280" font-size="12">Flight 4 示例: PMTU = 1400, Certificate = 3500 字节</text>
+
+  # ── sendBuf content ──
+  <rect x="25" y="70" width="910" height="45" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="40" y="98" fill="#1d4ed8" font-size="13" font-weight="600">sendBuf</text>
+
+  # Record blocks
+  <rect x="100" y="78" width="150" height="30" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1" filter="url(#sh)"/>
+  <text x="175" y="98" text-anchor="middle" fill="#1e40af" font-size="11">ServerHello (200B)</text>
+
+  <rect x="258" y="78" width="160" height="30" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="338" y="98" text-anchor="middle" fill="#92400e" font-size="11">Certificate [片0] (1400B)</text>
+
+  <rect x="426" y="78" width="160" height="30" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="506" y="98" text-anchor="middle" fill="#92400e" font-size="11">Certificate [片1] (1400B)</text>
+
+  <rect x="594" y="78" width="160" height="30" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="674" y="98" text-anchor="middle" fill="#92400e" font-size="11">Certificate [片2] (700B)</text>
+
+  <rect x="762" y="78" width="160" height="30" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1" filter="url(#sh)"/>
+  <text x="842" y="98" text-anchor="middle" fill="#1e40af" font-size="11">ServerHelloDone (50B)</text>
+
+  # ── Annotation: one UDP packet ──
+  <line x1="100" y1="120" x2="100" y2="145" stroke="#6b7280" stroke-width="1"/>
+  <line x1="922" y1="120" x2="922" y2="145" stroke="#6b7280" stroke-width="1"/>
+  <rect x="280" y="145" width="400" height="30" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="480" y="165" text-anchor="middle" fill="#166534" font-size="12" font-weight="600">c.flush() → 全部记录在一个 UDP 报文中连续发送</text>
+
+  # ── Explanation boxes ──
+  <text x="40" y="210" fill="#111827" font-size="14" font-weight="600">分片层级</text>
+
+  <rect x="40" y="225" width="270" height="90" rx="6" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="175" y="250" text-anchor="middle" fill="#15803d" font-size="13" font-weight="600">Flight 级别</text>
+  <text x="175" y="270" text-anchor="middle" fill="#6b7280" font-size="11">· 控制发送/等待/重传节奏</text>
+  <text x="175" y="288" text-anchor="middle" fill="#6b7280" font-size="11">· 同一 Flight 所有分片共享 message_seq</text>
+  <text x="175" y="306" text-anchor="middle" fill="#6b7280" font-size="11">· flightData 保存完整 sendBuf</text>
+
+  <rect x="345" y="225" width="270" height="90" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="480" y="250" text-anchor="middle" fill="#1d4ed8" font-size="13" font-weight="600">消息级别</text>
+  <text x="480" y="270" text-anchor="middle" fill="#6b7280" font-size="11">· 握手消息超过 PMTU 时拆分</text>
+  <text x="480" y="288" text-anchor="middle" fill="#6b7280" font-size="11">· fragment_offset / fragment_length 定位</text>
+  <text x="480" y="306" text-anchor="middle" fill="#6b7280" font-size="11">· 接收方按 offset 拼接重组</text>
+
+  <rect x="650" y="225" width="270" height="90" rx="6" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.5"/>
+  <text x="785" y="250" text-anchor="middle" fill="#7c3aed" font-size="13" font-weight="600">记录级别</text>
+  <text x="785" y="270" text-anchor="middle" fill="#6b7280" font-size="11">· 每个记录 ≤ PMTU</text>
+  <text x="785" y="288" text-anchor="middle" fill="#6b7280" font-size="11">· 含 13 字节 DTLCP 记录头</text>
+  <text x="785" y="306" text-anchor="middle" fill="#6b7280" font-size="11">· 不跨 UDP 报文</text>
+
+  # Key rule
+  <rect x="100" y="340" width="760" height="32" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="480" y="361" text-anchor="middle" fill="#92400e" font-size="12">flightData 保存的是完整 sendBuf (含所有分片记录), 重传时一并重发</text>
+</svg>

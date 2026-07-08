@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="115%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="960" height="500" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="480" y="36" text-anchor="middle" fill="#111827" font-size="18" font-weight="600">协议关系链</text>
+
+  <!-- TLS 1.2 node (top-left) -->
+  <rect x="80" y="80" width="300" height="80" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="230" y="115" text-anchor="middle" fill="#1d4ed8" font-size="16" font-weight="600">TLS 1.2</text>
+  <text x="230" y="140" text-anchor="middle" fill="#6b7280" font-size="12">RFC 5246</text>
+
+  <!-- TLCP node (top-right) -->
+  <rect x="580" y="80" width="300" height="80" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="730" y="115" text-anchor="middle" fill="#15803d" font-size="16" font-weight="600">TLCP</text>
+  <text x="730" y="140" text-anchor="middle" fill="#6b7280" font-size="12">GB/T 38636-2020</text>
+
+  <!-- DTLS 1.2 node (bottom-left) -->
+  <rect x="80" y="310" width="300" height="80" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="230" y="345" text-anchor="middle" fill="#1d4ed8" font-size="16" font-weight="600">DTLS 1.2</text>
+  <text x="230" y="370" text-anchor="middle" fill="#6b7280" font-size="12">RFC 6347</text>
+
+  <!-- DTLCP node (bottom-right) -->
+  <rect x="580" y="310" width="300" height="80" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="730" y="345" text-anchor="middle" fill="#15803d" font-size="16" font-weight="600">DTLCP</text>
+  <text x="730" y="370" text-anchor="middle" fill="#6b7280" font-size="12">GM/T 0128-2023</text>
+
+  <!-- Horizontal arrows: 国密化 -->
+  <line x1="385" y1="120" x2="572" y2="120" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="478" y="108" text-anchor="middle" fill="#15803d" font-size="13" font-weight="600">国密化</text>
+
+  <line x1="385" y1="350" x2="572" y2="350" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="478" y="338" text-anchor="middle" fill="#15803d" font-size="13" font-weight="600">国密化</text>
+
+  <!-- Vertical arrows: UDP适配 -->
+  <line x1="230" y1="165" x2="230" y2="302" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <text x="218" y="240" text-anchor="middle" fill="#6b7280" font-size="13" font-weight="600" transform="rotate(-90, 218, 240)">UDP 适配</text>
+
+  <line x1="730" y1="165" x2="730" y2="302" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <text x="718" y="240" text-anchor="middle" fill="#6b7280" font-size="13" font-weight="600" transform="rotate(-90, 718, 240)">UDP 适配</text>
+
+  <!-- Legend -->
+  <g transform="translate(30, 440)">
+    <rect x="0" y="0" width="12" height="12" rx="2" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <text x="18" y="11" fill="#6b7280" font-size="12">国际标准</text>
+    <rect x="100" y="0" width="12" height="12" rx="2" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="118" y="11" fill="#6b7280" font-size="12">国密标准</text>
+    <line x1="210" y1="6" x2="240" y2="6" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text x="248" y="11" fill="#6b7280" font-size="12">国密化</text>
+    <line x1="310" y1="6" x2="340" y2="6" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow-gray)"/>
+    <text x="348" y="11" fill="#6b7280" font-size="12">UDP 适配</text>
+  </g>
+</svg>

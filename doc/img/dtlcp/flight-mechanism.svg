@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="ma" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <marker id="mb" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/>
+    </marker>
+    <filter id="sh" x="-3%" y="-5%" width="106%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="960" height="720" fill="#ffffff"/>
+  <text x="480" y="24" text-anchor="middle" fill="#111827" font-size="17" font-weight="600">Flight 缓冲发送机制</text>
+
+  <rect x="40" y="50" width="160" height="70" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" filter="url(#sh)"/>
+  <text x="120" y="76" text-anchor="middle" fill="#1d4ed8" font-size="14" font-weight="600">PREPARING</text>
+  <text x="120" y="94" text-anchor="middle" fill="#6b7280" font-size="10">构造 Flight</text>
+  <text x="120" y="109" text-anchor="middle" fill="#6b7280" font-size="10">消息列表</text>
+  <rect x="240" y="50" width="160" height="70" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="2" filter="url(#sh)"/>
+  <text x="320" y="76" text-anchor="middle" fill="#15803d" font-size="14" font-weight="600">SENDING</text>
+  <text x="320" y="94" text-anchor="middle" fill="#6b7280" font-size="10">缓冲 · 序列化</text>
+  <text x="320" y="109" text-anchor="middle" fill="#6b7280" font-size="10">flush 发送</text>
+  <rect x="460" y="50" width="160" height="70" rx="10" fill="#fef3c7" stroke="#fcd34d" stroke-width="2" filter="url(#sh)"/>
+  <text x="540" y="76" text-anchor="middle" fill="#92400e" font-size="14" font-weight="600">WAITING</text>
+  <text x="540" y="94" text-anchor="middle" fill="#6b7280" font-size="10">等待响应</text>
+  <text x="540" y="109" text-anchor="middle" fill="#6b7280" font-size="10">超时重传</text>
+  <rect x="680" y="50" width="160" height="70" rx="10" fill="#faf5ff" stroke="#d8b4fe" stroke-width="2" filter="url(#sh)"/>
+  <text x="760" y="76" text-anchor="middle" fill="#7c3aed" font-size="14" font-weight="600">FINISHED</text>
+  <text x="760" y="94" text-anchor="middle" fill="#6b7280" font-size="10">握手完成</text>
+  <text x="760" y="109" text-anchor="middle" fill="#6b7280" font-size="10">保持 2×MSL</text>
+  <line x1="200" y1="85" x2="232" y2="85" stroke="#6b7280" stroke-width="1.5" marker-end="url(#ma)"/>
+  <line x1="400" y1="85" x2="452" y2="85" stroke="#6b7280" stroke-width="1.5" marker-end="url(#ma)"/>
+  <line x1="620" y1="85" x2="672" y2="85" stroke="#6b7280" stroke-width="1.5" marker-end="url(#ma)"/>
+  <rect x="80" y="160" width="800" height="210" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="100" y="182" fill="#111827" font-size="13" font-weight="600">SENDING 阶段详解: 缓冲 + 快照 + 刷新</text>
+
+  <rect x="120" y="202" width="170" height="56" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="205" y="222" text-anchor="middle" fill="#111827" font-size="11" font-weight="600">1. 开启缓冲模式</text>
+  <text x="205" y="240" text-anchor="middle" fill="#6b7280" font-size="9">write 不实际发包</text>
+  <text x="205" y="253" text-anchor="middle" fill="#6b7280" font-size="9">累积到 sendBuf</text>
+  <line x1="290" y1="230" x2="308" y2="230" stroke="#6b7280" stroke-width="1.2" marker-end="url(#ma)"/>
+  <rect x="310" y="202" width="170" height="56" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="395" y="222" text-anchor="middle" fill="#111827" font-size="11" font-weight="600">2. 序列化写入 sendBuf</text>
+  <text x="395" y="240" text-anchor="middle" fill="#6b7280" font-size="9">逐条消息写入</text>
+  <text x="395" y="253" text-anchor="middle" fill="#6b7280" font-size="9">含 13B DTLCP 记录头</text>
+  <line x1="480" y1="230" x2="498" y2="230" stroke="#6b7280" stroke-width="1.2" marker-end="url(#ma)"/>
+  <rect x="500" y="202" width="170" height="56" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="585" y="222" text-anchor="middle" fill="#111827" font-size="11" font-weight="600">3. 保存 flightData</text>
+  <text x="585" y="240" text-anchor="middle" fill="#6b7280" font-size="9">copy(sendBuf)</text>
+  <text x="585" y="253" text-anchor="middle" fill="#6b7280" font-size="9">完整字节快照</text>
+  <line x1="670" y1="230" x2="688" y2="230" stroke="#6b7280" stroke-width="1.2" marker-end="url(#ma)"/>
+  <rect x="690" y="202" width="170" height="56" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="775" y="222" text-anchor="middle" fill="#111827" font-size="11" font-weight="600">4. flush()</text>
+  <text x="775" y="240" text-anchor="middle" fill="#6b7280" font-size="9">一次性写入</text>
+  <text x="775" y="253" text-anchor="middle" fill="#6b7280" font-size="9">UDP socket</text>
+  <text x="100" y="275" fill="#6b7280" font-size="10" font-weight="600">sendBuf 内容 (示例: Flight 4):</text>
+  <rect x="100" y="285" width="119" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.8"/>
+  <text x="159" y="302" text-anchor="middle" fill="#1e40af" font-size="10">ServerHello</text>
+  <rect x="227" y="285" width="119" height="24" rx="4" fill="#fef3c7" stroke="#93c5fd" stroke-width="0.8"/>
+  <text x="286" y="302" text-anchor="middle" fill="#92400e" font-size="10">Certificate</text>
+  <rect x="354" y="285" width="155" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.8"/>
+  <text x="431" y="302" text-anchor="middle" fill="#1e40af" font-size="10">ServerHelloDone</text>
+  <text x="517" y="302" fill="#94a3b8" font-size="10">...</text>
+  <text x="100" y="327" fill="#6b7280" font-size="10" font-weight="600">flightData (快照):</text>
+  <rect x="100" y="335" width="420" height="28" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="310" y="354" text-anchor="middle" fill="#92400e" font-size="10">copy(sendBuf) → 完整字节快照 (含记录头 + epoch + seq_num)</text>
+  <rect x="80" y="400" width="800" height="155" rx="8" fill="#fef9f0" stroke="#fde68a" stroke-width="1"/>
+  <text x="100" y="422" fill="#111827" font-size="13" font-weight="600">WAITING 阶段: 超时重传</text>
+  <text x="100" y="450" fill="#6b7280" font-size="10">重传定时器: 1s → 2s → 4s → 8s → 16s → 32s → 64s (上限) — 指数退避</text>
+  <text x="100" y="472" fill="#6b7280" font-size="10">触发条件: ① 定时器超时 ② 检测到对端重传 (重复消息)</text>
+  <rect x="100" y="488" width="280" height="36" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="240" y="511" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">重传: WriteTo(flightData, addr)</text>
+  <text x="400" y="500" fill="#6b7280" font-size="9">不重新序列化, 原样写入</text>
+  <text x="400" y="518" fill="#6b7280" font-size="9">保证重传内容与首次发送逐字节相同</text>
+  <line x1="380" y1="506" x2="425" y2="506" stroke="#f59e0b" stroke-width="1.2" marker-end="url(#mb)"/>
+  <rect x="80" y="580" width="800" height="55" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="100" y="600" fill="#15803d" font-size="11" font-weight="600">设计要点</text>
+  <text x="100" y="618" fill="#166534" font-size="10">• Flight 多条消息作为原子单元: 要么全部到达, 要么全部重传</text>
+  <text x="480" y="618" fill="#166534" font-size="10">• 快照时机在 flush 之前 · 重传时逐字节相同的 flightData 确保 Finished 校验一致</text>
+
+  <g transform="translate(80, 660)">
+    <rect x="0" y="0" width="24" height="14" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+    <text x="30" y="11" fill="#6b7280" font-size="10">PREPARING</text>
+    <rect x="120" y="0" width="24" height="14" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+    <text x="150" y="11" fill="#6b7280" font-size="10">SENDING</text>
+    <rect x="240" y="0" width="24" height="14" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+    <text x="270" y="11" fill="#6b7280" font-size="10">WAITING</text>
+    <rect x="360" y="0" width="24" height="14" rx="4" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1"/>
+    <text x="390" y="11" fill="#6b7280" font-size="10">FINISHED</text>
+  </g>
+</svg>

@@ -1,0 +1,192 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 530">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="115%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1000" height="530" fill="#ffffff"/>
+
+  <!-- 标题 -->
+  <text x="500" y="30" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">DTLCP 重放保护 — 滑动窗口（默认 size=64）</text>
+
+  <!-- ===== 第1部分：序列号坐标轴 ===== -->
+  <text x="40" y="60" font-size="13" font-weight="600" fill="#374151">序列号空间</text>
+
+  <!-- 三个区域背景 -->
+  <rect x="60" y="72" width="280" height="32" rx="4" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
+  <text x="200" y="92" text-anchor="middle" font-size="12" fill="#9ca3af">已过期 (seq &lt; N−64)</text>
+
+  <rect x="340" y="72" width="320" height="32" rx="4" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="500" y="92" text-anchor="middle" font-size="12" fill="#1d4ed8" font-weight="600">滑动窗口 [N−64, N]</text>
+
+  <rect x="660" y="72" width="280" height="32" rx="4" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
+  <text x="800" y="92" text-anchor="middle" font-size="12" fill="#9ca3af">未来 (seq &gt; N)</text>
+
+  <!-- 坐标轴线 -->
+  <line x1="60" y1="115" x2="940" y2="115" stroke="#9ca3af" stroke-width="1"/>
+  <!-- 刻度 -->
+  <line x1="100" y1="111" x2="100" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="100" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <line x1="280" y1="111" x2="280" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="280" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">N−65</text>
+  <line x1="380" y1="111" x2="380" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="380" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">…</text>
+  <line x1="560" y1="111" x2="560" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="560" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">N−1</text>
+  <line x1="660" y1="111" x2="660" y2="119" stroke="#2563eb" stroke-width="2"/>
+  <text x="660" y="108" text-anchor="middle" font-size="10" fill="#2563eb" font-weight="600">N</text>
+  <line x1="720" y1="111" x2="720" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="720" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">N+32</text>
+  <line x1="920" y1="111" x2="920" y2="119" stroke="#9ca3af" stroke-width="1"/>
+  <text x="920" y="108" text-anchor="middle" font-size="10" fill="#9ca3af">…</text>
+
+  <!-- 左边缘 / 右边缘 指示 -->
+  <line x1="340" y1="120" x2="340" y2="148" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="340" y="162" text-anchor="middle" font-size="11" fill="#1d4ed8">左边缘 N−64</text>
+
+  <line x1="660" y1="120" x2="660" y2="148" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="660" y="162" text-anchor="middle" font-size="11" fill="#1d4ed8">右边缘 N</text>
+
+  <!-- ===== 第2部分：位图 ===== -->
+  <text x="40" y="200" font-size="13" font-weight="600" fill="#374151">位图 (bitmap, 64-bit uint64)</text>
+
+  <!-- 位图标签 -->
+  <text x="70" y="240" font-size="10" fill="#6b7280">bit[63]</text>
+  <text x="890" y="240" font-size="10" fill="#6b7280">bit[0]</text>
+  <line x1="110" y1="236" x2="160" y2="236" stroke="#d1d5db" stroke-width="0.8"/>
+  <line x1="800" y1="236" x2="850" y2="236" stroke="#d1d5db" stroke-width="0.8"/>
+
+  <!-- 位图格子 -->
+  <!-- ellipsis left -->
+  <text x="130" y="228" font-size="12" fill="#9ca3af">…</text>
+
+  <!-- visible bits: 18 bits starting from bit[63] area toward bit[0] -->
+  <rect x="165" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="177" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="195" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="207" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="225" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="237" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="255" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="267" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="285" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="297" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="315" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="327" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="345" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="357" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="375" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="387" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="405" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="417" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="435" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="447" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="465" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="477" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="495" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="507" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="525" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="537" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="555" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="567" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="585" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="597" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="615" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="627" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+  <rect x="645" y="216" width="24" height="20" rx="2" fill="#e5e7eb"/>
+  <text x="657" y="230" text-anchor="middle" font-size="10" fill="#9ca3af">0</text>
+  <rect x="675" y="216" width="24" height="20" rx="2" fill="#16a34a"/>
+  <text x="687" y="230" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="600">1</text>
+
+  <!-- ellipsis right -->
+  <text x="710" y="228" font-size="12" fill="#9ca3af">…</text>
+
+  <!-- 图例 -->
+  <rect x="760" y="216" width="14" height="14" rx="2" fill="#16a34a"/>
+  <text x="780" y="228" font-size="11" fill="#6b7280">= 已收到</text>
+  <rect x="760" y="235" width="14" height="14" rx="2" fill="#e5e7eb"/>
+  <text x="780" y="247" font-size="11" fill="#6b7280">= 未收到</text>
+
+  <!-- bit 位置说明 -->
+  <text x="500" y="262" text-anchor="middle" font-size="10" fill="#9ca3af">bit[i] 对应序列号 N−i，bit[0] 对应右边缘 N</text>
+
+  <!-- ===== 第3部分：三种检查情况 ===== -->
+  <text x="40" y="295" font-size="13" font-weight="600" fill="#374151">序列号检查（3 种情况）</text>
+
+  <!-- 情况1：seq > right -->
+  <rect x="30" y="308" width="300" height="200" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="30" y="308" width="300" height="40" rx="10" fill="#dcfce7"/>
+  <rect x="30" y="338" width="300" height="10" fill="#dcfce7"/>
+  <text x="180" y="333" text-anchor="middle" font-size="14" font-weight="600" fill="#15803d">① seq &gt; right (N)</text>
+
+  <!-- seq 箭头向右 -->
+  <line x1="80" y1="370" x2="180" y2="370" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="130" y="362" text-anchor="middle" font-size="10" fill="#16a34a">seq</text>
+  <rect x="185" y="358" width="24" height="18" rx="3" fill="#16a34a"/>
+  <text x="197" y="371" text-anchor="middle" font-size="10" fill="#fff" font-weight="600">N</text>
+
+  <text x="180" y="400" text-anchor="middle" font-size="11" fill="#374151">窗口右移 diff = seq − N</text>
+  <text x="180" y="420" text-anchor="middle" font-size="11" fill="#374151">bitmap &lt;&lt; diff</text>
+  <text x="180" y="440" text-anchor="middle" font-size="11" fill="#374151">bitmap |= 1 (标记 seq)</text>
+  <text x="180" y="465" text-anchor="middle" font-size="11" fill="#374151">right 更新为 seq</text>
+
+  <rect x="110" y="478" width="140" height="22" rx="11" fill="#16a34a"/>
+  <text x="180" y="494" text-anchor="middle" font-size="12" fill="#fff" font-weight="600">✓ 接受</text>
+
+  <!-- 情况2：seq 在窗口内 -->
+  <rect x="350" y="308" width="300" height="200" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="350" y="308" width="300" height="40" rx="10" fill="#dbeafe"/>
+  <rect x="350" y="338" width="300" height="10" fill="#dbeafe"/>
+  <text x="500" y="333" text-anchor="middle" font-size="14" font-weight="600" fill="#1d4ed8">② left &lt; seq ≤ right</text>
+
+  <!-- seq 在窗口区间内 -->
+  <rect x="380" y="358" width="240" height="24" rx="4" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
+  <text x="500" y="374" text-anchor="middle" font-size="10" fill="#1d4ed8">left ─── seq ─── right</text>
+
+  <text x="500" y="408" text-anchor="middle" font-size="11" fill="#374151">diff = right − seq</text>
+  <text x="500" y="425" text-anchor="middle" font-size="11" fill="#374151">检查 bitmap 的 bit[diff]</text>
+
+  <!-- 两个子情况 -->
+  <rect x="380" y="440" width="115" height="38" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="437" y="456" text-anchor="middle" font-size="11" fill="#374151">bit = 0</text>
+  <text x="437" y="471" text-anchor="middle" font-size="11" fill="#16a34a" font-weight="600">新包，接受</text>
+
+  <rect x="505" y="440" width="115" height="38" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="562" y="456" text-anchor="middle" font-size="11" fill="#374151">bit = 1</text>
+  <text x="562" y="471" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">重复，丢弃</text>
+
+  <rect x="450" y="488" width="100" height="14" rx="7" fill="#1d4ed8" opacity="0.15"/>
+  <text x="500" y="499" text-anchor="middle" font-size="10" fill="#1d4ed8">bitmap |= bit</text>
+
+  <!-- 情况3：seq < left -->
+  <rect x="670" y="308" width="300" height="200" rx="10" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="670" y="308" width="300" height="40" rx="10" fill="#fee2e2"/>
+  <rect x="670" y="338" width="300" height="10" fill="#fee2e2"/>
+  <text x="820" y="333" text-anchor="middle" font-size="14" font-weight="600" fill="#b91c1c">③ seq &lt; left (N−64)</text>
+
+  <!-- seq 箭头向左 -->
+  <line x1="900" y1="370" x2="800" y2="370" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+  <text x="850" y="362" text-anchor="middle" font-size="10" fill="#dc2626">seq</text>
+  <rect x="740" y="358" width="48" height="18" rx="3" fill="#fca5a5"/>
+  <text x="764" y="371" text-anchor="middle" font-size="10" fill="#b91c1c" font-weight="600">N−64</text>
+
+  <text x="820" y="405" text-anchor="middle" font-size="11" fill="#374151">左边缘之外</text>
+  <text x="820" y="425" text-anchor="middle" font-size="11" fill="#374151">diff = N − seq ≥ 64</text>
+  <text x="820" y="445" text-anchor="middle" font-size="11" fill="#374151">超出窗口范围</text>
+  <text x="820" y="465" text-anchor="middle" font-size="11" fill="#6b7280">判定为重放攻击</text>
+
+  <rect x="750" y="478" width="140" height="22" rx="11" fill="#dc2626"/>
+  <text x="820" y="494" text-anchor="middle" font-size="12" fill="#fff" font-weight="600">✗ 直接丢弃</text>
+
+</svg>

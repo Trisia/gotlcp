@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" width="960" height="340">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-3%" width="104%" height="110%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="960" height="340" fill="#ffffff"/>
+  <text x="480" y="28" text-anchor="middle" fill="#111827" font-size="18" font-weight="600">握手消息分片示意</text>
+
+  <!-- 原始消息 -->
+  <rect x="50" y="50" width="860" height="50" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" filter="url(#shadow)"/>
+  <text x="480" y="73" text-anchor="middle" fill="#1d4ed8" font-size="13" font-weight="600">原始握手消息 (length = L, message_seq = s)</text>
+  <text x="480" y="89" text-anchor="middle" fill="#6b7280" font-size="11">完整一条消息，可能超过 PMTU</text>
+
+  <!-- 分叉指示 -->
+  <line x1="480" y1="100" x2="480" y2="123" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="492" y="116" fill="#6b7280" font-size="11">分片</text>
+
+  <line x1="110" y1="123" x2="110" y2="143" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="420" y1="123" x2="420" y2="143" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="730" y1="123" x2="730" y2="143" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 分片 -->
+  <rect x="30" y="148" width="280" height="60" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="170" y="174" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">Fragment 0</text>
+  <text x="170" y="194" text-anchor="middle" fill="#6b7280" font-size="11">offset=0, length=M, msg_seq=s</text>
+
+  <rect x="340" y="148" width="280" height="60" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="480" y="174" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">Fragment 1</text>
+  <text x="480" y="194" text-anchor="middle" fill="#6b7280" font-size="11">offset=M, length=M, msg_seq=s</text>
+
+  <rect x="650" y="148" width="280" height="60" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="790" y="174" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">Fragment 2</text>
+  <text x="790" y="194" text-anchor="middle" fill="#6b7280" font-size="11">offset=2M, length=剩余, msg_seq=s</text>
+
+  <!-- 重组 -->
+  <line x1="170" y1="208" x2="170" y2="238" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="480" y1="208" x2="480" y2="238" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="790" y1="208" x2="790" y2="238" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="492" y="233" fill="#6b7280" font-size="11">重组</text>
+
+  <rect x="50" y="243" width="860" height="40" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5" stroke-dasharray="5,3" filter="url(#shadow)"/>
+  <text x="480" y="269" text-anchor="middle" fill="#15803d" font-size="13" font-weight="600">重组后完整消息 [Fragment 0 + Fragment 1 + Fragment 2]</text>
+
+  <g transform="translate(30, 298)">
+    <text x="0" y="0" fill="#6b7280" font-size="11">规则：所有分片 length 等于原始消息总长度 | 所有分片 message_seq 相同 | 按 fragment_offset 顺序拼接</text>
+  </g>
+</svg>
