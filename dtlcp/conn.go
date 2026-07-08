@@ -255,13 +255,12 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 			}
 			payload = payload[explicitNonceLen:]
 
-			var additionalData []byte
-			additionalData = append(hc.scratchBuf[:0], hc.seq[:]...)
-			// DTLCP: record[:recordHeaderLen-2] = type + version + epoch + seq（不含 length）
-			// 即 record[:11]（当 recordHeaderLen=13 时）
-			additionalData = append(additionalData, record[:recordHeaderLen-2]...)
+			// DTLCP: additional_data = epoch(2) + seq_num(6) + type(1) + version(2) + length(2)
+			additionalData := append(hc.scratchBuf[:0], hc.seq[:]...)
+			additionalData = append(additionalData, record[0])            // type
+			additionalData = append(additionalData, record[1], record[2]) // version
 			n := len(payload) - c.Overhead()
-			additionalData = append(additionalData, byte(n>>8), byte(n))
+			additionalData = append(additionalData, byte(n>>8), byte(n))  // length
 
 			var err error
 			plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
@@ -301,11 +300,10 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 
 		n := len(payload) - macSize - paddingLen
 		n = subtle.ConstantTimeSelect(int(uint32(n)>>31), 0, n) // if n < 0 { n = 0 }
-		// DTLCP: length 字段在 record[recordHeaderLen-2 : recordHeaderLen-1]
-		record[recordHeaderLen-2] = byte(n >> 8)
-		record[recordHeaderLen-1] = byte(n)
 		remoteMAC := payload[n : n+macSize]
-		localMAC := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], record[:recordHeaderLen], payload[:n], payload[n+macSize:])
+		// DTLCP MAC header: type(1) + version(2) + length(2)
+		macHeader := []byte{record[0], record[1], record[2], byte(n >> 8), byte(n)}
+		localMAC := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], macHeader, payload[:n], payload[n+macSize:])
 
 		macAndPaddingGood := subtle.ConstantTimeCompare(localMAC, remoteMAC) & int(paddingGood)
 		if macAndPaddingGood != 1 {
@@ -354,7 +352,9 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 	var dst []byte
 	switch c := hc.cipher.(type) {
 	case cipher.Stream:
-		mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], record[:recordHeaderLen], payload, nil)
+		// DTLCP MAC header: type(1) + version(2) + length(2)
+		macHeader := []byte{record[0], record[1], record[2], record[recordHeaderLen-2], record[recordHeaderLen-1]}
+		mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], macHeader, payload, nil)
 		record, dst = sliceForAppend(record, len(payload)+len(mac))
 		c.XORKeyStream(dst[:len(payload)], payload)
 		c.XORKeyStream(dst[len(payload):], mac)
@@ -364,11 +364,15 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 			nonce = hc.seq[:]
 		}
 		additionalData := append(hc.scratchBuf[:0], hc.seq[:]...)
-		// DTLCP: record[:recordHeaderLen-2] = type + version + epoch + seq（不含 length）
-		additionalData = append(additionalData, record[:recordHeaderLen-2]...)
+		// DTLCP: additional_data = epoch(2) + seq_num(6) + type(1) + version(2) + length(2)
+		additionalData = append(additionalData, record[0])                                  // type
+		additionalData = append(additionalData, record[1], record[2])                       // version
+		additionalData = append(additionalData, byte(len(payload)>>8), byte(len(payload))) // length
 		record = c.Seal(record, nonce, payload, additionalData)
 	case cbcMode:
-		mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], record[:recordHeaderLen], payload, nil)
+		// DTLCP MAC header: type(1) + version(2) + length(2)
+			macHeader := []byte{record[0], record[1], record[2], record[recordHeaderLen-2], record[recordHeaderLen-1]}
+			mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], macHeader, payload, nil)
 		blockSize := c.BlockSize()
 		plaintextLen := len(payload) + len(mac)
 		paddingLen := blockSize - plaintextLen%blockSize
@@ -715,6 +719,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			if err := c.in.changeCipherSpec(); err != nil {
 				return c.in.setErrorLocked(c.sendAlert(err.(alert)))
 			}
+			expectChangeCipherSpec = false
 			c.readEpoch++
 			c.readSeq = 0
 			// CCS 后如果还有数据（如 Finished 在同一数据报中），继续处理
@@ -860,6 +865,14 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 		outBuf, err = c.out.encrypt(outBuf, data[:m], c.config.rand())
 		if err != nil {
 			return n, err
+		}
+
+		// 加密后长度字段更新为实际载荷长度（包含显式 nonce、密文和 AEAD 标签）。
+		// DTLCP 长度字段不在 AAD 范围内（record[:11]），可在加密后安全更新。
+		encLen := len(outBuf) - recordHeaderLen
+		if encLen != m {
+			outBuf[11] = byte(encLen >> 8)
+			outBuf[12] = byte(encLen)
 		}
 
 		if _, err := c.write(outBuf); err != nil {

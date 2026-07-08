@@ -40,6 +40,7 @@ type mockPacketConn struct {
 	mu         sync.Mutex
 	readCh     chan mockDatagram
 	writeCh    chan mockDatagram
+	closeCh    chan struct{} // 关闭时关闭此 channel，解阻塞 ReadFrom
 	localAddr  net.Addr
 	closed     bool
 	readDeadline  time.Time
@@ -50,17 +51,19 @@ type mockPacketConn struct {
 // a 的写入会出现在 b 的读取中，b 的写入会出现在 a 的读取中。
 func newMockPacketConn() (a, b *mockPacketConn) {
 	// 使用带缓冲的通道，避免读写双方严格同步
-	aCh := make(chan mockDatagram, 100)
-	bCh := make(chan mockDatagram, 100)
+	aCh := make(chan mockDatagram, 500)
+	bCh := make(chan mockDatagram, 500)
 
 	a = &mockPacketConn{
 		readCh:    aCh,
 		writeCh:   bCh,
+		closeCh:   make(chan struct{}),
 		localAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10000},
 	}
 	b = &mockPacketConn{
 		readCh:    bCh,
 		writeCh:   aCh,
+		closeCh:   make(chan struct{}),
 		localAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 20000},
 	}
 	return a, b
@@ -84,20 +87,26 @@ func (m *mockPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return 0, nil, &timeoutError{}
 		}
 
-		// 使用 select 等待数据或超时
+		// 使用 select 等待数据或超时或关闭
 		select {
 		case d := <-m.readCh:
 			n = copy(p, d.data)
 			return n, d.addr, nil
 		case <-time.After(remaining):
 			return 0, nil, &timeoutError{}
+		case <-m.closeCh:
+			return 0, nil, errors.New("mock: use of closed network connection")
 		}
 	}
 
-	// 无截止时间，阻塞等待
-	d := <-m.readCh
-	n = copy(p, d.data)
-	return n, d.addr, nil
+	// 无截止时间，阻塞等待，支持通过 closeCh 解阻塞
+	select {
+	case d := <-m.readCh:
+		n = copy(p, d.data)
+		return n, d.addr, nil
+	case <-m.closeCh:
+		return 0, nil, errors.New("mock: use of closed network connection")
+	}
 }
 
 // WriteTo 向连接写入一个数据报。
@@ -124,11 +133,15 @@ func (m *mockPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 }
 
-// Close 关闭连接。
+// Close 关闭连接，解阻塞正在 ReadFrom 上等待的调用。
 func (m *mockPacketConn) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return nil
+	}
 	m.closed = true
+	close(m.closeCh)
 	return nil
 }
 

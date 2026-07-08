@@ -411,6 +411,14 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 
+		// 先发送 CKE（不含 CCS+Finished），避免 CKE 与 CCS+Finished 在同数据报中
+		// 导致服务端 readRecordOrCCS 处理 CCS 时因 c.handBuf 非空而报错。
+		c.hsState = stateSending
+		if _, err = c.flush(); err != nil {
+			return err
+		}
+		c.buffering = true
+
 		if err = hs.establishKeys(); err != nil {
 			return err
 		}
@@ -420,10 +428,10 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 
-		// 保存 Flight 5 原始字节（含 DTLCP 记录头）用于超时重传
+		// 保存 Flight 5 原始字节（不含 CKE，仅 CCS+Finished）用于超时重传
 		hs.flightData = append([]byte(nil), c.sendBuf...)
 
-		// 发送 Flight 5
+		// 发送 CCS + Finished
 		c.hsState = stateSending
 		if _, err = c.flush(); err != nil {
 			return err
