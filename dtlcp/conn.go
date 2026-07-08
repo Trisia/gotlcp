@@ -1103,11 +1103,11 @@ var errEarlyCloseWrite = errors.New("dtlcp: CloseWrite called before handshake c
 
 // Close 关闭连接。
 // 若握手已完成，会先尝试发送 close_notify 告警通知对端。
-// 然后释放底层 PacketConn 并置零工作密钥。
+// 等待所有活跃的 Read/Write/ReadFrom/WriteTo 完成后才清理资源。
 func (c *Conn) Close() error {
-	var x int32
+	// 设置关闭标记
 	for {
-		x = atomic.LoadInt32(&c.activeCall)
+		x := atomic.LoadInt32(&c.activeCall)
 		if x&1 != 0 {
 			return net.ErrClosed
 		}
@@ -1115,8 +1115,11 @@ func (c *Conn) Close() error {
 			break
 		}
 	}
-	if x != 0 {
-		return c.pconn.Close()
+
+	// 等待所有活跃调用完成后再清理
+	// activeCall 位含义：位0=关闭标记，位1+=活跃调用计数(每次+2)
+	// 当 activeCall == 1 时（仅关闭标记），所有活跃调用已退出
+	for atomic.LoadInt32(&c.activeCall) > 1 {
 	}
 
 	var alertErr error
@@ -1167,6 +1170,17 @@ func (c *Conn) closeNotify() error {
 // 返回成功读取的字节数 n 和可能出现的错误。
 // 若返回 io.EOF 表示对端已关闭连接。
 func (c *Conn) Read(b []byte) (int, error) {
+	for {
+		x := atomic.LoadInt32(&c.activeCall)
+		if x&1 != 0 {
+			return 0, net.ErrClosed
+		}
+		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
+			break
+		}
+	}
+	defer atomic.AddInt32(&c.activeCall, -2)
+
 	if err := c.Handshake(); err != nil {
 		return 0, err
 	}
@@ -1253,6 +1267,17 @@ func (c *Conn) Write(b []byte) (int, error) {
 // 返回成功读取的字节数 n、对端地址 addr 和可能出现的错误。
 // 若对端发送 close_notify 告警，返回 io.EOF。
 func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	for {
+		x := atomic.LoadInt32(&c.activeCall)
+		if x&1 != 0 {
+			return 0, nil, net.ErrClosed
+		}
+		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
+			break
+		}
+	}
+	defer atomic.AddInt32(&c.activeCall, -2)
+
 	if err = c.Handshake(); err != nil {
 		return 0, nil, err
 	}
@@ -1342,6 +1367,17 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 // 参数 addr 为对端地址，必须与握手协商的地址一致，否则返回错误。
 // 返回成功写入的字节数 n 和可能出现的错误。
 func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	for {
+		x := atomic.LoadInt32(&c.activeCall)
+		if x&1 != 0 {
+			return 0, net.ErrClosed
+		}
+		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
+			break
+		}
+	}
+	defer atomic.AddInt32(&c.activeCall, -2)
+
 	if err = c.Handshake(); err != nil {
 		return 0, err
 	}
