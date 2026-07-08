@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net"
+
 	"gitee.com/Trisia/gotlcp/dtlcp"
 )
 
@@ -66,35 +68,35 @@ func init() {
 	}
 }
 
-// 服务端使用 dtlcp.Listen 创建 DTLCP 服务端
-// 该方法返回 net.Listener，通过 Accept 接受客户端连接，使用简单可靠。
-//
-// 注意：dtlcp.Server 和 dtlcp.Client 适用于复用现有 PacketConn 的场景，
-// 使用时应避免在创建 Server/Client 前从 PacketConn 读取数据，以免消费握手消息。
 func main() {
-	config := &dtlcp.Config{Certificates: []dtlcp.Certificate{sigCert, encCert}}
+	config := &dtlcp.Config{
+		Certificates: []dtlcp.Certificate{sigCert, encCert},
+	}
 
-	ln, err := dtlcp.Listen("udp", ":8452", config)
+	// 创建 UDP PacketConn
+	pconn, err := net.ListenPacket("udp", ":8452")
 	if err != nil {
 		panic(err)
 	}
-	defer ln.Close()
 
-	conn, err := ln.Accept()
-	if err != nil {
-		panic(err)
-	}
+	// dtlcp.Server 接受 nil addr —— 首次 readDatagram 自动设置对端地址
+	// 适用场景：已有 UDP socket，想在其上运行 DTLCP 安全通信
+	conn := dtlcp.Server(pconn, nil, config)
 	defer conn.Close()
 
-	// 回显收到的数据
-	buff := make([]byte, 512)
-	n, err := conn.Read(buff)
+	fmt.Println("DTLCP raw server listening on :8452")
+	fmt.Println("Waiting for client connection...")
+
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.Write(buff[:n])
+	fmt.Printf("<< %s\n", buf[:n])
+
+	_, err = conn.Write([]byte("Hello from DTLCP raw server!"))
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("<< %s\n", buff[:n])
+	fmt.Println("Response sent")
 }
