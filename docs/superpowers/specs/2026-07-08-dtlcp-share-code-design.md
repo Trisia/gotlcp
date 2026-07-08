@@ -10,6 +10,12 @@
 
 DTLCP特有的文件（`cookie.go`、`fragment.go`、`retransmit.go`、`replay.go`）和协议特有的文件（`common.go`、`conn.go`、`handshake_*.go`、`handshake_messages.go`）需要各自保留。
 
+## 约束
+
+- **不在 tlcp 的类型定义上做扩展或妥协来迁就 dtlcp**。`Config`、`Conn`、`ConnectionState` 等各自独立定义
+- 共享代码必须是两边**完全相同**的内容，有任何差异的部分各自保留
+- tlcp 的公开 API 通过类型别名保持向后兼容，不改变对外行为
+
 ## 方案
 
 ### 新建共享包 `tlcp/common/`
