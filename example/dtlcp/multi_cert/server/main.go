@@ -76,12 +76,17 @@ func main() {
 			for i, ca := range info.TrustedCAIndications {
 				fmt.Printf("  TrustedCA[%d]: Type=%d, Len=%d\n", i, ca.IdentifierType, len(ca.Identifier))
 			}
-			// 本例中，不论客户端指示哪个 CA，都返回默认签名证书
+			// 实际场景中可根据 TrustedCAIndications 内容选择对应的签名证书返回。
+			// 本例仅演示接口用法，不论客户端指示哪个 CA，都返回默认签名证书。
 			return &sigCert, nil
 		},
 		// GetKECertificate 根据客户端 TrustedCAIndications 选择加密证书
 		GetKECertificate: func(info *dtlcp.ClientHelloInfo) (*dtlcp.Certificate, error) {
 			fmt.Printf(">>> 选择加密证书, TrustedCAIndications=%d\n", len(info.TrustedCAIndications))
+			// 若客户端指示了特定的 CA，可据此选择对应的加密证书。
+			// 例如，检查 TrustedCAIndications 中是否包含特定的 CA 标识符，
+			// 若匹配则返回对应的加密证书，否则返回默认证书。
+			// 本例简化处理，始终返回默认加密证书。
 			return &encCert, nil
 		},
 	}

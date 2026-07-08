@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"gitee.com/Trisia/gotlcp/dtlcp"
 	"github.com/emmansun/gmsm/smx509"
 )
@@ -111,7 +112,13 @@ func main() {
 			defer conn.Close()
 			buf := make([]byte, 1024)
 			_, _ = conn.Read(buf)
-			conn.Write([]byte("Hello DTLCP Mutual Auth Client!"))
+			_, _ = conn.Write([]byte("Hello DTLCP Mutual Auth Client!"))
+
+			// 读取并打印客户端证书信息
+			state := conn.(*dtlcp.Conn).ConnectionState()
+			for i, cert := range state.PeerCertificates {
+				fmt.Printf(">>> 客户端证书[%d]: Subject=%q, Issuer=%q\n", i, cert.Subject.CommonName, cert.Issuer.CommonName)
+			}
 		}()
 	}
 }

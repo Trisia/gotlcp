@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/emmansun/gmsm/smx509"
 	"gitee.com/Trisia/gotlcp/dtlcp"
 )
 
@@ -51,9 +52,17 @@ func main() {
 		panic(err)
 	}
 
+	// 解析根证书并构建证书池，用于验证服务端证书
+	rootCert, err := smx509.ParseCertificatePEM([]byte(ROOT_CERT_PEM))
+	if err != nil {
+		panic(err)
+	}
+	pool := smx509.NewCertPool()
+	pool.AddCert(rootCert)
+
 	config := &dtlcp.Config{
-		InsecureSkipVerify: true,                         // 跳过服务端证书验证（测试用）
-		Certificates:       []dtlcp.Certificate{authCert}, // 客户端签名证书（ECC 套件单证书）
+		RootCAs:            pool,                             // 使用根证书验证服务端证书
+		Certificates:       []dtlcp.Certificate{authCert},     // 客户端签名证书（ECC 套件单证书）
 	}
 	conn, err := dtlcp.Dial("udp", "127.0.0.1:8447", config)
 	if err != nil {
