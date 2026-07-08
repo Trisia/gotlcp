@@ -5,6 +5,7 @@ package dtlcp
 
 import (
 	"bytes"
+	"crypto/rand"
 	"strings"
 	"testing"
 )
@@ -251,5 +252,482 @@ func TestRecordHeaderEncode(t *testing.T) {
 	length := int(hdr[11])<<8 | int(hdr[12])
 	if length != 100 {
 		t.Fatalf("Length 应为 100，实际 %d", length)
+	}
+}
+
+// =============================================================================
+// 记录层加解密往返测试
+// =============================================================================
+
+// makeRecordHeader 构造 DTLCP 13字节记录头并同步 halfConn.seq。
+// 返回包含完整记录头的切片。
+func makeRecordHeader(hc *halfConn, typ recordType, vers uint16, epoch uint16, seqNum uint48, payloadLen int) []byte {
+	record := make([]byte, recordHeaderLen)
+	record[0] = byte(typ)
+	record[1] = byte(vers >> 8)
+	record[2] = byte(vers)
+	record[3] = byte(epoch >> 8)
+	record[4] = byte(epoch)
+	record[5] = byte(seqNum >> 40)
+	record[6] = byte(seqNum >> 32)
+	record[7] = byte(seqNum >> 24)
+	record[8] = byte(seqNum >> 16)
+	record[9] = byte(seqNum >> 8)
+	record[10] = byte(seqNum)
+	record[11] = byte(payloadLen >> 8)
+	record[12] = byte(payloadLen)
+	// 同步 halfConn.seq：epoch(2) + seq_num(6)
+	hc.seq[0] = record[3]
+	hc.seq[1] = record[4]
+	hc.seq[2] = record[5]
+	hc.seq[3] = record[6]
+	hc.seq[4] = record[7]
+	hc.seq[5] = record[8]
+	hc.seq[6] = record[9]
+	hc.seq[7] = record[10]
+	return record
+}
+
+// TestAEADRoundTrip 测试 SM4-GCM 加密后解密的往返正确性。
+func TestAEADRoundTrip(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	if err := hc.changeCipherSpec(); err != nil {
+		t.Fatalf("changeCipherSpec 失败: %v", err)
+	}
+
+	plaintext := []byte("Hello DTLCP AEAD Round Trip Test!")
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 1, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 解密：重建相同参数的 halfConn（读方向）
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	if err := hc2.changeCipherSpec(); err != nil {
+		t.Fatalf("changeCipherSpec(hc2) 失败: %v", err)
+	}
+	hc2.seq = hc.seq
+
+	decrypted, typ, err := hc2.decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("decrypt 失败: %v", err)
+	}
+	if typ != recordTypeApplicationData {
+		t.Fatalf("记录类型应为 %d，实际 %d", recordTypeApplicationData, typ)
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("往返明文不匹配:\n  原始: %x\n  解密: %x", plaintext, decrypted)
+	}
+}
+
+// TestCBCOneWay 测试 SM4-CBC + SM3 HMAC 加密后解密的正确性。
+func TestCBCRoundTrip(t *testing.T) {
+	key := make([]byte, 16)
+	iv := make([]byte, 16)
+	macKey := make([]byte, 32)
+
+	encCipher := cipherSM4(key, iv, false).(cbcMode)
+	macHash := macSM3(macKey)
+
+	hcEnc := &halfConn{}
+	hcEnc.prepareCipherSpec(VersionTLCP, encCipher, macHash)
+	if err := hcEnc.changeCipherSpec(); err != nil {
+		t.Fatalf("changeCipherSpec(enc) 失败: %v", err)
+	}
+
+	plaintext := []byte("Hello DTLCP CBC Round Trip Test!")
+	record := makeRecordHeader(hcEnc, recordTypeApplicationData, VersionTLCP, 0, 1, len(plaintext))
+
+	encrypted, err := hcEnc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	hcDec := &halfConn{}
+	decCipher2 := cipherSM4(key, iv, true).(cbcMode)
+	macHash2 := macSM3(macKey)
+	hcDec.prepareCipherSpec(VersionTLCP, decCipher2, macHash2)
+	if err := hcDec.changeCipherSpec(); err != nil {
+		t.Fatalf("changeCipherSpec(dec) 失败: %v", err)
+	}
+	hcDec.seq = hcEnc.seq
+
+	decrypted, typ, err := hcDec.decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("decrypt 失败: %v", err)
+	}
+	if typ != recordTypeApplicationData {
+		t.Fatalf("记录类型应为 %d，实际 %d", recordTypeApplicationData, typ)
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("往返明文不匹配:\n  原始: %x\n  解密: %x", plaintext, decrypted)
+	}
+}
+
+// TestAEADTamperDetection 测试篡改密文被 AEAD 认证标签检测到。
+func TestAEADTamperDetection(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := []byte("Tamper Detection Test Payload")
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 42, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 篡改密文最后一个字节
+	tampered := make([]byte, len(encrypted))
+	copy(tampered, encrypted)
+	tampered[len(tampered)-1] ^= 0x01
+
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+
+	_, _, err = hc2.decrypt(tampered)
+	if err == nil {
+		t.Fatal("篡改密文应被检测到，但 decrypt 成功返回")
+	}
+	if alertErr, ok := err.(alert); !ok || alertErr != alertBadRecordMAC {
+		t.Fatalf("期望 alertBadRecordMAC(20)，实际 %v", err)
+	}
+}
+
+// TestCBCTamperDetection 测试篡改密文被 CBC MAC 检测到。
+func TestCBCTamperDetection(t *testing.T) {
+	key := make([]byte, 16)
+	iv := make([]byte, 16)
+	macKey := make([]byte, 32)
+
+	encCipher := cipherSM4(key, iv, false).(cbcMode)
+	macHash := macSM3(macKey)
+
+	hcEnc := &halfConn{}
+	hcEnc.prepareCipherSpec(VersionTLCP, encCipher, macHash)
+	hcEnc.changeCipherSpec()
+
+	plaintext := []byte("CBC Tamper Detection Test")
+	record := makeRecordHeader(hcEnc, recordTypeApplicationData, VersionTLCP, 0, 7, len(plaintext))
+
+	encrypted, err := hcEnc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 篡改密文内容
+	tampered := make([]byte, len(encrypted))
+	copy(tampered, encrypted)
+	tampered[recordHeaderLen+1] ^= 0xFF
+
+	hcDec := &halfConn{}
+	decCipher := cipherSM4(key, iv, true).(cbcMode)
+	macHash2 := macSM3(macKey)
+	hcDec.prepareCipherSpec(VersionTLCP, decCipher, macHash2)
+	hcDec.changeCipherSpec()
+	hcDec.seq = hcEnc.seq
+
+	_, _, err = hcDec.decrypt(tampered)
+	if err == nil {
+		t.Fatal("篡改密文应被检测到，但 decrypt 成功返回")
+	}
+	if alertErr, ok := err.(alert); !ok || alertErr != alertBadRecordMAC {
+		t.Fatalf("期望 alertBadRecordMAC(20)，实际 %v", err)
+	}
+}
+
+// TestAEADSeqTamperDetection 测试解密侧 seq 与加密侧不匹配时被 AEAD AAD 检测到。
+// 验证 AAD 正确绑定了 hc.seq（epoch+seq_num），防止跨序列号伪造。
+func TestAEADSeqTamperDetection(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := []byte("Seq Tamper Test")
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 100, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 解密侧使用不同的 seq，模拟重放攻击
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+	hc2.seq[7] ^= 0x01 // 翻转 seq_num 最低位，与加密侧不同
+
+	_, _, err = hc2.decrypt(encrypted)
+	if err == nil {
+		t.Fatal("seq 不匹配应被 AAD 检测到，但 decrypt 成功返回")
+	}
+}
+
+// TestAEADTypeTamperDetection 测试篡改记录类型被 AEAD AAD 检测到。
+func TestAEADTypeTamperDetection(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := []byte("Type Tamper Test")
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 1, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 篡改记录类型 23(ApplicationData) → 22(Handshake)
+	tampered := make([]byte, len(encrypted))
+	copy(tampered, encrypted)
+	tampered[0] = byte(recordTypeHandshake)
+
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+
+	_, _, err = hc2.decrypt(tampered)
+	if err == nil {
+		t.Fatal("篡改 type 应被 AAD 检测到，但 decrypt 成功返回")
+	}
+}
+
+// TestAEADVersionTamperDetection 测试篡改记录版本号被 AEAD AAD 检测到。
+// 验证 AAD 正确绑定了 version 字段，防止版本降级攻击。
+func TestAEADVersionTamperDetection(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := []byte("Version Tamper Detection Test")
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 1, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt 失败: %v", err)
+	}
+
+	// 篡改记录头中的 version 字段
+	tampered := make([]byte, len(encrypted))
+	copy(tampered, encrypted)
+	tampered[2] ^= 0x01 // 翻转 version 低字节
+
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+
+	_, _, err = hc2.decrypt(tampered)
+	if err == nil {
+		t.Fatal("篡改 version 应被 AAD 检测到，但 decrypt 成功返回")
+	}
+}
+
+// TestAEADEmptyPayload 测试空 payload 的 AEAD 加解密。
+func TestAEADEmptyPayload(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := []byte{}
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 0, 0)
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt(空) 失败: %v", err)
+	}
+
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+
+	decrypted, typ, err := hc2.decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("decrypt(空) 失败: %v", err)
+	}
+	if typ != recordTypeApplicationData {
+		t.Fatalf("记录类型应为 %d，实际 %d", recordTypeApplicationData, typ)
+	}
+	if len(decrypted) != 0 {
+		t.Fatalf("解密后应为空，实际长度 %d", len(decrypted))
+	}
+}
+
+// TestAEADLargePayload 测试接近 maxPlaintext 大小的 AEAD 加解密。
+func TestAEADLargePayload(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	plaintext := make([]byte, maxPlaintext)
+	for i := range plaintext {
+		plaintext[i] = byte(i % 256)
+	}
+	record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, 0, 0xFFFFFFFFFFFF, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt(大) 失败: %v", err)
+	}
+
+	hc2 := &halfConn{}
+	aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+	hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+	hc2.changeCipherSpec()
+	hc2.seq = hc.seq
+
+	decrypted, _, err := hc2.decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("decrypt(大) 失败: %v", err)
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("大 payload 往返不匹配，长度: 期望 %d，实际 %d", len(plaintext), len(decrypted))
+	}
+}
+
+// TestAEADMultipleEpochs 测试不同 epoch 下的 AEAD 往返。
+func TestAEADMultipleEpochs(t *testing.T) {
+	key := make([]byte, 16)
+	implicitNonce := make([]byte, 4)
+	aeadCipher := aeadSM4GCM(key, implicitNonce)
+
+	hc := &halfConn{}
+	hc.prepareCipherSpec(VersionTLCP, aeadCipher, nil)
+	hc.changeCipherSpec()
+
+	epochs := []uint16{0, 1, 2, 255, 65535}
+	for _, epoch := range epochs {
+		plaintext := []byte("Epoch Test")
+		record := makeRecordHeader(hc, recordTypeApplicationData, VersionTLCP, epoch, uint48(epoch)*100, len(plaintext))
+
+		encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+		if err != nil {
+			t.Fatalf("epoch=%d encrypt 失败: %v", epoch, err)
+		}
+
+		hc2 := &halfConn{}
+		aeadCipher2 := aeadSM4GCM(key, implicitNonce)
+		hc2.prepareCipherSpec(VersionTLCP, aeadCipher2, nil)
+		hc2.changeCipherSpec()
+		hc2.seq = hc.seq
+
+		decrypted, _, err := hc2.decrypt(encrypted)
+		if err != nil {
+			t.Fatalf("epoch=%d decrypt 失败: %v", epoch, err)
+		}
+		if !bytes.Equal(decrypted, plaintext) {
+			t.Fatalf("epoch=%d 往返不匹配", epoch)
+		}
+	}
+}
+
+// TestCBCMultipleEpochs 测试不同 epoch 下的 CBC 往返。
+func TestCBCMultipleEpochs(t *testing.T) {
+	key := make([]byte, 16)
+	iv := make([]byte, 16)
+	macKey := make([]byte, 32)
+
+	epochs := []uint16{0, 1, 2, 255, 65535}
+	for _, epoch := range epochs {
+		encCipher := cipherSM4(key, iv, false).(cbcMode)
+		macHash := macSM3(macKey)
+
+		hcEnc := &halfConn{}
+		hcEnc.prepareCipherSpec(VersionTLCP, encCipher, macHash)
+		hcEnc.changeCipherSpec()
+
+		plaintext := []byte("CBC Epoch Varied")
+		record := makeRecordHeader(hcEnc, recordTypeApplicationData, VersionTLCP, epoch, uint48(epoch)*42, len(plaintext))
+
+		encrypted, err := hcEnc.encrypt(record, plaintext, rand.Reader)
+		if err != nil {
+			t.Fatalf("epoch=%d encrypt 失败: %v", epoch, err)
+		}
+
+		hcDec := &halfConn{}
+		decCipher := cipherSM4(key, iv, true).(cbcMode)
+		macHash2 := macSM3(macKey)
+		hcDec.prepareCipherSpec(VersionTLCP, decCipher, macHash2)
+		hcDec.changeCipherSpec()
+		hcDec.seq = hcEnc.seq
+
+		decrypted, _, err := hcDec.decrypt(encrypted)
+		if err != nil {
+			t.Fatalf("epoch=%d decrypt 失败: %v", epoch, err)
+		}
+		if !bytes.Equal(decrypted, plaintext) {
+			t.Fatalf("epoch=%d 往返不匹配", epoch)
+		}
+	}
+}
+
+// TestNoEncryptRoundTrip 测试无加密保护的记录读写（握手阶段）。
+func TestNoEncryptRoundTrip(t *testing.T) {
+	hc := &halfConn{}
+
+	plaintext := []byte("Unprotected Handshake Data")
+	record := makeRecordHeader(hc, recordTypeHandshake, VersionTLCP, 0, 0, len(plaintext))
+
+	encrypted, err := hc.encrypt(record, plaintext, rand.Reader)
+	if err != nil {
+		t.Fatalf("encrypt(无加密) 失败: %v", err)
+	}
+
+	hc2 := &halfConn{}
+	hc2.seq = hc.seq
+
+	decrypted, typ, err := hc2.decrypt(encrypted)
+	if err != nil {
+		t.Fatalf("decrypt(无加密) 失败: %v", err)
+	}
+	if typ != recordTypeHandshake {
+		t.Fatalf("记录类型应为 %d，实际 %d", recordTypeHandshake, typ)
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("无加密往返不匹配:\n  原始: %s\n  解密: %s", plaintext, decrypted)
 	}
 }
