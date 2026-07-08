@@ -61,3 +61,4 @@ target/
 venv
 docs
 .superpowers
+.agents
