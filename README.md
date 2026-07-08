@@ -5,37 +5,44 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/Trisia/gotlcp)
 ![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/Trisia/gotlcp)
 
-Information security technology **T**ransport **L**ayer **C**ryptography **P**rotocol (TLCP)
+GoTLCP 采用 Go 语言实现的国密传输层密码协议套件，同时支持以下两个协议标准：
 
-GoTLCP采用Go语言实现的传输层密码协议(TLCP，也称GMSSL) ，其协议遵循GB/T 38636-2020《信息安全技术 传输层密码协议》。
+- **TLCP** — 遵循 GB/T 38636-2020《信息安全技术 传输层密码协议》，基于 TCP 传输的传输层密码协议（也称 GMSSL）
+- **DTLCP** — 遵循 GM/T 0128-2023《数据报传输层密码协议》，基于 UDP 传输的数据报传输层密码协议
 
-GoTLCP实现了TLCP协议中的记录层协议、握手协议族以及密钥计算，支持完整TLCP握手、会话重用、传输保护、单向身份认证（认证服务端）双向身份认证。
+GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完整握手、会话重用（TLCP）、传输保护、单向身份认证（认证服务端）和双向身份认证。
 
-密码套件支持以及优先级如下：
+| 特性 | TLCP | DTLCP |
+|------|------|-------|
+| 传输层 | TCP（`net.Conn`） | UDP（`net.PacketConn`） |
+| 标准规范 | GB/T 38636-2020 | GM/T 0128-2023 |
+| 密码套件 | ECC_SM4_GCM_SM3, ECC_SM4_CBC_SM3, ECDHE_SM4_GCM_SM3, ECDHE_SM4_CBC_SM3 | 同 TLCP |
+| 双证书（签名+加密） | 必需 | 必需 |
+| 会话重用 | 支持（LRU 缓存/会话票据） | 支持（LRU 缓存/会话票据） |
+| 握手重传 | 无（TCP 保证） | 四态状态机 + 指数退避 |
+| Cookie 防 DoS | 无 | 无状态 Cookie 验证 |
+| 重放保护 | 无（TCP 字节序保证） | epoch + 序列号滑动窗口 |
+| 前向安全 | ECDHE 模式可选 | ECDHE 模式可选 |
 
-1. `ECC_SM4_GCM_SM3`
-2. `ECC_SM4_CBC_SM3`
-3. `ECDHE_SM4_GCM_SM3`
-4. `ECDHE_SM4_CBC_SM3`
+> **密码套件优先级：** ECC_SM4_GCM_SM3 > ECC_SM4_CBC_SM3 > ECDHE_SM4_GCM_SM3 > ECDHE_SM4_CBC_SM3
 
-**在使用GOTLCP前，请务必悉知 [***《Go TLCP 免责声明》***](免责声明.md)！**
+**在使用 GoTLCP 前，请务必悉知 [《Go TLCP 免责声明》](免责声明.md)！**
 
-*若clone和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
+*若 clone 和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
 ## 安装
 
-为了安装使用GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的Go环境，GoTLCP至少需要您的Go版本在 **1.24及以上**。
+为了安装使用 GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的 Go 环境，GoTLCP 至少需要您的 Go 版本在 **1.24 及以上**。
 
-通过下面命令就可以安装 GoTLCP:
+通过下面命令就可以安装 GoTLCP：
 
 ```bash
 go get -u gitee.com/Trisia/gotlcp
 ```
 
-> GoTLCP 将持续保证API的向下兼容，您可以放心的升级GoTLCP库至最新版本。
+> GoTLCP 将持续保证 API 的向下兼容，您可以放心的升级 GoTLCP 库至最新版本。
 
-
-## 快速开始
+## TLCP 快速开始
 
 ### 客户端
 
@@ -63,9 +70,7 @@ func main() {
 }
 ```
 
-上述代码实现了客户端向服务端建立TLCP连接并读取数据，注客户端配置`InsecureSkipVerify`表示跳过服务端证书校验。
-
-- 完整代码见 [quickstart/client/main.go](./example/quickstart/client/main.go)
+- 完整代码见 [example/quickstart/client/main.go](./example/quickstart/client/main.go)
 
 ### 服务端
 
@@ -77,13 +82,10 @@ import (
 	"net"
 )
 
-
 func main() {
-	// 证书解析以详见下方完整代码。
 	config := &tlcp.Config{
 		Certificates: []tlcp.Certificate{sigCert, encCert},
 	}
-
 	listen, err := tlcp.Listen("tcp", ":8443", config)
 	if err != nil {
 		panic(err)
@@ -100,22 +102,109 @@ func main() {
 }
 ```
 
-- 完整代码见 [quickstart/server/main.go](./example/quickstart/server/main.go)
+- 完整代码见 [example/quickstart/server/main.go](./example/quickstart/server/main.go)
 
-> 若您需要同时支持TLCP/TLS协议，请参考[“GoTLCP 协议适配器”](./pa/README.md)相关内容。
+> 若您需要同时支持 TLCP/TLS 协议，请参考 [GoTLCP 协议适配器](./pa/README.md) 相关内容。
+
+## DTLCP 快速开始
+
+### 客户端
+
+```go
+package main
+
+import (
+	"fmt"
+	"gitee.com/Trisia/gotlcp/dtlcp"
+)
+
+func main() {
+	conn, err := dtlcp.Dial("udp", "127.0.0.1:8443", &dtlcp.Config{InsecureSkipVerify: true})
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte("Hello DTLCP Server!"))
+	if err != nil {
+		panic(err)
+	}
+	buff := make([]byte, 516)
+	n, err := conn.Read(buff)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf(">> %s\n", buff[:n])
+}
+```
+
+- 完整代码见 [example/dtlcp/quickstart/client/main.go](./example/dtlcp/quickstart/client/main.go)
+
+### 服务端
+
+```go
+package main
+
+import (
+	"gitee.com/Trisia/gotlcp/dtlcp"
+)
+
+func main() {
+	config := &dtlcp.Config{
+		Certificates: []dtlcp.Certificate{sigCert, encCert},
+	}
+	ln, err := dtlcp.Listen("udp", ":8443", config)
+	if err != nil {
+		panic(err)
+	}
+	defer ln.Close()
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		go func() {
+			defer conn.Close()
+			buf := make([]byte, 1024)
+			n, _ := conn.Read(buf)
+			conn.Write([]byte("Hello DTLCP Client!"))
+			_ = buf[:n]
+		}()
+	}
+}
+```
+
+- 完整代码见 [example/dtlcp/quickstart/server/main.go](./example/dtlcp/quickstart/server/main.go)
 
 ## 文档
 
-- [关于 TLCP协议](./doc/AboutTLCP.md)
-- [GoTLCP 数字证书及密钥](./doc/CertAndKey.md)
-- [GoTLCP 客户端 配置](./doc/ClientConfig.md) 
-- [GoTLCP 服务端 配置](./doc/ServerConfig.md)
-- [GoTLCP HTTPS 配置](./doc/HTTPsConfig.md)
-- [GoTLCP 协议适配器](./pa/README.md)
+### TLCP
 
+| 文档 | 说明 | 使用场景 |
+|------|------|----------|
+| [关于 TLCP 协议](./doc/AboutTLCP.md) | TLCP 协议介绍、握手流程、密码套件说明 | 了解 TLCP 协议原理 |
+| [数字证书及密钥](./doc/CertAndKey.md) | 签名证书与加密证书的解析和构造方法 | 准备 TLCP/DTLCP 双证书配置 |
+| [客户端配置](./doc/ClientConfig.md) | TLCP 客户端 Config 字段详解 | 开发 TLCP 客户端应用 |
+| [服务端配置](./doc/ServerConfig.md) | TLCP 服务端 Config 字段详解 | 开发 TLCP 服务端应用 |
+| [HTTPS 配置](./doc/HTTPsConfig.md) | TLCP HTTPS 客户端和 Gin/Fiber 服务端配置 | 搭建国密 HTTPS 服务 |
+| [协议适配器](./pa/README.md) | TLCP/TLS 自适应监听器 | 同时提供 TLCP 和 TLS 服务 |
+
+### DTLCP
+
+| 文档 | 说明 | 使用场景 |
+|------|------|----------|
+| [DTLCP 快速入门](./doc/DTLCP-QuickStart.md) | DTLCP 协议概述、服务端/客户端快速启动 | 快速上手 DTLCP |
+| [DTLCP 配置与使用指南](./doc/DTLCP-Config.md) | DTLCP Config 字段详解、安全配置建议 | 开发 DTLCP 应用、理解配置选项 |
+
+### 其他
+
+| 文档 | 说明 |
+|------|------|
+| [免责声明](免责声明.md) | 使用 GoTLCP 的法律声明与保证条款 |
+| [GoTLCP 示例](https://gitee.com/Trisia/gotlcp/tree/main/example) | 全部示例代码入口 |
 
 ## 致谢
 
-- 项目中的SM系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过CPU指令集优化了算法效率。
-- 项目TLCP协议代码裁剪自 go 1.19版本 [golang/src/crypto/tls](https://github.com/golang/go/tree/go1.19/src/crypto/tls) 模块。
-
+- 项目中的 SM 系列算法由 [emmansun/gmsm](https://github.com/emmansun/gmsm) 项目实现，其项目中通过 CPU 指令集优化了算法效率。
+- 项目 TLCP 协议代码裁剪自 go 1.19 版本 [golang/src/crypto/tls](https://github.com/golang/go/tree/go1.19/src/crypto/tls) 模块。
