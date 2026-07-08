@@ -39,21 +39,21 @@ import (
 // 也可通过 Handshake 或 HandshakeContext 显式触发。
 type Conn struct {
 	// 传输层
-	pconn      net.PacketConn               // 底层 UDP socket
-	remoteAddr net.Addr                     // 对端地址
-	isClient   bool                         // 是否是客户端
+	pconn       net.PacketConn              // 底层 UDP socket
+	remoteAddr  net.Addr                    // 对端地址
+	isClient    bool                        // 是否是客户端
 	handshakeFn func(context.Context) error // 握手实现（Phase 4 实现）
 
 	// 握手状态
-	handshakeStatus uint32   // atomic: 1 表示握手完成
+	handshakeStatus uint32 // atomic: 1 表示握手完成
 	handshakeMutex  sync.Mutex
 	handshakeErr    error
-	vers            uint16  // 协商出的协议版本
-	haveVers        bool    // 是否已收到版本信息
+	vers            uint16 // 协商出的协议版本
+	haveVers        bool   // 是否已收到版本信息
 	config          *Config
-	didResume       bool                // 会话重用
-	cipherSuite     uint16              // 密码套件 ID
-	handshakes      int                 // 握手次数
+	didResume       bool   // 会话重用
+	cipherSuite     uint16 // 密码套件 ID
+	handshakes      int    // 握手次数
 
 	// 记录层（输入/输出）
 	in, out halfConn
@@ -103,9 +103,9 @@ type Conn struct {
 	readSeq    uint48
 
 	// 发送缓冲
-	buffering  bool
-	sendBuf    []byte
-	bytesSent  int64
+	buffering   bool
+	sendBuf     []byte
+	bytesSent   int64
 	packetsSent int64
 }
 
@@ -260,7 +260,7 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 			additionalData = append(additionalData, record[0])            // type
 			additionalData = append(additionalData, record[1], record[2]) // version
 			n := len(payload) - c.Overhead()
-			additionalData = append(additionalData, byte(n>>8), byte(n))  // length
+			additionalData = append(additionalData, byte(n>>8), byte(n)) // length
 
 			var err error
 			plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
@@ -365,14 +365,14 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 		}
 		additionalData := append(hc.scratchBuf[:0], hc.seq[:]...)
 		// DTLCP: additional_data = epoch(2) + seq_num(6) + type(1) + version(2) + length(2)
-		additionalData = append(additionalData, record[0])                                  // type
-		additionalData = append(additionalData, record[1], record[2])                       // version
+		additionalData = append(additionalData, record[0])                                 // type
+		additionalData = append(additionalData, record[1], record[2])                      // version
 		additionalData = append(additionalData, byte(len(payload)>>8), byte(len(payload))) // length
 		record = c.Seal(record, nonce, payload, additionalData)
 	case cbcMode:
 		// DTLCP MAC header: type(1) + version(2) + length(2)
-			macHeader := []byte{record[0], record[1], record[2], record[recordHeaderLen-2], record[recordHeaderLen-1]}
-			mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], macHeader, payload, nil)
+		macHeader := []byte{record[0], record[1], record[2], record[recordHeaderLen-2], record[recordHeaderLen-1]}
+		mac := tls10MAC(hc.mac, hc.scratchBuf[:0], hc.seq[:], macHeader, payload, nil)
 		blockSize := c.BlockSize()
 		plaintextLen := len(payload) + len(mac)
 		paddingLen := blockSize - plaintextLen%blockSize
@@ -1067,7 +1067,6 @@ func (c *Conn) clearPendingFragments() {
 	}
 }
 
-
 // =============================================================================
 // Conn — 报警发送
 // =============================================================================
@@ -1523,4 +1522,3 @@ func (c *Conn) VerifyHostname(host string) error {
 	}
 	return c.peerCertificates[0].VerifyHostname(host)
 }
-
