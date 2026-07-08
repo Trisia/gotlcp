@@ -29,8 +29,14 @@ import (
 // Conn — DTLCP 连接对象
 // =============================================================================
 
-// Conn 表示一个 DTLCP 连接，基于 net.PacketConn (UDP)。
-// 实现了 net.Conn 和 net.PacketConn 的部分语义。
+// Conn 表示一个 DTLCP 安全连接，基于 net.PacketConn (UDP) 实现。
+//
+// Conn 同时实现了 net.Conn 和 net.PacketConn 接口：
+//   - Read/Write：流式读写，兼容 net.Conn。适用于简单请求-响应模式。
+//   - ReadFrom/WriteTo：数据报读写，兼容 net.PacketConn。每条调用对应一条 DTLCP 记录，保留消息边界。
+//
+// Conn 在首次 Read/Write/ReadFrom/WriteTo 时自动触发握手，
+// 也可通过 Handshake 或 HandshakeContext 显式触发。
 type Conn struct {
 	// 传输层
 	pconn      net.PacketConn               // 底层 UDP socket
@@ -434,12 +440,13 @@ func (r *atLeastReader) Read(p []byte) (int, error) {
 // RecordHeaderError — 记录头错误
 // =============================================================================
 
-// RecordHeaderError 当 DTLCP 记录层协议头非法时返回。
+// RecordHeaderError 记录层头部解析错误，包含导致错误的 13 字节头部和地址信息。
 type RecordHeaderError struct {
+	// Msg 错误描述。
 	Msg string
-	// RecordHeader 包含导致错误的 13 字节 DTLCP 记录头
+	// RecordHeader 导致错误的 DTLCP 记录头（13 字节）。
 	RecordHeader [13]byte
-	// Addr 底层对端地址
+	// Addr 对端地址。
 	Addr net.Addr
 }
 
@@ -498,17 +505,17 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return c.pconn.SetWriteDeadline(t)
 }
 
-// NetConn 返回被 DTLCP 包装的原始 PacketConn。
+// NetConn 返回被 DTLCP 包装的底层 net.PacketConn。
 func (c *Conn) NetConn() net.PacketConn {
 	return c.pconn
 }
 
-// PeerCertificates 返回对端证书列表。
+// PeerCertificates 返回对端证书链，握手完成后可用。
 func (c *Conn) PeerCertificates() []*x509.Certificate {
 	return c.peerCertificates
 }
 
-// IsClient 返回是否为客户端。
+// IsClient 返回当前连接是否为客户端。
 func (c *Conn) IsClient() bool {
 	return c.isClient
 }
@@ -1068,7 +1075,9 @@ func (c *Conn) sendAlert(err alert) error {
 var errShutdown = errors.New("dtlcp: protocol is shutdown")
 var errEarlyCloseWrite = errors.New("dtlcp: CloseWrite called before handshake complete")
 
-// Close 关闭 DTLCP 连接。
+// Close 关闭连接。
+// 若握手已完成，会先尝试发送 close_notify 告警通知对端。
+// 然后释放底层 PacketConn 并置零工作密钥。
 func (c *Conn) Close() error {
 	var x int32
 	for {
@@ -1099,7 +1108,8 @@ func (c *Conn) Close() error {
 	return alertErr
 }
 
-// CloseWrite 关闭连接的写入端。
+// CloseWrite 关闭连接的写入端，发送 close_notify 告警后关闭写入方向。
+// 仅握手完成后可调用，读取方向不受影响。
 func (c *Conn) CloseWrite() error {
 	if !c.handshakeComplete() {
 		return errEarlyCloseWrite
@@ -1124,7 +1134,12 @@ func (c *Conn) closeNotify() error {
 // Conn — 数据读写（net.Conn 接口）
 // =============================================================================
 
-// Read 从连接中读取数据。如果握手尚未完成，Read 会自动触发握手。
+// Read 从连接中读取解密后的数据，实现 io.Reader 接口。
+// 如果握手尚未完成，Read 会自动触发握手。
+//
+// 参数 b 为接收缓冲区。
+// 返回成功读取的字节数 n 和可能出现的错误。
+// 若返回 io.EOF 表示对端已关闭连接。
 func (c *Conn) Read(b []byte) (int, error) {
 	if err := c.Handshake(); err != nil {
 		return 0, err
@@ -1159,7 +1174,12 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-// Write 向连接中写入数据。如果握手尚未完成，Write 会自动触发握手。
+// Write 加密数据并写入连接，实现 io.Writer 接口。
+// 如果握手尚未完成，Write 会自动触发握手。
+//
+// 参数 b 为待发送数据。
+// 返回成功写入的字节数 n 和可能出现的错误。
+// Write 会将大块数据自动切分为多条 DTLCP 记录发送。
 func (c *Conn) Write(b []byte) (int, error) {
 	for {
 		x := atomic.LoadInt32(&c.activeCall)
@@ -1199,8 +1219,13 @@ func (c *Conn) Write(b []byte) (int, error) {
 // Conn — ReadFrom / WriteTo（net.PacketConn 风格接口）
 // =============================================================================
 
-// ReadFrom 解密一条 DTLCP 记录并返回明文。
-// 实现 io.ReaderFrom 风格接口。
+// ReadFrom 解密一条 DTLCP 记录并返回明文和发送方地址，实现 net.PacketConn 接口。
+// 如果握手尚未完成，ReadFrom 会自动触发握手。
+// 每条 ReadFrom 调用返回一条完整的 DTLCP 应用数据记录，保留消息边界。
+//
+// 参数 p 为接收缓冲区，需足够大以容纳单条记录（最大 16384 字节）。
+// 返回成功读取的字节数 n、对端地址 addr 和可能出现的错误。
+// 若对端发送 close_notify 告警，返回 io.EOF。
 func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	if err = c.Handshake(); err != nil {
 		return 0, nil, err
@@ -1283,7 +1308,13 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 }
 
-// WriteTo 加密并发送一条 DTLCP 应用数据记录。
+// WriteTo 加密并发送一条 DTLCP 应用数据记录到指定地址，实现 net.PacketConn 接口。
+// 如果握手尚未完成，WriteTo 会自动触发握手。
+// 每条 WriteTo 调用产生一条独立的 DTLCP 记录。
+//
+// 参数 p 为待发送数据，单条记录最大 16384 字节。
+// 参数 addr 为对端地址，必须与握手协商的地址一致，否则返回错误。
+// 返回成功写入的字节数 n 和可能出现的错误。
 func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if err = c.Handshake(); err != nil {
 		return 0, err
@@ -1301,12 +1332,16 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 // Conn — 握手
 // =============================================================================
 
-// Handshake 运行客户端或服务端握手协议（如果尚未运行）。
+// Handshake 运行客户端或服务端握手协议（如果尚未完成）。
+// 大多数情况下无需显式调用——Read/Write/ReadFrom/WriteTo 会自动触发握手。
+// 返回握手过程中可能出现的错误。
 func (c *Conn) Handshake() error {
 	return c.HandshakeContext(context.Background())
 }
 
 // HandshakeContext 在给定上下文中运行握手协议。
+// ctx 可用于取消握手或设置超时。若 ctx 被取消，底层连接将被关闭。
+// 返回握手过程中可能出现的错误。
 func (c *Conn) HandshakeContext(ctx context.Context) error {
 	return c.handshakeContext(ctx)
 }
@@ -1382,7 +1417,7 @@ func (c *Conn) handshakeComplete() bool {
 // Conn — 连接状态
 // =============================================================================
 
-// ConnectionState 返回连接的基本 DTLCP 详情。
+// ConnectionState 返回连接的基本 DTLCP 详情，包括协议版本、密码套件、对端证书等。
 func (c *Conn) ConnectionState() ConnectionState {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
@@ -1402,7 +1437,9 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	return state
 }
 
-// VerifyHostname 检查对端证书链对于指定主机名是否有效。
+// VerifyHostname 检查对端证书链对指定主机名是否有效。
+// 仅客户端可调用。参数 host 为要验证的主机名。
+// 若证书链中任一证书的主机名与 host 不匹配，返回错误。
 func (c *Conn) VerifyHostname(host string) error {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
