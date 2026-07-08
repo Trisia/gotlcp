@@ -191,65 +191,47 @@ const (
 	certTypeIbcParams = 80
 )
 
-// ConnectionState 关于TLCP连接的详细信息
+// ConnectionState 记录了 DTLCP 连接的基本信息。
+// 包括协议版本、密码套件、对端证书等握手协商结果。
 type ConnectionState struct {
-	// Version 连接的TLCP协议版本号
-	Version uint16
-
-	// HandshakeComplete true 表示完成握手
+	// HandshakeComplete 握手是否已完成。
 	HandshakeComplete bool
 
-	// DidResume true 表示这个连接是从之前的会话中重用了会话密钥
+	// Version 协商后的协议版本号。
+	Version uint16
+
+	// DidResume 是否通过会话重用的方式完成了握手。
 	DidResume bool
 
-	// CipherSuite 该连接所使用的密码套件ID
+	// CipherSuite 协商使用的密码套件 ID。
 	CipherSuite uint16
 
-	// NegotiatedProtocol 协商出的应用层协议
+	// NegotiatedProtocol ALPN 协商选中的应用层协议。
 	NegotiatedProtocol string
 
-	// ServerName 服务端端名称
+	// ServerName 客户端 SNI 扩展中指定的服务端名称。
 	ServerName string
 
-	// PeerCertificates 对端数字证书对象
-	//
-	// 在客户端侧，改参数不会为空，表示服务端的签名证书和加密证书
-	// 在服务端侧，若  Config.ClientAuth 不为 RequireAnyClientCert 或 RequireAndVerifyClientCert 那么则可能为空。
+	// PeerCertificates 对端证书链，按发送顺序排列。
 	PeerCertificates []*x509.Certificate
 
-	// VerifiedChains 验证对端证书的证书链
-	//
-	// 在客户端侧证书链中的证书来自于 Config.RootCAs
-	// 在服务端侧证书链中的证书来自于 Config.ClientCAs
-	//
-	// 若启用了 Config.InsecureSkipVerify 参数则不会存在改参数。
+	// VerifiedChains 证书验证后的证书链。
 	VerifiedChains [][]*x509.Certificate
 }
 
-// ClientAuthType 服务端对客户单的认证策略，用于客户端身份认证配置
+// ClientAuthType 定义服务端对客户端身份的认证策略，用于 Config.ClientAuth。
 type ClientAuthType int
 
 const (
-	// NoClientCert indicates that no client certificate should be requested
-	// during the handshake, and if any certificates are sent they will not
-	// be verified.
+	// NoClientCert 不要求客户端证书，不验证客户端身份。
 	NoClientCert ClientAuthType = iota
-	// RequestClientCert indicates that a client certificate should be requested
-	// during the handshake, but does not require that the client send any
-	// certificates.
+	// RequestClientCert 请求客户端证书，但不验证，客户端可不发送。
 	RequestClientCert
-	// RequireAnyClientCert indicates that a client certificate should be requested
-	// during the handshake, and that at least one certificate is required to be
-	// sent by the client, but that certificate is not required to be valid.
+	// RequireAnyClientCert 要求客户端发送证书，但不验证证书有效性。
 	RequireAnyClientCert
-	// VerifyClientCertIfGiven indicates that a client certificate should be requested
-	// during the handshake, but does not require that the client sends a
-	// certificate. If the client does send a certificate it is required to be
-	// valid.
+	// VerifyClientCertIfGiven 若客户端提供了证书则验证，否则跳过。
 	VerifyClientCertIfGiven
-	// RequireAndVerifyClientCert indicates that a client certificate should be requested
-	// during the handshake, and that at least one valid certificate is required
-	// to be sent by the client.
+	// RequireAndVerifyClientCert 要求客户端发送证书并验证，且证书须具有客户端认证的扩展密钥用法。
 	RequireAndVerifyClientCert
 	// RequireAndVerifyAnyKeyUsageClientCert 要求客户端提供客户端数字证书，并且验证数字证书，但是忽略客户端数字证书的密钥用法。
 	RequireAndVerifyAnyKeyUsageClientCert
@@ -462,13 +444,40 @@ type Config struct {
 	// 从 ClientHelloInfo 中获取扩展字段，然后根据扩展字段选择合适的证书。
 	TrustedCAIndications []TrustedAuthority
 
-	// DTLCP 特有配置
-	PMTU                      int            // 路径MTU，默认1400
-	CookieSecret              []byte         // 服务端Cookie HMAC-SM3密钥
-	ReplayWindow              int            // 重放滑动窗口大小，默认64（最小32）
-	InitialRetransmitTimeout  time.Duration  // 初始重传超时，默认1s
-	MaxRetransmitTimeout      time.Duration  // 最大重传超时，默认64s
-	NewTimer                  func(d time.Duration) *TimerHandle // 定时器工厂，默认defaultNewTimer
+	// === DTLCP 特有配置 ===
+
+	// PMTU 路径 MTU（Maximum Transmission Unit），单位：字节。
+	// 影响握手消息分片阈值，消息超过 PMTU 时自动分片传输。
+	// 默认值 1400，适用于大多数 UDP 网络环境。
+	// 若网络链路支持 jumbo frame，可适当调大以减少分片。
+	PMTU int
+
+	// CookieSecret 服务端用于生成和验证 HelloVerifyRequest Cookie 的密钥。
+	// Cookie 通过 HMAC-SM3(CookieSecret, clientAddr || clientHelloParams) 生成。
+	// 仅服务端需要配置，客户端忽略此字段。
+	// 密钥必须随机且保密，建议至少 16 字节。若为空，服务端将无法启用 Cookie 防 DoS 机制。
+	CookieSecret []byte
+
+	// ReplayWindow 重放攻击检测的滑动窗口大小。
+	// 窗口大小决定可容忍的最大包乱序程度，默认 64，最小 32。
+	// 值越大，乱序容忍度越高，但内存占用略增。
+	ReplayWindow int
+
+	// InitialRetransmitTimeout 握手消息初始重传超时时间。
+	// 发送完一轮握手消息后，若在此时间内未收到对端响应，触发重传。
+	// 默认值 1s。
+	InitialRetransmitTimeout time.Duration
+
+	// MaxRetransmitTimeout 握手消息最大重传超时时间。
+	// 每次重传后超时翻倍（指数退避），直到达到此上限。
+	// 默认值 64s。
+	MaxRetransmitTimeout time.Duration
+
+	// NewTimer 定时器工厂函数，用于创建 TimerHandle。
+	// 默认使用 time.NewTimer 实现。测试时可注入 mock 定时器以精确控制时间。
+	// 参数 d 为定时器延迟时间。
+	// 返回值 TimerHandle 提供 C（触发通道）、Stop、Reset 方法。
+	NewTimer func(d time.Duration) *TimerHandle
 }
 
 // Clone 复制一个新的连接配置对象
@@ -674,24 +683,20 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	return errors.New("chain is not signed by an acceptable CA")
 }
 
-// Certificate 密钥对以及相关的数字证书
+// Certificate 包含一个 X.509 证书及对应的私钥。
+// TLCP/DTLCP 服务端需要两对证书：签名证书（Certificates[0]）和加密证书（Certificates[1]）。
+// 客户端在双向认证时需要至少一对签名证书。
 type Certificate struct {
-	// Certificate DER编码的X.509数字证书，在TLCP协议中该数组只会存在1张证书。（无证书链）
-	// Certificate 中的元素可以使用 smx509.ParseCertificate 方法解析为 *smx509.Certificate
+	// Certificate 证书的 DER 编码字节序列，链中第一个为叶子证书。
 	Certificate [][]byte
 
-	// PrivateKey 私钥实现，根据密钥用法的不同
-	// 签名密钥对需要实现 crypto.Signer 接口
-	// 加密密钥对需要实现 crypto.Decrypter 接口
+	// PrivateKey 证书对应的私钥，支持 *sm2.PrivateKey 或 *rsa.PrivateKey。
 	PrivateKey crypto.PrivateKey
 
-	// OCSPStaple 包含一个可选的OCSP响应，该响应将提供给含OCSP请求扩展的客户端
+	// OCSPStaple 包含一个可选的 OCSP 响应，该响应将提供给含 OCSP 请求扩展的客户端。
 	OCSPStaple []byte
 
-	// Leaf 握手x509证书对象，默认为空
-	//
-	// 可以通过 smx509.ParseCertificate 解析 Certificate.Certificate 中的第一个元素解析设置，
-	// 通过该种方式可以减少在握手环节的证书解析的时间。
+	// Leaf 已解析的叶子证书 X.509 对象。
 	Leaf *x509.Certificate
 }
 
@@ -713,11 +718,18 @@ const (
 	stateFinished                        // 已完成：握手结束
 )
 
-// TimerHandle 可注入的定时器句柄，用于测试 mock
+// TimerHandle 可注入的定时器句柄，抽象 time.Timer 的行为。
+// 通过 Config.NewTimer 注入，便于测试时精确控制超时。
+//
+// 生产环境默认使用 time.NewTimer 实现（见 defaultNewTimer）。
 type TimerHandle struct {
-	C     <-chan time.Time
-	Stop  func() bool
-	Reset func(time.Duration) bool
+	// C 定时器触发时发送当前时间的通道。
+	C <-chan time.Time
+	// Stop 停止定时器，返回 true 表示成功在触发前停止。
+	Stop func() bool
+	// Reset 重置定时器延迟为 d（单位：纳秒），返回 true 表示定时器原本处于活跃状态。
+	// 若定时器已触发或已停止，Reset 返回 false。
+	Reset func(d time.Duration) bool
 }
 
 // defaultNewTimer 生产环境默认定时器实现
@@ -751,11 +763,13 @@ func unexpectedMessageError(wanted, got interface{}) error {
 	return fmt.Errorf("dtlcp: received unexpected handshake message of type %T when waiting for %T", got, wanted)
 }
 
-// CertificateVerificationError is returned when certificate verification fails during the handshake.
+// CertificateVerificationError 证书验证失败时返回的错误。
+// 握手期间对端证书未通过验证时产生。
 type CertificateVerificationError struct {
-	// UnverifiedCertificates and its contents should not be modified.
+	// UnverifiedCertificates 未通过验证的证书链。
 	UnverifiedCertificates []*x509.Certificate
-	Err                    error
+	// Err 具体的验证错误原因。
+	Err error
 }
 
 func (e *CertificateVerificationError) Error() string {
