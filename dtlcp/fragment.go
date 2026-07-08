@@ -10,22 +10,23 @@ import "time"
 type fragmentBuffer struct {
 	totalLen   uint24    // 原始消息总长度（来自 handshake.length 字段）
 	data       []byte    // 重组缓冲区
-	received   []bool    // 各分片块是否已收到
+	received   []byte    // 位掩码：received[i>>3] 的第 (i&7) 位 = 字节索引 i 已收到
+	numBytes   int       // totalLen 的 int 副本，避免重复转换
 	receivedAt time.Time // 最后收到分片的时间
 }
 
 // newFragmentBuffer 创建分片重组缓冲区
 // totalLen: 原始消息总长度
-// fragSize: 每片估算大小（用于位图粒度）
-func newFragmentBuffer(totalLen uint24, fragSize int) *fragmentBuffer {
-	numFrags := (int(totalLen) + fragSize - 1) / fragSize
-	if numFrags < 1 {
-		numFrags = 1
+func newFragmentBuffer(totalLen uint24) *fragmentBuffer {
+	n := int(totalLen)
+	if n < 1 {
+		n = 1
 	}
 	return &fragmentBuffer{
 		totalLen: totalLen,
-		data:     make([]byte, totalLen),
-		received: make([]bool, numFrags),
+		data:     make([]byte, n),
+		received: make([]byte, (n+7)>>3), // ceil(n/8) 字节的位掩码
+		numBytes: n,
 	}
 }
 
@@ -35,23 +36,15 @@ func newFragmentBuffer(totalLen uint24, fragSize int) *fragmentBuffer {
 // frag: 分片数据
 // 返回 false 表示偏移/长度超出范围
 func (fb *fragmentBuffer) addFragment(offset, length uint24, frag []byte) bool {
-	if int(offset)+int(length) > int(fb.totalLen) {
+	if int(offset)+int(length) > fb.numBytes {
 		return false
 	}
 	copy(fb.data[offset:offset+length], frag)
 
-	// 标记覆盖到的分片块为已收到
-	fragSize := len(fb.data) / len(fb.received)
-	if fragSize == 0 {
-		fragSize = 1
-	}
-	startIdx := int(offset) / fragSize
-	endIdx := (int(offset) + int(length) - 1) / fragSize
-	if endIdx >= len(fb.received) {
-		endIdx = len(fb.received) - 1
-	}
-	for i := startIdx; i <= endIdx; i++ {
-		fb.received[i] = true
+	// 逐字节设置位掩码中对应的位
+	end := int(offset) + int(length)
+	for i := int(offset); i < end; i++ {
+		fb.received[i>>3] |= 1 << (i & 7)
 	}
 	fb.receivedAt = time.Now()
 	return true
@@ -59,8 +52,18 @@ func (fb *fragmentBuffer) addFragment(offset, length uint24, frag []byte) bool {
 
 // complete 检查是否已收齐所有分片
 func (fb *fragmentBuffer) complete() bool {
-	for _, r := range fb.received {
-		if !r {
+	// 检查完整字节是否全为 0xFF
+	full := fb.numBytes >> 3
+	for i := 0; i < full; i++ {
+		if fb.received[i] != 0xFF {
+			return false
+		}
+	}
+	// 检查尾部不足 1 字节的位
+	rem := fb.numBytes & 7
+	if rem > 0 {
+		mask := byte((1 << rem) - 1)
+		if fb.received[full]&mask != mask {
 			return false
 		}
 	}

@@ -959,11 +959,14 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 
 	// 分片重组支持（非分片消息直接处理）
 	if fragLen < bodyLen || fragOff > 0 {
+		// 清理过期分片缓冲区
+		c.cleanupStaleFragments(fragmentTimeout)
+
 		// 消息被分片，存到 pendingFragments 中
 		msgSeq := uint16(data[4])<<8 | uint16(data[5])
 		fb, exists := c.pendingFragments[msgSeq]
 		if !exists {
-			fb = newFragmentBuffer(uint24(bodyLen), fragLen)
+			fb = newFragmentBuffer(uint24(bodyLen))
 			c.pendingFragments[msgSeq] = fb
 		}
 		fb.addFragment(uint24(fragOff), uint24(fragLen), data[dtlcpHeaderLen:])
@@ -1033,6 +1036,29 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 // retryReadHandshake 递归读取下一条记录（用于分片重组场景）。
 func (c *Conn) retryReadHandshake(transcript transcriptHash) (interface{}, error) {
 	return c.readHandshake(transcript)
+}
+
+// fragmentTimeout 是待重组分片的超时时间。
+// 超过此时间未收齐的分片序列将被清理。
+const fragmentTimeout = 30 * time.Second
+
+// cleanupStaleFragments 清理 pendingFragments 中过期的分片重组缓冲区。
+// 每次进入分片重组路径时调用，防止不完整分片永久占用内存。
+func (c *Conn) cleanupStaleFragments(timeout time.Duration) {
+	now := time.Now()
+	for seq, fb := range c.pendingFragments {
+		if now.Sub(fb.receivedAt) > timeout {
+			delete(c.pendingFragments, seq)
+		}
+	}
+}
+
+// clearPendingFragments 清空所有等待重组的分片缓冲区。
+// 在握手完成时调用，释放不需要的内存。
+func (c *Conn) clearPendingFragments() {
+	for k := range c.pendingFragments {
+		delete(c.pendingFragments, k)
+	}
 }
 
 
@@ -1394,6 +1420,7 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 	c.handshakeErr = c.handshakeFn(handshakeCtx)
 	if c.handshakeErr == nil {
 		c.handshakes++
+		c.clearPendingFragments()
 	} else {
 		c.flush()
 	}

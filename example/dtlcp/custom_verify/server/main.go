@@ -71,7 +71,7 @@ func main() {
 	config := &dtlcp.Config{
 		Certificates:       []dtlcp.Certificate{sigCert, encCert},
 		InsecureSkipVerify: true,
-		ClientAuth:         dtlcp.RequireAndVerifyClientCert, // 要求客户端证书，否则 VerifyPeerCertificate 回调不会被触发
+		ClientAuth:         dtlcp.RequestClientCert, // 请求客户端证书（非必须），否则服务器端 VerifyPeerCertificate 回调不会被触发
 		// 自定义证书校验：打印对端证书信息
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error {
 			fmt.Printf(">>> 服务端自定义校验 - 收到 %d 张对端证书\n", len(rawCerts))
