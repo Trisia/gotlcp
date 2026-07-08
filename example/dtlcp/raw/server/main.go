@@ -1,8 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"gitee.com/Trisia/gotlcp/dtlcp"
-	"net"
 )
 
 const (
@@ -66,30 +66,35 @@ func init() {
 	}
 }
 
-// 服务端使用现有 PacketConn 创建 DTLCP 连接
-// 先通过 net.ListenPacket 创建 UDP 连接，然后读取第一个数据包，
-// 最后通过 dtlcp.Server 将现有 PacketConn 包装为 DTLCP 连接
+// 服务端使用 dtlcp.Listen 创建 DTLCP 服务端
+// 该方法返回 net.Listener，通过 Accept 接受客户端连接，使用简单可靠。
+//
+// 注意：dtlcp.Server 和 dtlcp.Client 适用于复用现有 PacketConn 的场景，
+// 使用时应避免在创建 Server/Client 前从 PacketConn 读取数据，以免消费握手消息。
 func main() {
 	config := &dtlcp.Config{Certificates: []dtlcp.Certificate{sigCert, encCert}}
 
-	pconn, err := net.ListenPacket("udp", ":8452")
+	ln, err := dtlcp.Listen("udp", ":8452", config)
 	if err != nil {
 		panic(err)
 	}
-	defer pconn.Close()
+	defer ln.Close()
 
-	buf := make([]byte, 1500)
-	n, addr, err := pconn.ReadFrom(buf)
+	conn, err := ln.Accept()
 	if err != nil {
 		panic(err)
 	}
-
-	conn := dtlcp.Server(pconn, addr, config)
 	defer conn.Close()
 
 	// 回显收到的数据
-	_, err = conn.Write(buf[:n])
+	buff := make([]byte, 512)
+	n, err := conn.Read(buff)
 	if err != nil {
 		panic(err)
 	}
+	_, err = conn.Write(buff[:n])
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("<< %s\n", buff[:n])
 }
