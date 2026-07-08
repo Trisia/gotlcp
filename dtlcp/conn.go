@@ -128,8 +128,6 @@ type halfConn struct {
 
 	nextCipher interface{} // 下一个加密状态
 	nextMac    hash.Hash   // 下一个 MAC 算法
-
-	trafficSecret []byte // 当前 TLS 1.3 traffic secret
 }
 
 type permanentError struct {
@@ -170,11 +168,6 @@ func (hc *halfConn) changeCipherSpec() error {
 		hc.seq[i] = 0
 	}
 	return nil
-}
-
-// incSeq 在 DTLCP 中为空操作，因为 seq 是显式编码在记录头中的。
-func (hc *halfConn) incSeq() {
-	// DTLCP: 序列号显式携带在记录头中，无需自动递增
 }
 
 // explicitNonceLen 返回每条记录中包含的显式 nonce/IV 字节数。
@@ -322,7 +315,7 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 		plaintext = payload[:n]
 	}
 
-	// DTLCP: seq 是显式的，无需 incSeq
+	// DTLCP: seq 是显式的，无需递增
 	return plaintext, typ, nil
 }
 
@@ -397,7 +390,7 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 	n := len(record) - recordHeaderLen
 	record[recordHeaderLen-2] = byte(n >> 8)
 	record[recordHeaderLen-1] = byte(n)
-	// DTLCP: seq 是显式的，无需 incSeq
+	// DTLCP: seq 是显式的，无需递增
 
 	return record, nil
 }
@@ -1103,9 +1096,10 @@ var errEarlyCloseWrite = errors.New("dtlcp: CloseWrite called before handshake c
 
 // Close 关闭连接。
 // 若握手已完成，会先尝试发送 close_notify 告警通知对端。
-// 等待所有活跃的 Read/Write/ReadFrom/WriteTo 完成后才清理资源。
+// 先关闭底层 pconn 解阻塞正在 I/O 中的 Read/ReadFrom/Write/WriteTo，
+// 再等待所有活跃调用退出后清理资源。
 func (c *Conn) Close() error {
-	// 设置关闭标记
+	// 设置关闭标记，阻止新调用进入
 	for {
 		x := atomic.LoadInt32(&c.activeCall)
 		if x&1 != 0 {
@@ -1116,12 +1110,14 @@ func (c *Conn) Close() error {
 		}
 	}
 
-	// 等待所有活跃调用完成后再清理
-	// activeCall 位含义：位0=关闭标记，位1+=活跃调用计数(每次+2)
-	// 当 activeCall == 1 时（仅关闭标记），所有活跃调用已退出
+	// 先关闭底层连接，解阻塞正在 pconn.ReadFrom()/pconn.WriteTo() 上等待的 I/O 调用
+	c.pconn.Close()
+
+	// 等待所有活跃调用退出（短暂等待，因为 I/O 已被解阻塞）
 	for atomic.LoadInt32(&c.activeCall) > 1 {
 	}
 
+	// closeNotify 在 pconn 已关闭后调用会失败，但非致命
 	var alertErr error
 	if c.handshakeComplete() {
 		if err := c.closeNotify(); err != nil {
@@ -1131,9 +1127,6 @@ func (c *Conn) Close() error {
 	setZero(c.workKey)
 	c.workKey = nil
 
-	if err := c.pconn.Close(); err != nil {
-		return err
-	}
 	return alertErr
 }
 
