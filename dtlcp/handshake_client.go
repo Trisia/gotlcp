@@ -23,7 +23,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	x509 "github.com/emmansun/gmsm/smx509"
@@ -52,27 +51,6 @@ type clientHandshakeState struct {
 // =============================================================================
 // 辅助函数（DTLCP 状态机）
 // =============================================================================
-
-// sendFlight 发送当前 flight 的所有消息，进入 WAITING 状态
-func (c *Conn) sendFlight(transcript transcriptHash) error {
-	c.hsState = stateSending
-	c.buffering = true
-
-	for _, msg := range c.flightBuffer {
-		msg.setMessageSeq(c.messageSeq)
-		c.messageSeq++
-		if _, err := c.writeHandshakeRecord(msg, transcript); err != nil {
-			return err
-		}
-	}
-	c.flightBuffer = nil
-
-	if _, err := c.flush(); err != nil {
-		return err
-	}
-	c.buffering = false
-	return nil
-}
 
 // =============================================================================
 // tlcpRand — 生成 32 字节 TLCP 随机数（4 字节 unix time + 28 字节随机）
@@ -218,7 +196,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	var serverHello *serverHelloMsg
 
 	for {
-		c.hsState = stateSending
+		c.hsState.Store(int32(stateSending))
 		hello.setMessageSeq(c.messageSeq)
 		c.messageSeq++
 
@@ -230,7 +208,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			return err
 		}
 
-		c.hsState = stateWaiting
+		c.hsState.Store(int32(stateWaiting))
 		c.retransmitTimer.reset()
 
 		// 读循环：接收响应，处理超时和对端重传
@@ -243,7 +221,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 				if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
 					// 超时：指数退避并重传
 					c.retransmitTimer.backoff()
-					c.hsState = stateSending
+					c.hsState.Store(int32(stateSending))
 					break
 				}
 				return readErr
@@ -254,7 +232,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 				// 检查是否已设置 cookie（对端重传检测）
 				if len(hello.cookie) > 0 {
 					// 对端重传了 HelloVerifyRequest，我们重传 ClientHello
-					c.hsState = stateSending
+					c.hsState.Store(int32(stateSending))
 					break
 				}
 
@@ -262,7 +240,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 				hello.cookie = append([]byte(nil), m.cookie...)
 				hello.raw = nil // 强制重新 marshaling
 				c.handBuf.Reset()
-				c.hsState = stateSending
+				c.hsState.Store(int32(stateSending))
 				break
 
 			case *serverHelloMsg:
@@ -411,14 +389,7 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 
-		// 先发送 CKE（不含 CCS+Finished），避免 CKE 与 CCS+Finished 在同数据报中
-		// 导致服务端 readRecordOrCCS 处理 CCS 时因 c.handBuf 非空而报错。
-		c.hsState = stateSending
-		if _, err = c.flush(); err != nil {
-			return err
-		}
-		c.buffering = true
-
+		// 构造完整 Flight 5：CKE + CCS + Finished，单数据报发送 (RFC 6347 §4.2.4)
 		if err = hs.establishKeys(); err != nil {
 			return err
 		}
@@ -428,17 +399,17 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 
-		// 保存 Flight 5 原始字节（不含 CKE，仅 CCS+Finished）用于超时重传
+		// 保存整个 Flight 5 用于超时重传
 		hs.flightData = append([]byte(nil), c.sendBuf...)
 
-		// 发送 CCS + Finished
-		c.hsState = stateSending
+		// 单次 flush 发送完整 Flight 5
+		c.hsState.Store(int32(stateSending))
 		if _, err = c.flush(); err != nil {
 			return err
 		}
 
 		// 进入等待状态，接收 Flight 6
-		c.hsState = stateWaiting
+		c.hsState.Store(int32(stateWaiting))
 		c.retransmitTimer.reset()
 
 		// 创建会话
@@ -452,7 +423,7 @@ func (hs *clientHandshakeState) handshake() error {
 		}
 	}
 
-	atomic.StoreUint32(&c.handshakeStatus, 1)
+	c.hsState.Store(int32(stateFinished))
 
 	setZero(hs.masterSecret)
 	hs.masterSecret = nil

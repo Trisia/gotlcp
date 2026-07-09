@@ -31,7 +31,6 @@ func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		remoteAddr:       addr,
 		config:           config,
 		isClient:         false,
-		hsState:          statePreparing,
 		messageSeq:       0,
 		nextReceiveSeq:   0,
 		writeEpoch:       0,
@@ -40,6 +39,12 @@ func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		readSeq:          0,
 		pendingFragments: make(map[uint16]*fragmentBuffer),
 	}
+	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值 64
+	windowSize := 64
+	if config != nil && config.ReplayWindow > 0 {
+		windowSize = config.ReplayWindow
+	}
+	c.replayWindow = newReplayWindow(windowSize)
 	c.handshakeFn = c.serverHandshake
 	c.initRetransmitTimer(config)
 	return c
@@ -54,7 +59,6 @@ func Client(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		remoteAddr:       addr,
 		config:           config,
 		isClient:         true,
-		hsState:          statePreparing,
 		messageSeq:       0,
 		nextReceiveSeq:   0,
 		writeEpoch:       0,
@@ -63,6 +67,12 @@ func Client(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		readSeq:          0,
 		pendingFragments: make(map[uint16]*fragmentBuffer),
 	}
+	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值 64
+	windowSize := 64
+	if config != nil && config.ReplayWindow > 0 {
+		windowSize = config.ReplayWindow
+	}
+	c.replayWindow = newReplayWindow(windowSize)
 	c.handshakeFn = c.clientHandshake
 	c.initRetransmitTimer(config)
 	return c
@@ -87,7 +97,7 @@ func (c *Conn) initRetransmitTimer(config *Config) {
 
 const (
 	defaultInitialRetransmitTimeout = 1 * time.Second
-	defaultMaxRetransmitTimeout     = 64 * time.Second
+	defaultMaxRetransmitTimeout     = 60 * time.Second // RFC 6347 §4.2.4 / RFC 6298 max
 )
 
 // listener 实现了 net.Listener 接口，用于表示 DTLCP 的 Listener。

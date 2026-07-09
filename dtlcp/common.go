@@ -36,6 +36,10 @@ const (
 	recordHeaderLen   = 13           // record header length (DTLCP: Type[1]+Version[2]+Epoch[2]+SeqNum[6]+Length[2])
 	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
 	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
+
+	// 2*MSL 驻留期 (RFC 6347 §4.2.4)
+	mslPeriod   = 60 * time.Second // RFC 6298 MSL
+	dwellPeriod = 2 * mslPeriod    // 2*MSL = 120s 驻留期
 )
 
 // TLCP record 类型

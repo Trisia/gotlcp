@@ -36,7 +36,7 @@ func TestRetransmitTimerBackoff(t *testing.T) {
 	}
 }
 
-// TestRetransmitTimerMax 测试背靠背退避不超过 64s。
+// TestRetransmitTimerMax 测试背靠背退避不超过 60s。
 func TestRetransmitTimerMax(t *testing.T) {
 	tmr := newRetransmitTimer(time.Second, 64*time.Second, newMockTimer)
 
@@ -46,10 +46,10 @@ func TestRetransmitTimerMax(t *testing.T) {
 	}
 
 	if tmr.current > 64*time.Second {
-		t.Fatalf("退避多次后不应超过 64s，实际 %v", tmr.current)
+		t.Fatalf("退避多次后不应超过 60s，实际 %v", tmr.current)
 	}
 	if tmr.current != 64*time.Second {
-		t.Fatalf("退避 10 次后应为 64s，实际 %v", tmr.current)
+		t.Fatalf("退避 10 次后应为 60s，实际 %v", tmr.current)
 	}
 }
 

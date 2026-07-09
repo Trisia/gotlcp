@@ -45,7 +45,6 @@ type Conn struct {
 	handshakeFn func(context.Context) error // 握手实现（Phase 4 实现）
 
 	// 握手状态
-	handshakeStatus uint32 // atomic: 1 表示握手完成
 	handshakeMutex  sync.Mutex
 	handshakeErr    error
 	vers            uint16 // 协商出的协议版本
@@ -61,8 +60,12 @@ type Conn struct {
 	// 重放保护
 	replayWindow *replayWindow
 
+	// 2*MSL 驻留期 (RFC 6347 §4.2.4)
+	dwellDeadline    time.Time // 驻留截止时间，零值表示不在驻留期
+	flightRetransmit []byte    // 最后一 flight 数据，用于驻留重传
+
 	// DTLCP 四态握手状态机
-	hsState        handshakeState
+	hsState        atomic.Int32 // handshakeState: statePreparing/stateSending/stateWaiting/stateFinished
 	flightBuffer   []handshakeMessage
 	messageSeq     uint16
 	nextReceiveSeq uint16
@@ -89,6 +92,7 @@ type Conn struct {
 	serverName     string
 	clientProtocol string
 	workKey        []byte
+	cookieSecret   []byte // 随机生成的 cookie 密钥（Config.CookieSecret 为空时使用）
 
 	closeNotifySent bool
 	closeNotifyErr  error
@@ -646,27 +650,25 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			return c.in.setErrorLocked(c.sendAlert(err.(alert)))
 		}
 
-		// 重放检查（解密成功后执行）
-		if c.replayWindow != nil {
-			if epoch < c.readEpoch {
-				// 旧 epoch：静默丢弃，继续下一条记录
-				c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
-				continue
+		// 重放检查（解密成功后执行，RFC 6347 §4.1.2.6）
+		if epoch < c.readEpoch {
+			// 旧 epoch：静默丢弃，继续下一条记录
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
+			continue
+		}
+		if epoch > c.readEpoch {
+			c.readEpoch = epoch
+			c.readSeq = 0
+			windowSize := 64
+			if c.config != nil && c.config.ReplayWindow > 0 {
+				windowSize = c.config.ReplayWindow
 			}
-			if epoch > c.readEpoch {
-				c.readEpoch = epoch
-				c.readSeq = 0
-				windowSize := 64
-				if c.config != nil && c.config.ReplayWindow > 0 {
-					windowSize = c.config.ReplayWindow
-				}
-				c.replayWindow = newReplayWindow(windowSize)
-			}
-			if !c.replayWindow.check(seqNum) {
-				// 重放检测：静默丢弃
-				c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
-				continue
-			}
+			c.replayWindow = newReplayWindow(windowSize)
+		}
+		if !c.replayWindow.check(seqNum) {
+			// 重放检测：静默丢弃
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
+			continue
 		}
 
 		if len(data) > maxPlaintext {
@@ -710,10 +712,18 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			if len(data) != 1 || data[0] != 1 {
 				return c.in.setErrorLocked(c.sendAlert(alertDecodeError))
 			}
-			if c.handBuf.Len() > 0 {
-				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			// 2*MSL 驻留：握手完成后收到旧 epoch CCS，重传最后一 flight
+			if handshakeComplete && !c.dwellDeadline.IsZero() {
+				if time.Now().Before(c.dwellDeadline) && len(c.flightRetransmit) > 0 {
+					c.pconn.WriteTo(c.flightRetransmit, c.remoteAddr)
+					continue
+				}
+				c.dwellDeadline = time.Time{}
+				c.flightRetransmit = nil
 			}
-			if !expectChangeCipherSpec {
+			// 允许 CCS 与握手消息在同一数据报中 (RFC 6347: Flight 5 单数据报)
+			// 仅当 handBuf 为空且不期望 CCS 时才拒绝
+			if !expectChangeCipherSpec && c.handBuf.Len() == 0 {
 				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 			}
 			if err := c.in.changeCipherSpec(); err != nil {
@@ -732,6 +742,11 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			if !handshakeComplete || expectChangeCipherSpec {
 				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 			}
+			// 收到应用数据，退出 2*MSL 驻留期
+			if !c.dwellDeadline.IsZero() {
+				c.dwellDeadline = time.Time{}
+				c.flightRetransmit = nil
+			}
 			if len(data) == 0 {
 				continue
 			}
@@ -739,6 +754,13 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			return nil
 
 		case recordTypeHandshake:
+			// 2*MSL 驻留：握手完成后收到重传 Finished，重传最后一 flight
+			if handshakeComplete && !c.dwellDeadline.IsZero() && time.Now().Before(c.dwellDeadline) {
+				if len(c.flightRetransmit) > 0 {
+					c.pconn.WriteTo(c.flightRetransmit, c.remoteAddr)
+				}
+				continue
+			}
 			if len(data) == 0 || expectChangeCipherSpec {
 				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 			}
@@ -899,7 +921,8 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 // Conn — 握手记录层辅助方法（Phase 4 完善）
 // =============================================================================
 
-// writeHandshakeRecord 写入一条握手记录（Phase 4 实现握手消息序列化）。
+// writeHandshakeRecord 写入一条握手记录，支持自动分片（RFC 6347 §4.2.3）。
+// 消息超过 PMTU 时自动拆分为多个带 fragment_offset/fragment_length 的分片记录。
 func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptHash) (int, error) {
 	c.out.Lock()
 	defer c.out.Unlock()
@@ -908,17 +931,76 @@ func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptH
 	if err != nil {
 		return 0, err
 	}
+	// 转录哈希始终使用完整消息（未分片时的格式）
 	if transcript != nil {
 		transcript.Write(data)
 	}
 
-	n, err := c.writeRecordLocked(recordTypeHandshake, data)
+	// 检查是否需要分片
+	maxPayload := c.maxPayloadSizeForWrite(recordTypeHandshake)
+	if len(data) <= maxPayload {
+		n, err := c.writeRecordLocked(recordTypeHandshake, data)
+		if c.config.EnableDebug {
+			fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(msg.messageType()), len(data), err == nil)
+			msg.debug()
+		}
+		return n, err
+	}
+
+	// 握手消息太大，需要分片
+	// data 格式: [msgType:1][bodyLen:3][msgSeq:2][fragOff:3][fragLen:3][body:N]
+	if len(data) <= dtlcpHeaderLen {
+		return 0, errors.New("dtlcp: handshake message too short for fragmentation")
+	}
+	hdr := data[:dtlcpHeaderLen] // 12 字节：msgType[1]+bodyLen[3]+msgSeq[2]+fragOff[3]+fragLen[3]
+	body := data[dtlcpHeaderLen:]
+	bodyLen := uint24(len(body))
+	msgSeq := uint16(hdr[4])<<8 | uint16(hdr[5])
+
+	maxFragBody := maxPayload - dtlcpHeaderLen
+	if maxFragBody <= 0 {
+		return 0, errors.New("dtlcp: PMTU too small for handshake fragment header")
+	}
+
+	var totalN int
+	msgType := hdr[0]
+	for offset := uint24(0); offset < bodyLen; {
+		fragEnd := offset + uint24(maxFragBody)
+		if fragEnd > bodyLen {
+			fragEnd = bodyLen
+		}
+		fragLen := fragEnd - offset
+		fragBody := body[offset:fragEnd]
+
+		// 构造分片握手消息头
+		var fragHdr [dtlcpHeaderLen]byte
+		fragHdr[0] = msgType
+		fragHdr[1] = byte(bodyLen >> 16)
+		fragHdr[2] = byte(bodyLen >> 8)
+		fragHdr[3] = byte(bodyLen)
+		fragHdr[4] = byte(msgSeq >> 8)
+		fragHdr[5] = byte(msgSeq)
+		fragHdr[6] = byte(offset >> 16)
+		fragHdr[7] = byte(offset >> 8)
+		fragHdr[8] = byte(offset)
+		fragHdr[9] = byte(fragLen >> 16)
+		fragHdr[10] = byte(fragLen >> 8)
+		fragHdr[11] = byte(fragLen)
+
+		fragData := append(fragHdr[:], fragBody...)
+		n, err := c.writeRecordLocked(recordTypeHandshake, fragData)
+		totalN += n
+		if err != nil {
+			return totalN, err
+		}
+		offset = fragEnd
+	}
 
 	if c.config.EnableDebug {
-		fmt.Printf("[write] %v, len=%v, success=%v\n", HandshakeMessageTypeName(msg.messageType()), len(data), err == nil)
-		msg.debug()
+		fmt.Printf("[write] %v (fragmented, body=%d, fragments=%d), success=%v\n",
+			HandshakeMessageTypeName(msg.messageType()), bodyLen, (bodyLen+uint24(maxFragBody)-1)/uint24(maxFragBody), err == nil)
 	}
-	return n, err
+	return totalN, nil
 }
 
 // writeChangeCipherRecord 写入 ChangeCipherSpec 记录并切换密码参数。
@@ -1326,23 +1408,23 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			continue
 		}
 
-		// 重放检查
-		if c.replayWindow != nil {
-			if epoch < c.readEpoch {
-				continue
+		// 重放检查（解密成功后执行，RFC 6347 §4.1.2.6）
+		if epoch < c.readEpoch {
+			// 旧 epoch：静默丢弃
+			continue
+		}
+		if epoch > c.readEpoch {
+			c.readEpoch = epoch
+			c.readSeq = 0
+			windowSize := 64
+			if c.config != nil && c.config.ReplayWindow > 0 {
+				windowSize = c.config.ReplayWindow
 			}
-			if epoch > c.readEpoch {
-				c.readEpoch = epoch
-				c.readSeq = 0
-				windowSize := 64
-				if c.config != nil && c.config.ReplayWindow > 0 {
-					windowSize = c.config.ReplayWindow
-				}
-				c.replayWindow = newReplayWindow(windowSize)
-			}
-			if !c.replayWindow.check(seqNum) {
-				continue
-			}
+			c.replayWindow = newReplayWindow(windowSize)
+		}
+		if !c.replayWindow.check(seqNum) {
+			// 重放检测：静默丢弃
+			continue
 		}
 
 		if actualTyp != recordTypeApplicationData {
@@ -1478,7 +1560,7 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 
 // handshakeComplete 返回握手是否已完成。
 func (c *Conn) handshakeComplete() bool {
-	return atomic.LoadUint32(&c.handshakeStatus) == 1
+	return c.hsState.Load() == int32(stateFinished)
 }
 
 // =============================================================================

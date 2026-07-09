@@ -32,7 +32,6 @@ import (
 	"hash"
 	"io"
 	"net"
-	"sync/atomic"
 	"time"
 
 	x509 "github.com/emmansun/gmsm/smx509"
@@ -62,7 +61,8 @@ type serverHandshakeState struct {
 	encCert          *Certificate        // 加密证书
 	peerCertificates []*x509.Certificate // 客户端证书，可能为空
 	// DTLCP 特有字段
-	cookieVerified bool // cookie 是否已验证通过
+	cookieVerified bool   // cookie 是否已验证通过
+	flightData     []byte // 当前 flight 的发送数据，用于重传
 }
 
 // =============================================================================
@@ -108,11 +108,11 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 			hvr.setMessageSeq(c.messageSeq)
 			c.messageSeq++
 
-			c.hsState = stateSending
+			c.hsState.Store(int32(stateSending))
 			if _, err := c.writeHandshakeRecord(hvr, nil); err != nil {
 				return err
 			}
-			c.hsState = stateWaiting
+			c.hsState.Store(int32(stateWaiting))
 			if _, err := c.flush(); err != nil {
 				return err
 			}
@@ -140,14 +140,23 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 }
 
 // effectiveCookieSecret 返回有效的 cookie 密钥。
-// 如果 Config.CookieSecret 未设置，使用默认密钥。
-// 注意：默认密钥仅用于开发测试，生产环境应配置 CookieSecret。
+// 如果 Config.CookieSecret 已设置，使用配置的密钥。
+// 否则生成随机会话级密钥（连接内有效，重启后失效）。
 func (c *Conn) effectiveCookieSecret() []byte {
-	secret := c.config.CookieSecret
-	if len(secret) == 0 {
-		secret = []byte("dtlcp-default-secret")
+	if secret := c.config.CookieSecret; len(secret) > 0 {
+		return secret
 	}
-	return secret
+	// 使用随机密钥替代硬编码默认值，防止生产环境漏配导致 cookie 可被伪造
+	if len(c.cookieSecret) == 0 {
+		c.cookieSecret = make([]byte, 32)
+		if _, err := io.ReadFull(c.config.rand(), c.cookieSecret); err != nil {
+			// rand 失败时回退到伪随机（仅在极端环境下发生）
+			for i := range c.cookieSecret {
+				c.cookieSecret[i] = byte(i) ^ 0xA5
+			}
+		}
+	}
+	return c.cookieSecret
 }
 
 // readNextClientHello 读取下一个 ClientHello 消息，支持超时重传。
@@ -219,6 +228,9 @@ func (hs *serverHandshakeState) handshake() error {
 		if err = hs.sendFinished(c.serverFinished[:]); err != nil {
 			return err
 		}
+		// 保存 Flight 数据用于重传（会话恢复路径）
+		hs.flightData = make([]byte, len(c.sendBuf))
+		copy(hs.flightData, c.sendBuf)
 		if _, err = c.flush(); err != nil {
 			return err
 		}
@@ -244,12 +256,17 @@ func (hs *serverHandshakeState) handshake() error {
 		if err = hs.sendFinished(nil); err != nil {
 			return err
 		}
+		// 保存 Flight 6 数据，用于 2*MSL 驻留期重传 (RFC 6347 §4.2.4)
+		c.flightRetransmit = make([]byte, len(c.sendBuf))
+		copy(c.flightRetransmit, c.sendBuf)
 		if _, err = c.flush(); err != nil {
 			return err
 		}
+		// 进入 2*MSL 驻留期：握手完成后 120s 内响应对端重传
+		c.dwellDeadline = time.Now().Add(dwellPeriod)
 	}
 
-	atomic.StoreUint32(&c.handshakeStatus, 1)
+	c.hsState.Store(int32(stateFinished))
 
 	// 握手成功，对主密钥置零
 	setZero(hs.masterSecret)
@@ -662,11 +679,12 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	// 保存 Flight 4 数据用于重传
-	flightData := make([]byte, len(c.sendBuf))
-	copy(flightData, c.sendBuf)
+	hs.flightData = make([]byte, len(c.sendBuf))
+	copy(hs.flightData, c.sendBuf)
+	flightData := hs.flightData
 
 	// 刷新缓冲区，实际发送 Flight 4
-	c.hsState = stateWaiting
+	c.hsState.Store(int32(stateWaiting))
 	if _, err := c.flush(); err != nil {
 		return err
 	}
@@ -889,7 +907,7 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 // 参数 out 用于保存客户端的 verify_data。
 func (hs *serverHandshakeState) readFinished(out []byte) error {
 	c := hs.c
-	flightData := c.sendBuf // 可能为空，用于重传
+	flightData := hs.flightData // 保存的 flight 数据，用于重传
 
 	// 读取 ChangeCipherSpec
 	for {

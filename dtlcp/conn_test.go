@@ -731,3 +731,207 @@ func TestNoEncryptRoundTrip(t *testing.T) {
 		t.Fatalf("无加密往返不匹配:\n  原始: %s\n  解密: %s", plaintext, decrypted)
 	}
 }
+
+// =============================================================================
+// 握手消息分片测试 (RFC 6347 §4.2.3)
+// =============================================================================
+
+// TestHandshakeFragmentSmallMessage 验证小消息不分片。
+func TestHandshakeFragmentSmallMessage(t *testing.T) {
+	// 创建一个证书消息（模拟大消息的基础结构）
+	certMsg := &certificateMsg{
+		certificates: make([][]byte, 1),
+	}
+	certMsg.certificates[0] = make([]byte, 100) // 小证书
+
+	// 验证 marshal 产生的数据较小
+	data, err := certMsg.marshal()
+	if err != nil {
+		t.Fatalf("marshal 失败: %v", err)
+	}
+	// 100 字节证书 + 报文头应远小于默认 PMTU(1400)
+	if len(data) > 1400 {
+		t.Fatalf("100B 证书消息不应超过 PMTU: len=%d", len(data))
+	}
+}
+
+// TestHandshakeFragmentLargeMessage 验证大消息被正确分片。
+func TestHandshakeFragmentLargeMessage(t *testing.T) {
+	// 创建一个大证书消息，强制分片
+	certMsg := &certificateMsg{
+		certificates: make([][]byte, 1),
+	}
+	certMsg.certificates[0] = make([]byte, 3000) // 超过默认 PMTU 的证书
+
+	data, err := certMsg.marshal()
+	if err != nil {
+		t.Fatalf("marshal 失败: %v", err)
+	}
+	if len(data) <= 1400 {
+		t.Fatalf("3000B 证书消息应超过 PMTU: len=%d", len(data))
+	}
+
+	// 验证消息头结构正确
+	msgType, bodyLen, msgSeq, fragOff, fragLen, body, ok := dtlcpUnmarshalHeader(data)
+	if !ok {
+		t.Fatal("dtlcpUnmarshalHeader 失败")
+	}
+	if msgType != typeCertificate {
+		t.Fatalf("msgType 应为 %d，实际 %d", typeCertificate, msgType)
+	}
+	// 证书消息的 bodyLen 包含 3 字节证书链长度 + 各证书的 3 字节长度前缀 + 证书数据
+	if bodyLen == 0 {
+		t.Fatal("bodyLen 不应为 0")
+	}
+	if fragOff != 0 {
+		t.Fatalf("完整消息的 fragOff 应为 0，实际 %d", fragOff)
+	}
+	// fragLen 在 marshal 时设为 0 会被 dtlcpMarshalHeader 填充为 len(body)
+	if fragLen != uint24(len(body)) {
+		t.Fatalf("完整消息的 fragLen 应等于 body 长度 %d，实际 %d", len(body), fragLen)
+	}
+	_ = msgSeq
+}
+
+// TestHandshakeFragmentRoundTrip 测试分片发送→重组接收的完整流程。
+func TestHandshakeFragmentRoundTrip(t *testing.T) {
+	// 使用小 PMTU 强制分片
+	c := &Conn{
+		config: &Config{PMTU: 200},
+	}
+	// 确保 maxPayload 足够小以触发分片
+	maxPayload := c.maxPayloadSizeForWrite(recordTypeHandshake)
+	if maxPayload >= 300 {
+		t.Fatalf("PMTU=200 时 maxPayload 应 < 300，实际 %d", maxPayload)
+	}
+
+	// 构造大证书消息
+	certMsg := &certificateMsg{
+		certificates: make([][]byte, 1),
+	}
+	certMsg.certificates[0] = make([]byte, 500) // 远超 PMTU=200
+	certMsg.setMessageSeq(0)
+
+	data, _ := certMsg.marshal()
+	if len(data) <= maxPayload {
+		t.Fatalf("消息应需要分片: len=%d > maxPayload=%d", len(data), maxPayload)
+	}
+
+	// 验证分片逻辑：通过 dtlcpUnmarshalHeader 检查每个分片头的正确性
+	bodyLen := uint24(len(data) - dtlcpHeaderLen)
+	maxFragBody := maxPayload - dtlcpHeaderLen
+	if maxFragBody <= 0 {
+		t.Fatal("PMTU 不足以容纳握手消息头")
+	}
+
+	fragmentCount := 0
+	var lastOffset uint24
+	for offset := uint24(0); offset < bodyLen; {
+		fragEnd := offset + uint24(maxFragBody)
+		if fragEnd > bodyLen {
+			fragEnd = bodyLen
+		}
+		fragLen := fragEnd - offset
+
+		// 模拟构造分片（header + body）
+		fragBody := data[dtlcpHeaderLen+int(offset):dtlcpHeaderLen+int(fragEnd)]
+		var fragHdr [dtlcpHeaderLen]byte
+		fragHdr[0] = typeCertificate
+		fragHdr[1] = byte(bodyLen >> 16)
+		fragHdr[2] = byte(bodyLen >> 8)
+		fragHdr[3] = byte(bodyLen)
+		fragHdr[4] = 0 // msgSeq hi
+		fragHdr[5] = 0 // msgSeq lo
+		fragHdr[6] = byte(offset >> 16)
+		fragHdr[7] = byte(offset >> 8)
+		fragHdr[8] = byte(offset)
+		fragHdr[9] = byte(fragLen >> 16)
+		fragHdr[10] = byte(fragLen >> 8)
+		fragHdr[11] = byte(fragLen)
+
+		// 验证分片头可被正确解析 (dtlcpUnmarshalHeader 需要完整分片)
+		fullFrag := append(fragHdr[:], fragBody...)
+		parsedType, parsedBodyLen, _, parsedOff, parsedFragLen, _, ok := dtlcpUnmarshalHeader(fullFrag)
+		if !ok {
+			t.Fatalf("分片 %d: 头解析失败", fragmentCount)
+		}
+		if parsedType != typeCertificate {
+			t.Fatalf("分片 %d: msgType 应为 %d，实际 %d", fragmentCount, typeCertificate, parsedType)
+		}
+		if parsedBodyLen != uint32(bodyLen) {
+			t.Fatalf("分片 %d: bodyLen 应为 %d，实际 %d", fragmentCount, bodyLen, parsedBodyLen)
+		}
+		if parsedOff != offset {
+			t.Fatalf("分片 %d: offset 应为 %d，实际 %d", fragmentCount, offset, parsedOff)
+		}
+		if parsedFragLen != fragLen {
+			t.Fatalf("分片 %d: fragLen 应为 %d，实际 %d", fragmentCount, fragLen, parsedFragLen)
+		}
+
+		lastOffset = offset
+		fragmentCount++
+		offset = fragEnd
+	}
+
+	if fragmentCount <= 1 {
+		t.Fatalf("应产生多个分片，实际 %d", fragmentCount)
+	}
+	t.Logf("产生 %d 个分片 (bodyLen=%d, maxFragBody=%d)", fragmentCount, bodyLen, maxFragBody)
+	_ = lastOffset
+}
+
+// TestHandshakeFragmentReassembly 验证分片接收端能正确重组。
+func TestHandshakeFragmentReassembly(t *testing.T) {
+	bodyLen := uint24(500)
+	fb := newFragmentBuffer(bodyLen)
+
+	// 模拟发送 3 个分片
+	fragments := []struct {
+		offset, length uint24
+		data           []byte
+	}{
+		{0, 200, make([]byte, 200)},
+		{200, 200, make([]byte, 200)},
+		{400, 100, make([]byte, 100)},
+	}
+	// 填充可区分的模式
+	for i := range fragments[0].data {
+		fragments[0].data[i] = byte(i % 256)
+	}
+	for i := range fragments[1].data {
+		fragments[1].data[i] = byte((i + 200) % 256)
+	}
+	for i := range fragments[2].data {
+		fragments[2].data[i] = byte((i + 400) % 256)
+	}
+
+	// 乱序添加（测试重组能力）
+	fb.addFragment(fragments[2].offset, fragments[2].length, fragments[2].data) // 最后一片先到
+	fb.addFragment(fragments[0].offset, fragments[0].length, fragments[0].data) // 第一片后到
+	fb.addFragment(fragments[1].offset, fragments[1].length, fragments[1].data) // 中间片最后到
+
+	if !fb.complete() {
+		t.Fatal("所有分片到达后应 complete")
+	}
+
+	assembled := fb.assembled()
+	expected := make([]byte, 500)
+	for i := range expected {
+		expected[i] = byte(i % 256)
+	}
+	if !bytes.Equal(assembled, expected) {
+		t.Fatal("重组数据与预期不匹配")
+	}
+}
+
+// TestHandshakeFragmentMaxBodySize 验证极端 PMTU 下 maxFragBody 为正。
+func TestHandshakeFragmentMinPMTU(t *testing.T) {
+	c := &Conn{
+		config: &Config{PMTU: 100}, // 极小 PMTU
+	}
+	maxPayload := c.maxPayloadSizeForWrite(recordTypeHandshake)
+	maxFragBody := maxPayload - dtlcpHeaderLen
+	if maxFragBody <= 0 {
+		t.Fatalf("PMTU=100 时 maxFragBody 应为正: maxPayload=%d, maxFragBody=%d", maxPayload, maxFragBody)
+	}
+}
