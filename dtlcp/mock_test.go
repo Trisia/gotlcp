@@ -87,6 +87,14 @@ func (m *mockPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return 0, nil, &timeoutError{}
 		}
 
+		// 先非阻塞检查通道是否已有数据
+		select {
+		case d := <-m.readCh:
+			n = copy(p, d.data)
+			return n, d.addr, nil
+		default:
+		}
+
 		// 使用 select 等待数据或超时或关闭
 		select {
 		case d := <-m.readCh:

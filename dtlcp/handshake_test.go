@@ -200,7 +200,7 @@ func TestDTLCPDataTransfer(t *testing.T) {
 		}
 		_ = n
 	}()
-	addr := svr.RemoteAddr()
+	addr := cli.RemoteAddr()
 	n, err := cli.WriteTo(clientMsg, addr)
 	if err != nil {
 		t.Fatalf("客户端 WriteTo 失败: %v", err)

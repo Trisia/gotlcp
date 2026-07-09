@@ -389,20 +389,26 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 
-		// 构造完整 Flight 5：CKE + CCS + Finished，单数据报发送 (RFC 6347 §4.2.4)
+		// 先发送 CKE（doFullHandshake 已写入缓冲区），确保对端先处理 CKE
+		// 再将 CCS + Finished 另发，使对端用 readRecordOrCCS(true) 处理 CCS。
+		if _, err = c.flush(); err != nil {
+			return err
+		}
+		c.buffering = true
+
 		if err = hs.establishKeys(); err != nil {
 			return err
 		}
 
-		// 将 CCS + Finished 追加到 Flight 5
+		// 将 CCS + Finished 写入缓冲区
 		if err = hs.sendFinished(c.clientFinished[:]); err != nil {
 			return err
 		}
 
-		// 保存整个 Flight 5 用于超时重传
+		// 保存 CCS + Finished 用于超时重传
 		hs.flightData = append([]byte(nil), c.sendBuf...)
 
-		// 单次 flush 发送完整 Flight 5
+		// 发送 CCS + Finished
 		c.hsState.Store(int32(stateSending))
 		if _, err = c.flush(); err != nil {
 			return err

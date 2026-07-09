@@ -130,8 +130,9 @@ type halfConn struct {
 
 	scratchBuf [13]byte // 避免 allocs 的临时缓冲区
 
-	nextCipher interface{} // 下一个加密状态
-	nextMac    hash.Hash   // 下一个 MAC 算法
+	nextCipher  interface{} // 下一个加密状态
+	nextMac     hash.Hash   // 下一个 MAC 算法
+	deferredCCS bool        // CCS 已被同数据报消耗，延迟到 readChangeCipherSpec 处理
 }
 
 type permanentError struct {
@@ -553,7 +554,22 @@ func (c *Conn) readRecord() error {
 }
 
 // readChangeCipherSpec 读取并处理一条记录（CCS 模式）。
+// 若 CCS 已在同数据报中被消耗，则直接完成密钥切换。
 func (c *Conn) readChangeCipherSpec() error {
+	if c.in.deferredCCS {
+		c.in.deferredCCS = false
+		if err := c.in.changeCipherSpec(); err != nil {
+			return c.in.setErrorLocked(c.sendAlert(err.(alert)))
+		}
+		c.readEpoch++
+		c.readSeq = 0
+		windowSize := 64
+		if c.config != nil && c.config.ReplayWindow > 0 {
+			windowSize = c.config.ReplayWindow
+		}
+		c.replayWindow = newReplayWindow(windowSize)
+		return nil
+	}
 	return c.readRecordOrCCS(true)
 }
 
@@ -721,9 +737,14 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 				c.dwellDeadline = time.Time{}
 				c.flightRetransmit = nil
 			}
-			// 允许 CCS 与握手消息在同一数据报中 (RFC 6347: Flight 5 单数据报)
-			// 仅当 handBuf 为空且不期望 CCS 时才拒绝
-			if !expectChangeCipherSpec && c.handBuf.Len() == 0 {
+			// 非期望 CCS 且 handBuf 有待处理数据：延迟 CCS。
+			// CKE+CCS+Finished 同数据报时，CCS 应在 establishKeys 之后
+			// 由 readChangeCipherSpec 处理，避免 nextCipher 未就绪。
+			if !expectChangeCipherSpec && c.handBuf.Len() > 0 {
+				c.in.deferredCCS = true
+				return nil
+			}
+			if !expectChangeCipherSpec {
 				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 			}
 			if err := c.in.changeCipherSpec(); err != nil {
@@ -732,6 +753,12 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			expectChangeCipherSpec = false
 			c.readEpoch++
 			c.readSeq = 0
+			// epoch 变更后重建重放窗口，避免新旧 epoch 序列号混淆
+			windowSize := 64
+			if c.config != nil && c.config.ReplayWindow > 0 {
+				windowSize = c.config.ReplayWindow
+			}
+			c.replayWindow = newReplayWindow(windowSize)
 			// CCS 后如果还有数据（如 Finished 在同一数据报中），继续处理
 			if len(c.rawInputBuf) > 0 {
 				continue
