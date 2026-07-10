@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"strings"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -1236,12 +1236,7 @@ func (m *certificateRequestMsg) debug() {
 	fmt.Printf("\nCertificate Authorities:\n")
 	for i, rawIssuer := range m.certificateAuthorities {
 		fmt.Printf("Issuer[%v]:\n", i)
-		issuerRDNs, err := x509.ParseName(rawIssuer)
-		if err == nil {
-			fmt.Printf("%v\n", issuerRDNs)
-		} else {
-			fmt.Printf("%v\n", string(rawIssuer))
-		}
+		fmt.Printf("%v\n", string(rawIssuer))
 	}
 	fmt.Printf("<<<\n")
 }
