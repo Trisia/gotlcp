@@ -49,8 +49,9 @@ const (
 	//   +------+---------+--------+--------+--------+
 	//     1 B     2 B      2 B      6 B      2 B
 	recordHeaderLen = 13 // DTLCP 记录头长度（字节）
-	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
-	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
+	maxHandshake            = 65536 // maximum handshake we support (protocol max is 16 MB)
+	maxUselessRecords       = 16    // maximum number of consecutive non-advancing records
+	defaultReplayWindowSize = 64    // DTLCP 重放保护滑动窗口默认大小（RFC 6347 §4.1.2.6）
 
 	// 2*MSL 驻留期 (RFC 6347 §4.2.4)
 	mslPeriod   = 60 * time.Second // RFC 6298 MSL

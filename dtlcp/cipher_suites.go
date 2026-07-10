@@ -280,7 +280,7 @@ func macSM3(key []byte) hash.Hash {
 // nonce: 隐式随机数 (implicit nonce 4 Byte)
 func aeadSM4GCM(key []byte, nonce []byte) aead {
 	if len(nonce) != noncePrefixLength {
-		panic("tls: internal error: wrong implicit nonce length")
+		panic("dtlcp: internal error: wrong implicit nonce length")
 	}
 	block, err := sm4.NewCipher(key)
 	if err != nil {

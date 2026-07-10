@@ -7,7 +7,7 @@ package dtlcp
 // 基于 DTLS RFC 6347 Section 4.1.2.6
 type replayWindow struct {
 	right  uint48 // 窗口右边缘（已接受的最大序列号）
-	size   int    // 窗口大小（默认64，最小32）
+	size   int    // 窗口大小（定义见 common.go defaultReplayWindowSize，最小32）
 	bitmap uint64 // 位图，bit i 标记 seq (right - i) 是否已收到
 }
 

@@ -39,8 +39,8 @@ func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		readSeq:          0,
 		pendingFragments: make(map[uint16]*fragmentBuffer),
 	}
-	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值 64
-	windowSize := 64
+	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值
+	windowSize := defaultReplayWindowSize
 	if config != nil && config.ReplayWindow > 0 {
 		windowSize = config.ReplayWindow
 	}
@@ -67,8 +67,8 @@ func Client(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 		readSeq:          0,
 		pendingFragments: make(map[uint16]*fragmentBuffer),
 	}
-	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值 64
-	windowSize := 64
+	// 初始化重放窗口：config.ReplayWindow=0 时使用默认值
+	windowSize := defaultReplayWindowSize
 	if config != nil && config.ReplayWindow > 0 {
 		windowSize = config.ReplayWindow
 	}

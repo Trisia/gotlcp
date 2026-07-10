@@ -107,10 +107,8 @@ type Conn struct {
 	readSeq    uint48
 
 	// 发送缓冲
-	buffering   bool
-	sendBuf     []byte
-	bytesSent   int64
-	packetsSent int64
+	buffering bool
+	sendBuf   []byte
 }
 
 // =============================================================================
@@ -132,24 +130,18 @@ type halfConn struct {
 
 	nextCipher  interface{} // 下一个加密状态
 	nextMac     hash.Hash   // 下一个 MAC 算法
-	deferredCCS bool        // CCS 已被同数据报消耗，延迟到 readChangeCipherSpec 处理
+	// deferredCCS 延迟执行标志：
+	// 当 CKE+CCS+Finished 打包在同一 UDP 数据报时，readRecord 按序读取记录，读到 CCS
+	// 时 nextCipher 尚未就绪（establishKeys 还未处理 CKE），无法立即切换密钥。
+	// 此时将 deferredCCS 置为 true，CCS 视为已从数据报中消费（避免阻塞后续 Finished 读取），
+	// 但实际密钥切换延迟到 readChangeCipherSpec 调用时执行（此时 nextCipher 已就绪）。
+	// readChangeCipherSpec 检查此标志：若为 true，直接调用 changeCipherSpec 完成密钥切换；
+	// 若为 false（CCS 独立到达的正常路径），则从网络读取并处理 CCS。
+	deferredCCS bool
 }
-
-type permanentError struct {
-	err net.Error
-}
-
-func (e *permanentError) Error() string   { return e.err.Error() }
-func (e *permanentError) Unwrap() error   { return e.err }
-func (e *permanentError) Timeout() bool   { return e.err.Timeout() }
-func (e *permanentError) Temporary() bool { return false }
 
 func (hc *halfConn) setErrorLocked(err error) error {
-	if e, ok := err.(net.Error); ok {
-		hc.err = &permanentError{err: e}
-	} else {
-		hc.err = err
-	}
+	hc.err = err
 	return hc.err
 }
 
@@ -566,7 +558,7 @@ func (c *Conn) readChangeCipherSpec() error {
 		}
 		c.readEpoch++
 		c.readSeq = 0
-		windowSize := 64
+		windowSize := defaultReplayWindowSize
 		if c.config != nil && c.config.ReplayWindow > 0 {
 			windowSize = c.config.ReplayWindow
 		}
@@ -604,7 +596,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 		// 如果没有待处理数据，读取一个新的 UDP 数据报
 		if len(c.rawInputBuf) < recordHeaderLen {
 			if err := c.readDatagram(); err != nil {
-				if e, ok := err.(net.Error); !ok || !e.Temporary() {
+				if e, ok := err.(net.Error); !ok || !e.Timeout() {
 					c.in.setErrorLocked(err)
 				}
 				return err
@@ -617,12 +609,6 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 
 		hdr := c.rawInputBuf[:recordHeaderLen]
 		typ := recordType(hdr[0])
-
-		// 检查 SSLv2 兼容性
-		if !handshakeComplete && typ == 0x80 {
-			c.sendAlert(alertProtocolVersion)
-			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "unsupported SSLv2 handshake received"))
-		}
 
 		vers := uint16(hdr[1])<<8 | uint16(hdr[2])
 		epoch := uint16(hdr[3])<<8 | uint16(hdr[4])
@@ -637,6 +623,10 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, msg))
 		}
 		if !c.haveVers {
+			// 协议识别启发式：首次收到记录时，通过版本号区分 DTLCP/TLCP 与 DTLS。
+			// DTLCP 沿用 TLCP 版本号 0x0101，TLS 为 0x0301~0x0304，均 < 0x1000；
+			// DTLS 1.0(0xFEFF)/1.2(0xFEFD) 均 >= 0x1000。
+			// 配合首条记录必须为 Alert 或 Handshake 的类型检查，可有效防止 DTLS 客户端误连。
 			if (typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000 {
 				return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "first record does not look like a TLCP handshake"))
 			}
@@ -678,7 +668,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 		if epoch > c.readEpoch {
 			c.readEpoch = epoch
 			c.readSeq = 0
-			windowSize := 64
+			windowSize := defaultReplayWindowSize
 			if c.config != nil && c.config.ReplayWindow > 0 {
 				windowSize = c.config.ReplayWindow
 			}
@@ -757,7 +747,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			c.readEpoch++
 			c.readSeq = 0
 			// epoch 变更后重建重放窗口，避免新旧 epoch 序列号混淆
-			windowSize := 64
+			windowSize := defaultReplayWindowSize
 			if c.config != nil && c.config.ReplayWindow > 0 {
 				windowSize = c.config.ReplayWindow
 			}
@@ -825,7 +815,6 @@ func (c *Conn) write(data []byte) (int, error) {
 		return len(data), nil
 	}
 	n, err := c.pconn.WriteTo(data, c.remoteAddr)
-	c.bytesSent += int64(n)
 	return n, err
 }
 
@@ -835,7 +824,6 @@ func (c *Conn) flush() (int, error) {
 		return 0, nil
 	}
 	n, err := c.pconn.WriteTo(c.sendBuf, c.remoteAddr)
-	c.bytesSent += int64(n)
 	c.sendBuf = nil
 	c.buffering = false
 	return n, err
@@ -1446,7 +1434,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		if epoch > c.readEpoch {
 			c.readEpoch = epoch
 			c.readSeq = 0
-			windowSize := 64
+			windowSize := defaultReplayWindowSize
 			if c.config != nil && c.config.ReplayWindow > 0 {
 				windowSize = c.config.ReplayWindow
 			}

@@ -17,8 +17,8 @@ func TestReplayWindowInit(t *testing.T) {
 	if srv.replayWindow == nil {
 		t.Fatal("Server() 后 replayWindow 不应为 nil")
 	}
-	if srv.replayWindow.size != 64 {
-		t.Fatalf("默认窗口大小应为 64，实际 %d", srv.replayWindow.size)
+	if srv.replayWindow.size != defaultReplayWindowSize {
+		t.Fatalf("默认窗口大小应为 %d，实际 %d", defaultReplayWindowSize, srv.replayWindow.size)
 	}
 	cli := Client(nil, nil, config)
 	if cli.replayWindow == nil {
