@@ -33,7 +33,13 @@ const (
 const (
 	maxPlaintext      = 16384        // maximum plaintext payload length
 	maxCiphertext     = 16384 + 2048 // maximum ciphertext payload length
-	recordHeaderLen   = 13           // record header length (DTLCP: Type[1]+Version[2]+Epoch[2]+SeqNum[6]+Length[2])
+	// DTLCP 记录头结构 (13 字节):
+	//
+	//   +------+---------+--------+--------+--------+
+	//   | Type | Version | Epoch  | SeqNum | Length |
+	//   +------+---------+--------+--------+--------+
+	//     1 B     2 B      2 B      6 B      2 B
+	recordHeaderLen = 13 // DTLCP 记录头长度（字节）
 	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
 	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
 

@@ -103,7 +103,14 @@ func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
 // dtlcpMarshalHeader / dtlcpUnmarshalHeader — DTLCP 12 字节头辅助
 // =============================================================================
 
-// dtlcpHeaderLen DTLCP 握手消息头长度
+// dtlcpHeaderLen DTLCP 握手消息头长度（字节）
+//
+// DTLCP 握手消息头结构 (12 字节):
+//
+//	+--------+--------+--------+----------+----------+
+//	|  Type  | Length | MsgSeq | FragOff  | FragLen  |
+//	+--------+--------+--------+----------+----------+
+//	   1 B      3 B      2 B       3 B        3 B
 const dtlcpHeaderLen = 12
 
 // dtlcpMarshalHeader 构造 DTLCP 12 字节握手消息头。

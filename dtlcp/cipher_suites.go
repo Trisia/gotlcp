@@ -209,6 +209,13 @@ const (
 )
 
 const (
+	// AEAD Nonce 结构 (12 字节):
+	//
+	//   +-----------------+---------------------------+
+	//   |  Fixed Prefix   | Explicit Sequence Number  |
+	//   +-----------------+---------------------------+
+	//     noncePrefixLen         8 B (nonce - prefix)
+	//        (4 B)
 	aeadNonceLength   = 12
 	noncePrefixLength = 4
 )
