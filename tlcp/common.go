@@ -31,8 +31,17 @@ const (
 )
 
 const (
-	maxPlaintext      = 16384        // maximum plaintext payload length
-	maxCiphertext     = 16384 + 2048 // maximum ciphertext payload length
+	// maxPlaintext TLS 记录层最大明文载荷，单位：字节。
+	// 取值 2^14 = 16384，来源于 RFC 8446 §5.1（及之前所有 TLS RFC）的协议规定。
+	// TLCP 复用相同记录层结构，故沿用此值。
+	maxPlaintext = 16384
+	// maxCiphertext 记录层最大密文载荷，单位：字节。
+	// 密文 = 明文 + 加密扩展，加密扩展因密码套件而异：
+	//   SM4-GCM: 最大 16 字节（认证标签）
+	//   SM4-CBC: 最大 48 字节（SM3 HMAC 32 字节 + 块填充最多 16 字节）
+	// 2048 = 2^11，远大于实际需要的 ~50 字节，为 Go crypto/tls 的保守工程余量，
+	// 用于覆盖未来密码套件的扩展需求。
+	maxCiphertext = 16384 + 2048
 	recordHeaderLen   = 5            // record header length
 	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
 	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
