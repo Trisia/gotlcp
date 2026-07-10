@@ -712,11 +712,19 @@ func (hs *clientHandshakeState) readFinished(out []byte) error {
 			return err
 		}
 
-		// 清除读取超时
-		c.pconn.SetReadDeadline(time.Time{})
-
+		// 不在此处清除 deadline——Finished 分片重组期间仍需超时保护
 		msg, err := c.readHandshake(nil)
 		if err != nil {
+			// Finished 读取超时也需要重传 Flight 5
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				c.retransmitTimer.backoff()
+				if len(hs.flightData) > 0 {
+					if _, writeErr := c.pconn.WriteTo(hs.flightData, c.remoteAddr); writeErr != nil {
+						return writeErr
+					}
+				}
+				continue
+			}
 			return err
 		}
 		serverFinished, ok := msg.(*finishedMsg)
@@ -735,6 +743,9 @@ func (hs *clientHandshakeState) readFinished(out []byte) error {
 			return err
 		}
 		copy(out, verify)
+		// 成功后清除超时，停止重传定时器
+		c.pconn.SetReadDeadline(time.Time{})
+		c.retransmitTimer.stop()
 		return nil
 	}
 }

@@ -1125,3 +1125,157 @@ func TestHandshakeFragmentMinPMTU(t *testing.T) {
 		t.Fatalf("PMTU=100 时 maxFragBody 应为正: maxPayload=%d, maxFragBody=%d", maxPayload, maxFragBody)
 	}
 }
+
+// =============================================================================
+// 分片重组迭代测试 — 验证 readHandshake 迭代循环
+// =============================================================================
+
+// TestReadHandshakeFragmentIterationReassembly 验证迭代循环在正常多分片场景下正确重组消息。
+//
+// 使用 mockPacketConn 注入三个分片组成的 typeFinished 消息，
+// 验证 readHandshake 通过迭代（而非递归）正确重组并返回完整消息。
+func TestReadHandshakeFragmentIterationReassembly(t *testing.T) {
+	mockA, mockB := newMockPacketConn()
+	defer mockA.Close()
+	defer mockB.Close()
+
+	clientCfg := &Config{}
+	cli := Client(mockA, mockB.LocalAddr(), clientCfg)
+	cli.vers = VersionTLCP
+	cli.haveVers = true
+	cli.replayWindow = newReplayWindow(defaultReplayWindowSize)
+
+	// 构造 typeFinished 消息体（finishedMsg.unmarshal 始终返回 true）
+	msgType := byte(typeFinished)
+	bodyLen := 500
+	body := make([]byte, bodyLen)
+	for i := range body {
+		body[i] = byte(i % 256)
+	}
+
+	// 分为 3 片: 0-200, 200-200, 400-100
+	splitPoints := []struct{ off, length int }{
+		{0, 200},
+		{200, 200},
+		{400, 100},
+	}
+
+	for i, sp := range splitPoints {
+		fragBody := body[sp.off : sp.off+sp.length]
+		fragLen := len(fragBody)
+
+		// 构造 DTLCP 握手头 (12B)
+		var hdr [dtlcpHeaderLen]byte
+		hdr[0] = msgType
+		hdr[1] = byte(bodyLen >> 16)
+		hdr[2] = byte(bodyLen >> 8)
+		hdr[3] = byte(bodyLen)
+		// msgSeq=0，未显式设置即为 0
+		hdr[6] = byte(sp.off >> 16)
+		hdr[7] = byte(sp.off >> 8)
+		hdr[8] = byte(sp.off)
+		hdr[9] = byte(fragLen >> 16)
+		hdr[10] = byte(fragLen >> 8)
+		hdr[11] = byte(fragLen)
+
+		// 构造 DTLCP 记录 (13B 头 + 12B 握手头 + 分片数据)
+		payloadLen := dtlcpHeaderLen + fragLen
+		record := make([]byte, recordHeaderLen+payloadLen)
+		record[0] = byte(recordTypeHandshake)
+		record[1] = byte(VersionTLCP >> 8)
+		record[2] = byte(VersionTLCP & 0xFF)
+		// epoch=0，未显式设置即为 0
+		// seqNum=i (6B big-endian，低位字节)
+		record[10] = byte(i)
+		record[11] = byte(payloadLen >> 8)
+		record[12] = byte(payloadLen)
+		copy(record[recordHeaderLen:], hdr[:])
+		copy(record[recordHeaderLen+dtlcpHeaderLen:], fragBody)
+
+		// 通过 mockB 注入数据报（模拟对端发送）
+		if _, err := mockB.WriteTo(record, mockA.LocalAddr()); err != nil {
+			t.Fatalf("WriteTo fragment %d: %v", i, err)
+		}
+	}
+
+	// 调用 readHandshake 读取并重组
+	msg, err := cli.readHandshake(nil)
+	if err != nil {
+		t.Fatalf("readHandshake: %v", err)
+	}
+
+	finished, ok := msg.(*finishedMsg)
+	if !ok {
+		t.Fatalf("expected *finishedMsg, got %T", msg)
+	}
+	if len(finished.verifyData) != bodyLen {
+		t.Fatalf("verifyData length mismatch: %d != %d", len(finished.verifyData), bodyLen)
+	}
+	if !bytes.Equal(finished.verifyData, body) {
+		t.Fatal("reassembled data does not match original")
+	}
+}
+
+// TestReadHandshakeTinyFragmentAttack 验证单字节分片攻击被 maxHandshakeFragments 限制拦截。
+//
+// 注入 300 个单字节分片（超过 maxHandshakeFragments=256），
+// 验证 readHandshake 返回 "too many fragment reads" 错误而非栈溢出。
+func TestReadHandshakeTinyFragmentAttack(t *testing.T) {
+	mockA, mockB := newMockPacketConn()
+	defer mockA.Close()
+	defer mockB.Close()
+
+	clientCfg := &Config{}
+	cli := Client(mockA, mockB.LocalAddr(), clientCfg)
+	cli.vers = VersionTLCP
+	cli.haveVers = true
+	cli.replayWindow = newReplayWindow(defaultReplayWindowSize)
+
+	bodyLen := 300 // 需要 > maxHandshakeFragments(256) 次迭代
+	msgType := byte(typeCertificate)
+
+	// 注入 300 个单字节分片
+	for i := 0; i < bodyLen; i++ {
+		fragBody := []byte{byte(i % 256)}
+
+		var hdr [dtlcpHeaderLen]byte
+		hdr[0] = msgType
+		hdr[1] = byte(bodyLen >> 16)
+		hdr[2] = byte(bodyLen >> 8)
+		hdr[3] = byte(bodyLen)
+		hdr[6] = byte(i >> 16)
+		hdr[7] = byte(i >> 8)
+		hdr[8] = byte(i)
+		hdr[9] = 0
+		hdr[10] = 0
+		hdr[11] = 1 // fragLen=1
+
+		payloadLen := dtlcpHeaderLen + 1
+		record := make([]byte, recordHeaderLen+payloadLen)
+		record[0] = byte(recordTypeHandshake)
+		record[1] = byte(VersionTLCP >> 8)
+		record[2] = byte(VersionTLCP & 0xFF)
+		record[10] = byte(i)
+		record[11] = byte(payloadLen >> 8)
+		record[12] = byte(payloadLen)
+		copy(record[recordHeaderLen:], hdr[:])
+		copy(record[recordHeaderLen+dtlcpHeaderLen:], fragBody)
+
+		if _, err := mockB.WriteTo(record, mockA.LocalAddr()); err != nil {
+			t.Fatalf("WriteTo fragment %d: %v", i, err)
+		}
+	}
+
+	// 调用 readHandshake——应在第 257 次迭代时报错
+	msg, err := cli.readHandshake(nil)
+	if err == nil {
+		t.Fatal("expected error for too many fragments, got nil")
+	}
+	if msg != nil {
+		t.Errorf("expected nil message on error, got %T", msg)
+	}
+	if !strings.Contains(err.Error(), "too many fragment reads") {
+		t.Errorf("expected 'too many fragment reads' in error, got: %v", err)
+	}
+	t.Logf("单字节分片攻击被正确拦截: %v (注入 %d 分片)", err, bodyLen)
+}

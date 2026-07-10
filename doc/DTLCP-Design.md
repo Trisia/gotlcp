@@ -212,7 +212,7 @@ additional_data = epoch + sequence_number + type + version + length
 | DTLSCompressed | 2^14 + 1024 | 压缩后最多膨胀 1024 字节 |
 | DTLSCiphertext | 2^14 + 2048 | 加密后最多膨胀 2048 字节 |
 
-> **PMTU 感知**：发送方应尝试将记录大小控制在 PMTU 范围内，避免 IP 分片。默认 PMTU 为 1400 字节（以太网 MTU 1500 - IP头20 - UDP头8 - DTLCP记录头13 ≈ 1459，1400 留余量）。
+> **PMTU 感知**：发送方应尝试将记录大小控制在 PMTU 范围内，避免 IP 分片。详见 [§5.6 PMTU 与路径最大传输单元](#56-pmtu-与路径最大传输单元)。
 
 ### 5.5 重放保护
 
@@ -237,6 +237,112 @@ additional_data = epoch + sequence_number + type + version + length
 6. MAC 验证失败 → 丢弃记录（不更新窗口）
 
 窗口大小由 `Config.ReplayWindow` 控制，高丢包、高乱序网络可适当增大（如 128）。
+
+### 5.6 PMTU 与路径最大传输单元
+
+#### 5.6.1 PMTU 概念
+
+PMTU（Path Maximum Transmission Unit，路径最大传输单元）是指从发送方到接收方之间所有链路中 MTU 的最小值。对于基于 UDP 的 DTLCP 协议，PMTU 直接影响记录层分片策略——UDP 不提供 TCP 的分段重传机制，每个 DTLCP 记录必须完整地放入单个 UDP 报文，而 UDP 报文不能跨越 IP 分片边界。
+
+RFC 6347 §4.1.1 明确规定：
+
+> DTLS 记录层协议要求记录不得跨越多个底层数据报（即 UDP 报文）。因此 DTLS 实现必须确保记录大小不超过 PMTU，避免 IP 层分片。
+
+PMTU 对 DTLCP 的影响体现在三个层面：
+
+| 层面 | 影响 | 应对 |
+|------|------|------|
+| **记录层** | 应用数据记录必须 ≤ PMTU | `maxPayloadSizeForWrite()` 依据 PMTU 限制单次写入载荷 |
+| **握手消息** | 握手消息可能远超 PMTU（如证书链可达数 KB） | 自动分片：fragment_offset / fragment_length 字段支持重组 |
+| **UDP 打包** | 同一 UDP 报文可含多条短记录 | 连续放置，总长度 ≤ PMTU |
+
+#### 5.6.2 以太网/IP 报文封装层次
+
+![DTLCP 报文在以太网帧中的封装层次](img/dtlcp/pmtu-encapsulation.svg)
+
+在典型以太网环境下，DTLCP 报文从内到外依次被 UDP、IP、以太网帧逐层封装：
+
+| 层 | 头部大小 | 说明 |
+|------|----------|------|
+| 以太网帧头 | 14 B | 目标 MAC(6) + 源 MAC(6) + EtherType(2) |
+| 以太网 FCS | 4 B | 帧校验序列（Frame Check Sequence） |
+| IP 头部 | 20 B | 不含 IP 选项的标准 IPv4 头部 |
+| UDP 头部 | 8 B | 源端口(2) + 目标端口(2) + 长度(2) + 校验和(2) |
+| DTLCP 记录头 | 13 B | Type(1) + Version(2) + Epoch(2) + SeqNum(6) + Length(2) |
+| **协议封装总开销** | **59 B** | 以太网头(18) + IP头(20) + UDP头(8) + DTLCP头(13) |
+
+**默认 PMTU = 1400 的推导**：
+
+```
+理论最大 DTLCP 载荷 = 以太网 MTU 1500 - 协议开销 59B = 1441 B
+预留余量   = 41 B  (IP 选项 + VLAN 标签 802.1Q +4B、PPPoE +8B、隧道封装等)
+默认 PMTU  = 1441 - 41 = 1400 B  (保守值，适配绝大多数网络环境)
+```
+
+> 为什么预留 41 B？互联网环境中路径上可能存在 VLAN 标签（802.1Q 增加 4B）、IP 选项（最大 40B）、IPsec/隧道封装等附加头部。1400 B 是业界广泛采用的保守值，在保证通过率的同时尽量减少 IP 分片概率。
+
+#### 5.6.3 DTLCP 实现中的 PMTU
+
+**Config.PMTU 字段**（`common.go`）：
+
+```go
+type Config struct {
+    // PMTU 是路径最大传输单元的估计值。超过此值的记录将被分片。
+    // 默认值为 1400 字节。除非确切掌握网络 MTU，否则不应修改。
+    PMTU int
+}
+```
+
+**`maxPayloadSizeForWrite()` 实现**（`conn.go`）：
+
+PMTU 作为单次写入的最大载荷限制，计算逻辑如下：
+
+1. 取 `Config.PMTU`，若未设置则用默认值 1400
+2. 扣除 DTLCP 记录头（13 B）和显式 nonce 长度
+3. 扣除加密开销（AEAD overhead 或 CBC MAC 长度）
+4. 结果与协议最大明文长度 `maxPlaintext`（2^14 = 16384）取较小值
+5. 确保返回值 ≥ 1（极端 PMTU 配置下）
+
+**握手消息分片**：当构造的握手消息超过 PMTU 时，`addHandshake()` 自动按 `fragment_offset` 递增拆分为多个 DTLCP 记录，每个分片的 `fragment_length` ≤ PMTU。
+
+#### 5.6.4 PMTU 约束与记录打包
+
+![PMTU 约束与记录打包规则](img/dtlcp/pmtu-constraint.svg)
+
+三种场景的规则：
+
+**场景 A — 记录 ≤ PMTU**：记录直接封装为单个 UDP 报文发送，一记录一报文。这是最常见的情况。
+
+**场景 B — 记录 > PMTU**：记录超出单个 UDP 报文容量，必须拆分为 N 个分片，每个分片 ≤ PMTU。接收方通过 `fragment_offset` + `fragment_length` 重组成完整消息。所有分片共享同一 `message_seq`。
+
+**场景 C — 多记录打包**：同一 UDP 报文中可连续放置多条 DTLCP 记录，总长度 ≤ PMTU。UDP 载荷首字节必须是 DTLCP 记录头（Type 字段），接收方逐条解析记录头中的 Length 字段确定边界。记录之间无分隔符，也不得跨 UDP 报文。
+
+**优先级关系**：
+
+```
+PMTU 约束（记录/打包 ≤ PMTU）> 协议最大 fragment 长度（2^14 = 16384 B）
+```
+
+即使协议允许最大 16384 B 的 plaintext，实际发送时仍受 PMTU 约束。当 PMTU < 16384 时以 PMTU 为准；当 PMTU > 16384 时以协议上限为准。在 DTLCP 中，16384 B 的协议上限远大于默认 PMTU 1400 B，因此 PMTU 是实际生效的限制。
+
+### 5.7 PMTU 变化与动态适应
+
+当前实现使用**静态 PMTU**（`Config.PMTU`），不支持 PMTU 动态发现（Path MTU Discovery，RFC 4821）。
+
+**设计考虑**：
+
+| 方案 | 优势 | 劣势 | 当前选择 |
+|------|------|------|----------|
+| 静态 PMTU（当前） | 实现简单，无额外网络开销 | 路径变化时可能 IP 分片或带宽浪费 | ✓ |
+| ICMP PMTUD（RFC 1191） | 自动发现，准确 | ICMP 常被防火墙拦截；UDP 无连接，ICMP 不可靠 | ✗ |
+| DPLPMTUD（RFC 8899） | 不依赖 ICMP，适合 UDP | 实现复杂，需探测算法 | ✗ |
+
+**PMTU 变化时的处理**：
+
+- 握手阶段：发现分片丢失率异常时，可降低 PMTU 重新分片发送（`fragmentBuffer` 支持重叠分片，PMTU 变小时的新分片能覆盖旧分片边界）
+- 数据阶段：目前不支持动态调整，建议保守设置 PMTU（1400）适配大多数网络
+
+> 参考 RFC 6347 §4.1.1.1：DTLS 实现可在握手阶段尝试 PMTU 发现，使用较小的记录探测路径，根据丢包情况调整。
 
 ---
 

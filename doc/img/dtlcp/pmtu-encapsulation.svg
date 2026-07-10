@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <filter id="shadow" x="-2%" y="-3%" width="104%" height="110%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="960" height="560" fill="#ffffff"/>
+  <text x="480" y="30" text-anchor="middle" fill="#111827" font-size="18" font-weight="600">DTLCP 报文在以太网帧中的封装层次</text>
+  <!-- 以太网帧（最外层） -->
+  <rect x="35" y="55" width="560" height="420" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="52" y="78" fill="#1e40af" font-size="14" font-weight="700">以太网帧 ≤ MTU 1500</text>
+  <rect x="35" y="55" width="560" height="42" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="35" y="77" width="560" height="20" fill="#dbeafe"/>
+  <text x="315" y="81" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">以太网帧头 (14B)</text>
+  <text x="70" y="81" fill="#6b7280" font-size="10">目标MAC(6)</text>
+  <text x="175" y="81" fill="#6b7280" font-size="10">源MAC(6)</text>
+  <text x="280" y="81" fill="#6b7280" font-size="10">EtherType(2)</text>
+  <!-- IP 数据报 -->
+  <rect x="55" y="110" width="520" height="310" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="55" y="110" width="520" height="38" rx="6" fill="#bfdbfe" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="55" y="130" width="520" height="18" fill="#bfdbfe"/>
+  <text x="315" y="134" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">IP 头部 (20B)</text>
+  <text x="80" y="134" fill="#6b7280" font-size="10">不含选项</text>
+  <!-- UDP 数据报 -->
+  <rect x="75" y="162" width="480" height="225" rx="6" fill="#ffffff" stroke="#60a5fa" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="75" y="162" width="480" height="36" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="75" y="182" width="480" height="16" fill="#dbeafe"/>
+  <text x="315" y="185" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">UDP 头部 (8B)</text>
+  <text x="100" y="185" fill="#6b7280" font-size="10">源端口(2) + 目标端口(2) + 长度(2) + 校验和(2)</text>
+  <!-- DTLCP 记录 -->
+  <rect x="95" y="212" width="440" height="160" rx="6" fill="#ffffff" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="95" y="212" width="440" height="38" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="95" y="234" width="440" height="16" fill="#eff6ff"/>
+  <text x="315" y="236" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">DTLCP 记录头 (13B)</text>
+  <rect x="108" y="258" width="52" height="24" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="134" y="268" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="600">Type</text>
+  <text x="134" y="278" text-anchor="middle" fill="#6b7280" font-size="9">1B</text>
+  <rect x="168" y="258" width="68" height="24" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="202" y="268" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="600">Version</text>
+  <text x="202" y="278" text-anchor="middle" fill="#6b7280" font-size="9">2B</text>
+  <rect x="244" y="258" width="64" height="24" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="276" y="268" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="600">Epoch</text>
+  <text x="276" y="278" text-anchor="middle" fill="#6b7280" font-size="9">2B</text>
+  <rect x="316" y="258" width="72" height="24" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="352" y="268" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="600">SeqNum</text>
+  <text x="352" y="278" text-anchor="middle" fill="#6b7280" font-size="9">6B</text>
+  <rect x="396" y="258" width="62" height="24" rx="3" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="427" y="268" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="600">Length</text>
+  <text x="427" y="278" text-anchor="middle" fill="#6b7280" font-size="9">2B</text>
+  <rect x="108" y="294" width="414" height="64" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" stroke-dasharray="6,3" filter="url(#shadow)"/>
+  <text x="315" y="324" text-anchor="middle" fill="#1d4ed8" font-size="13" font-weight="600">DTLCP 载荷 (≤ PMTU)</text>
+  <text x="315" y="344" text-anchor="middle" fill="#6b7280" font-size="11">应用数据或握手消息（已加密/MAC）</text>
+  <!-- FCS -->
+  <rect x="35" y="435" width="560" height="40" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="35" y="435" width="560" height="20" fill="#dbeafe"/>
+  <rect x="35" y="455" width="560" height="20" fill="#dbeafe"/>
+  <rect x="35" y="425" width="560" height="10" fill="#dbeafe"/>
+  <text x="315" y="460" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">以太网 FCS (4B) — 帧校验序列</text>
+  <!-- 右侧：开销计算 -->
+  <rect x="630" y="55" width="300" height="280" rx="8" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="780" y="80" text-anchor="middle" fill="#111827" font-size="15" font-weight="600">封装开销计算</text>
+  <line x1="650" y1="92" x2="910" y2="92" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="648" y="105" fill="#111827" font-size="12" font-weight="600">以太网帧头</text>
+  <text x="860" y="105" text-anchor="end" fill="#1d4ed8" font-size="12" font-weight="700">14B</text>
+  <text x="648" y="120" fill="#6b7280" font-size="10">目标MAC(6) + 源MAC(6) + EtherType(2)</text>
+  <text x="648" y="137" fill="#111827" font-size="12" font-weight="600">以太网 FCS</text>
+  <text x="860" y="137" text-anchor="end" fill="#1d4ed8" font-size="12" font-weight="700">4B</text>
+  <text x="648" y="152" fill="#6b7280" font-size="10">帧校验序列</text>
+  <text x="648" y="169" fill="#111827" font-size="12" font-weight="600">IP 头部</text>
+  <text x="860" y="169" text-anchor="end" fill="#1d4ed8" font-size="12" font-weight="700">20B</text>
+  <text x="648" y="184" fill="#6b7280" font-size="10">不含选项字段</text>
+  <text x="648" y="201" fill="#111827" font-size="12" font-weight="600">UDP 头部</text>
+  <text x="860" y="201" text-anchor="end" fill="#1d4ed8" font-size="12" font-weight="700">8B</text>
+  <text x="648" y="216" fill="#6b7280" font-size="10">端口 + 长度 + 校验和</text>
+  <text x="648" y="233" fill="#111827" font-size="12" font-weight="600">DTLCP 记录头</text>
+  <text x="860" y="233" text-anchor="end" fill="#1d4ed8" font-size="12" font-weight="700">13B</text>
+  <text x="648" y="248" fill="#6b7280" font-size="10">Type(1)+Ver(2)+Epoch(2)+Seq(6)+Len(2)</text>
+  <line x1="650" y1="265" x2="910" y2="265" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="648" y="283" fill="#dc2626" font-size="13" font-weight="700">总开销</text>
+  <text x="860" y="283" text-anchor="end" fill="#dc2626" font-size="13" font-weight="700">59B</text>
+  <text x="648" y="319" fill="#059669" font-size="13" font-weight="700">可用载荷</text>
+  <text x="860" y="319" text-anchor="end" fill="#059669" font-size="13" font-weight="700">MTU - 59</text>
+  <text x="648" y="335" fill="#6b7280" font-size="11">以太网 MTU 1500 时：1500 - 59 = 1441B</text>
+  <!-- 底部：PMTU 默认值推导 -->
+  <rect x="35" y="500" width="895" height="42" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="55" y="518" fill="#92400e" font-size="12" font-weight="600">默认 PMTU = 1400 字节</text>
+  <text x="250" y="518" fill="#92400e" font-size="12">推导：理论最大 1441B − 预留余量 41B（IP 选项、VLAN 标签 802.1Q +4B 等）= 1400B</text>
+  <text x="55" y="534" fill="#92400e" font-size="11">参考 RFC 6347 §4.1.1：DTLS 记录不得跨越多个 UDP 报文，发送方必须确保记录大小不超过 PMTU。</text>
+</svg>

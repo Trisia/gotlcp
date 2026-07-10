@@ -1030,118 +1030,127 @@ func (c *Conn) writeChangeCipherRecord() error {
 }
 
 // readHandshake 从记录层读取下一个 DTLCP 握手消息（支持分片重组）。
+//
+// 使用迭代循环替代递归，防止恶意对端通过大量微小分片触发栈溢出。
+// fragmentReads 计数器限制单条消息的最大分片迭代次数，超过 maxHandshakeFragments 时返回错误。
 func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
-	for c.handBuf.Len() < dtlcpHeaderLen {
-		if err := c.readRecord(); err != nil {
-			return nil, err
+	fragmentReads := 0
+	for {
+		fragmentReads++
+		if fragmentReads > maxHandshakeFragments {
+			c.sendAlertLocked(alertUnexpectedMessage)
+			return nil, c.in.setErrorLocked(errors.New("dtlcp: too many fragment reads for a single handshake message"))
 		}
-	}
 
-	data := c.handBuf.Bytes()
-	bodyLen := int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-	fragOff := int(data[6])<<16 | int(data[7])<<8 | int(data[8])
-	fragLen := int(data[9])<<16 | int(data[10])<<8 | int(data[11])
-
-	if bodyLen > maxHandshake {
-		c.sendAlertLocked(alertInternalError)
-		return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: handshake message of length %d bytes exceeds maximum of %d bytes", bodyLen, maxHandshake))
-	}
-	if fragOff+fragLen > bodyLen {
-		c.sendAlertLocked(alertDecodeError)
-		return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: fragment out of bounds: offset %d + length %d > total %d", fragOff, fragLen, bodyLen))
-	}
-
-	// 等待足够的分片数据
-	for c.handBuf.Len() < dtlcpHeaderLen+fragLen {
-		if err := c.readRecord(); err != nil {
-			return nil, err
+		for c.handBuf.Len() < dtlcpHeaderLen {
+			if err := c.readRecord(); err != nil {
+				return nil, err
+			}
 		}
-	}
 
-	data = c.handBuf.Next(dtlcpHeaderLen + fragLen)
-	if c.config.EnableDebug {
-		fmt.Printf("[read] %v, len=%v\n", HandshakeMessageTypeName(data[0]), len(data))
-	}
+		data := c.handBuf.Bytes()
+		bodyLen := int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+		fragOff := int(data[6])<<16 | int(data[7])<<8 | int(data[8])
+		fragLen := int(data[9])<<16 | int(data[10])<<8 | int(data[11])
 
-	// 分片重组支持（非分片消息直接处理）
-	if fragLen < bodyLen || fragOff > 0 {
-		// 清理过期分片缓冲区
-		c.cleanupStaleFragments(fragmentTimeout)
-
-		// 消息被分片，存到 pendingFragments 中
-		msgSeq := uint16(data[4])<<8 | uint16(data[5])
-		fb, exists := c.pendingFragments[msgSeq]
-		if !exists {
-			fb = newFragmentBuffer(uint24(bodyLen))
-			c.pendingFragments[msgSeq] = fb
+		if bodyLen > maxHandshake {
+			c.sendAlertLocked(alertInternalError)
+			return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: handshake message of length %d bytes exceeds maximum of %d bytes", bodyLen, maxHandshake))
 		}
-		fb.addFragment(uint24(fragOff), uint24(fragLen), data[dtlcpHeaderLen:])
-		if !fb.complete() {
-			// 分片未收齐，继续读取
-			ret, err := c.retryReadHandshake(transcript)
-			return ret, err
+		if fragOff+fragLen > bodyLen {
+			c.sendAlertLocked(alertDecodeError)
+			return nil, c.in.setErrorLocked(fmt.Errorf("dtlcp: fragment out of bounds: offset %d + length %d > total %d", fragOff, fragLen, bodyLen))
 		}
-		// 分片收齐，重组消息
-		fragmentData := fb.assembled()
-		// 用原始头部的 type + msgSeq + fragOff/fragLen 重新构造完整消息
-		fullHeader := make([]byte, dtlcpHeaderLen, dtlcpHeaderLen+len(fragmentData))
-		fullHeader[0] = data[0]
-		fullHeader[1] = data[1]
-		fullHeader[2] = data[2]
-		fullHeader[3] = data[3]
-		fullHeader[4] = data[4]
-		fullHeader[5] = data[5]
-		// fragOff=0, fragLen=bodyLen
-		fullHeader[9] = data[1]
-		fullHeader[10] = data[2]
-		fullHeader[11] = data[3]
-		data = append(fullHeader, fragmentData...)
-		delete(c.pendingFragments, msgSeq)
-	}
 
-	var m handshakeMessage
-	switch data[0] {
-	case typeClientHello:
-		m = new(clientHelloMsg)
-	case typeHelloVerifyRequest:
-		m = new(helloVerifyRequestMsg)
-	case typeServerHello:
-		m = new(serverHelloMsg)
-	case typeCertificate:
-		m = new(certificateMsg)
-	case typeServerKeyExchange:
-		m = new(serverKeyExchangeMsg)
-	case typeCertificateRequest:
-		m = new(certificateRequestMsg)
-	case typeServerHelloDone:
-		m = new(serverHelloDoneMsg)
-	case typeClientKeyExchange:
-		m = new(clientKeyExchangeMsg)
-	case typeCertificateVerify:
-		m = new(certificateVerifyMsg)
-	case typeFinished:
-		m = new(finishedMsg)
-	default:
-		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-	}
+		// 等待足够的分片数据
+		for c.handBuf.Len() < dtlcpHeaderLen+fragLen {
+			if err := c.readRecord(); err != nil {
+				return nil, err
+			}
+		}
 
-	data = append([]byte(nil), data...)
+		data = c.handBuf.Next(dtlcpHeaderLen + fragLen)
+		if c.config.EnableDebug {
+			fmt.Printf("[read] %v, len=%v\n", HandshakeMessageTypeName(data[0]), len(data))
+		}
 
-	if !m.unmarshal(data) {
-		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-	}
-	if transcript != nil {
-		transcript.Write(data)
-	}
-	if c.config.EnableDebug {
-		m.debug()
-	}
-	return m, nil
-}
+		// 分片重组支持（非分片消息直接处理）
+		if fragLen < bodyLen || fragOff > 0 {
+			// 清理过期分片缓冲区
+			c.cleanupStaleFragments(fragmentTimeout)
 
-// retryReadHandshake 递归读取下一条记录（用于分片重组场景）。
-func (c *Conn) retryReadHandshake(transcript transcriptHash) (interface{}, error) {
-	return c.readHandshake(transcript)
+			// 消息被分片，存到 pendingFragments 中
+			msgSeq := uint16(data[4])<<8 | uint16(data[5])
+			fb, exists := c.pendingFragments[msgSeq]
+			if !exists {
+				fb = newFragmentBuffer(uint24(bodyLen))
+				c.pendingFragments[msgSeq] = fb
+			}
+			fb.addFragment(uint24(fragOff), uint24(fragLen), data[dtlcpHeaderLen:])
+			if !fb.complete() {
+				// 分片未收齐，继续迭代读取
+				continue
+			}
+			// 分片收齐，重组消息
+			fragmentData := fb.assembled()
+			// 用原始头部的 type + msgSeq + fragOff/fragLen 重新构造完整消息
+			fullHeader := make([]byte, dtlcpHeaderLen, dtlcpHeaderLen+len(fragmentData))
+			fullHeader[0] = data[0]
+			fullHeader[1] = data[1]
+			fullHeader[2] = data[2]
+			fullHeader[3] = data[3]
+			fullHeader[4] = data[4]
+			fullHeader[5] = data[5]
+			// fragOff=0, fragLen=bodyLen
+			fullHeader[6] = 0
+			fullHeader[7] = 0
+			fullHeader[8] = 0
+			fullHeader[9] = data[1]
+			fullHeader[10] = data[2]
+			fullHeader[11] = data[3]
+			data = append(fullHeader, fragmentData...)
+			delete(c.pendingFragments, msgSeq)
+		}
+
+		var m handshakeMessage
+		switch data[0] {
+		case typeClientHello:
+			m = new(clientHelloMsg)
+		case typeHelloVerifyRequest:
+			m = new(helloVerifyRequestMsg)
+		case typeServerHello:
+			m = new(serverHelloMsg)
+		case typeCertificate:
+			m = new(certificateMsg)
+		case typeServerKeyExchange:
+			m = new(serverKeyExchangeMsg)
+		case typeCertificateRequest:
+			m = new(certificateRequestMsg)
+		case typeServerHelloDone:
+			m = new(serverHelloDoneMsg)
+		case typeClientKeyExchange:
+			m = new(clientKeyExchangeMsg)
+		case typeCertificateVerify:
+			m = new(certificateVerifyMsg)
+		case typeFinished:
+			m = new(finishedMsg)
+		default:
+			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+		}
+
+		data = append([]byte(nil), data...)
+
+		if !m.unmarshal(data) {
+			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+		}
+		if transcript != nil {
+			transcript.Write(data)
+		}
+		if c.config.EnableDebug {
+			m.debug()
+		}
+		return m, nil
+	}
 }
 
 // fragmentTimeout 是待重组分片的超时时间。

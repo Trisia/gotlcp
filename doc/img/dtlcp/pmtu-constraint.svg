@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600">
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", "Microsoft JhengHei", "SimHei", sans-serif; }
+  </style>
+  <defs>
+    <marker id="ag" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="ar" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="ab" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-3%" width="104%" height="110%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="960" height="600" fill="#ffffff"/>
+
+  <text x="480" y="28" text-anchor="middle" fill="#111827" font-size="18" font-weight="600">PMTU 约束与记录打包规则</text>
+
+  <!-- ============================================================ -->
+  <!-- 场景 A：记录 ≤ PMTU                                           -->
+  <!-- ============================================================ -->
+  <rect x="20" y="48" width="920" height="155" rx="8" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1.5"/>
+  <!-- 标签 -->
+  <rect x="20" y="48" width="200" height="28" rx="8" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <rect x="20" y="58" width="200" height="18" fill="#dcfce7"/>
+  <text x="120" y="67" text-anchor="middle" fill="#166534" font-size="13" font-weight="600">A：记录 ≤ PMTU</text>
+
+  <!-- PMTU 边界框 -->
+  <rect x="50" y="92" width="220" height="95" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="60" y="110" fill="#16a34a" font-size="11" font-weight="600">PMTU 上限</text>
+
+  <!-- 记录（明显小于 PMTU 边界） -->
+  <rect x="85" y="120" width="140" height="50" rx="4" fill="#bbf7d0" stroke="#4ade80" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="155" y="143" text-anchor="middle" fill="#166534" font-size="12" font-weight="600">DTLCP 记录</text>
+  <text x="155" y="159" text-anchor="middle" fill="#16a34a" font-size="10">size ≤ PMTU</text>
+
+  <!-- 箭头 -->
+  <line x1="285" y1="145" x2="345" y2="145" stroke="#16a34a" stroke-width="2.5" marker-end="url(#ag)"/>
+
+  <!-- 结果 -->
+  <rect x="360" y="108" width="170" height="74" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="445" y="138" text-anchor="middle" fill="#166534" font-size="13" font-weight="700">正常发送</text>
+  <text x="445" y="156" text-anchor="middle" fill="#166534" font-size="11">1 记录 → 1 UDP 报文</text>
+  <text x="445" y="172" text-anchor="middle" fill="#16a34a" font-size="11">✓</text>
+
+  <!-- 规则说明 -->
+  <line x1="565" y1="92" x2="565" y2="185" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="590" y="112" fill="#374151" font-size="12" font-weight="600">规则</text>
+  <text x="590" y="132" fill="#6b7280" font-size="11">单条记录 ≤ PMTU 时，直接封装为</text>
+  <text x="590" y="150" fill="#6b7280" font-size="11">单个 UDP 报文发送。</text>
+  <text x="590" y="172" fill="#6b7280" font-size="11">一条记录对应一个 UDP 报文。</text>
+
+  <!-- ============================================================ -->
+  <!-- 场景 B：记录 > PMTU                                           -->
+  <!-- ============================================================ -->
+  <rect x="20" y="218" width="920" height="170" rx="8" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="20" y="218" width="200" height="28" rx="8" fill="#fee2e2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="20" y="228" width="200" height="18" fill="#fee2e2"/>
+  <text x="120" y="237" text-anchor="middle" fill="#991b1b" font-size="13" font-weight="600">B：记录 > PMTU</text>
+
+  <!-- PMTU 边界（被超出） -->
+  <rect x="50" y="262" width="220" height="110" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="60" y="280" fill="#dc2626" font-size="11" font-weight="600">PMTU 上限</text>
+
+  <!-- 超大记录（超出 PMTU 框） -->
+  <rect x="70" y="290" width="180" height="72" rx="4" fill="#fecaca" stroke="#f87171" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="160" y="316" text-anchor="middle" fill="#991b1b" font-size="12" font-weight="600">DTLCP 记录</text>
+  <text x="160" y="334" text-anchor="middle" fill="#dc2626" font-size="10">size > PMTU</text>
+  <text x="160" y="350" text-anchor="middle" fill="#dc2626" font-size="10">超出单个 UDP 报文容量</text>
+
+  <!-- 箭头 -->
+  <line x1="285" y1="326" x2="345" y2="326" stroke="#dc2626" stroke-width="2.5" marker-end="url(#ar)"/>
+
+  <!-- 结果：分片 -->
+  <rect x="360" y="262" width="180" height="110" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="450" y="284" text-anchor="middle" fill="#991b1b" font-size="13" font-weight="700">必须分片</text>
+
+  <rect x="380" y="296" width="140" height="24" rx="3" fill="#fecaca" stroke="#fca5a5" stroke-width="1"/>
+  <text x="450" y="313" text-anchor="middle" fill="#991b1b" font-size="10" font-weight="600">分片 0（offset = 0）</text>
+
+  <rect x="380" y="324" width="140" height="24" rx="3" fill="#fecaca" stroke="#fca5a5" stroke-width="1"/>
+  <text x="450" y="341" text-anchor="middle" fill="#991b1b" font-size="10" font-weight="600">分片 1 … N−1</text>
+
+  <text x="450" y="364" text-anchor="middle" fill="#dc2626" font-size="9">各自封装为独立 UDP 报文</text>
+
+  <!-- 规则 -->
+  <line x1="565" y1="262" x2="565" y2="370" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="590" y="282" fill="#374151" font-size="12" font-weight="600">规则</text>
+  <text x="590" y="302" fill="#6b7280" font-size="11">单条记录 > PMTU，必须拆分为 N 个</text>
+  <text x="590" y="320" fill="#6b7280" font-size="11">分片（每个 ≤ PMTU），各自封装为</text>
+  <text x="590" y="338" fill="#6b7280" font-size="11">独立 UDP 报文发送。</text>
+  <text x="590" y="360" fill="#6b7280" font-size="11">所有分片相同 message_seq，按</text>
+  <text x="590" y="378" fill="#6b7280" font-size="11">fragment_offset 排序，接收方重组。</text>
+
+  <!-- ============================================================ -->
+  <!-- 场景 C：多记录打包                                            -->
+  <!-- ============================================================ -->
+  <rect x="20" y="403" width="920" height="135" rx="8" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="20" y="403" width="260" height="28" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="20" y="413" width="260" height="18" fill="#dbeafe"/>
+  <text x="150" y="422" text-anchor="middle" fill="#1e40af" font-size="13" font-weight="600">C：多记录打包</text>
+
+  <!-- PMTU 边界（UDP 报文容器） -->
+  <rect x="50" y="447" width="220" height="75" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="60" y="465" fill="#2563eb" font-size="11" font-weight="600">UDP 报文（≤ PMTU）</text>
+
+  <!-- 三条记录 -->
+  <rect x="65" y="476" width="58" height="36" rx="3" fill="#bfdbfe" stroke="#60a5fa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="94" y="492" text-anchor="middle" fill="#1e40af" font-size="9" font-weight="600">记录1</text>
+  <text x="94" y="505" text-anchor="middle" fill="#6b7280" font-size="8">len₁</text>
+
+  <rect x="128" y="476" width="58" height="36" rx="3" fill="#bfdbfe" stroke="#60a5fa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="157" y="492" text-anchor="middle" fill="#1e40af" font-size="9" font-weight="600">记录2</text>
+  <text x="157" y="505" text-anchor="middle" fill="#6b7280" font-size="8">len₂</text>
+
+  <rect x="191" y="476" width="58" height="36" rx="3" fill="#bfdbfe" stroke="#60a5fa" stroke-width="1" filter="url(#shadow)"/>
+  <text x="220" y="492" text-anchor="middle" fill="#1e40af" font-size="9" font-weight="600">记录3</text>
+  <text x="220" y="505" text-anchor="middle" fill="#6b7280" font-size="8">len₃</text>
+
+  <!-- 箭头 -->
+  <line x1="285" y1="490" x2="345" y2="490" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ab)"/>
+
+  <!-- 结果 -->
+  <rect x="360" y="455" width="180" height="60" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="450" y="482" text-anchor="middle" fill="#1e40af" font-size="12" font-weight="700">连续放置</text>
+  <text x="450" y="500" text-anchor="middle" fill="#1e40af" font-size="11">len₁+len₂+len₃ ≤ PMTU</text>
+
+  <!-- 规则 -->
+  <line x1="565" y1="447" x2="565" y2="520" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="590" y="467" fill="#374151" font-size="12" font-weight="600">规则</text>
+  <text x="590" y="487" fill="#6b7280" font-size="11">同一 UDP 报文可连续放置多条记录，</text>
+  <text x="590" y="505" fill="#6b7280" font-size="11">总长 ≤ PMTU。按记录头 Length 字段</text>
+  <text x="590" y="523" fill="#6b7280" font-size="11">逐条解析，记录之间无分隔符。</text>
+
+  <!-- ============================================================ -->
+  <!-- 底部总结                                                     -->
+  <!-- ============================================================ -->
+  <rect x="20" y="555" width="920" height="32" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="480" y="576" text-anchor="middle" fill="#92400e" font-size="12" font-weight="600">优先级：PMTU 约束（记录/打包 ≤ PMTU）  &gt;  协议最大 fragment 长度 2¹⁴=16384 B。实际生效限制始终为 PMTU。</text>
+</svg>

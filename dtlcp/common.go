@@ -51,6 +51,15 @@ const (
 	recordHeaderLen = 13 // DTLCP 记录头长度（字节）
 	maxHandshake            = 65536 // maximum handshake we support (protocol max is 16 MB)
 	maxUselessRecords       = 16    // maximum number of consecutive non-advancing records
+	// maxHandshakeFragments 单条握手消息允许的最大分片迭代次数。
+	// 防止恶意对端发送大量微小分片导致的无限循环和栈溢出。
+	//
+	// 合法上限估算：
+	//   最小合法 PMTU ≈ 576 (IPv4 最小重组缓冲区)
+	//   单分片 body = PMTU - recordHeaderLen(13) - dtlcpHeaderLen(12) ≈ 551
+	//   最大分片数 = maxHandshake(65536) / 551 ≈ 119
+	//   256 提供 2x+ 安全余量，同时阻止单字节分片攻击 (65536/1=65536)。
+	maxHandshakeFragments = 256
 	defaultReplayWindowSize = 64    // DTLCP 重放保护滑动窗口默认大小（RFC 6347 §4.1.2.6）
 
 	// 2*MSL 驻留期 (RFC 6347 §4.2.4)
