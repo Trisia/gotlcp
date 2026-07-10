@@ -408,9 +408,12 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 // outBufPool — 写记录用 scratch buffer 池
 // =============================================================================
 
+// outBufPool — 写记录用 scratch buffer 池。
+// 预分配 PMTU 大小匹配 DTLCP over UDP 实际记录上限，避免写路径上的堆分配。
 var outBufPool = sync.Pool{
 	New: func() interface{} {
-		return new([]byte)
+		buf := make([]byte, 0, 1500)
+		return &buf
 	},
 }
 
@@ -884,8 +887,8 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 			m = maxPayload
 		}
 
-		// 分配 13 字节的记录头
-		outBuf = append(outBuf[:0], make([]byte, recordHeaderLen)...)
+		// 记录头由后续逐字节填充，直接复用池中 buffer
+		outBuf = outBuf[:recordHeaderLen]
 
 		// 先编码 epoch + seq 到 out.seq（供 encrypt 中的 MAC/AAD 使用）
 		c.setWriteSeq()
@@ -1093,7 +1096,7 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 		// 分片收齐，重组消息
 		fragmentData := fb.assembled()
 		// 用原始头部的 type + msgSeq + fragOff/fragLen 重新构造完整消息
-		fullHeader := make([]byte, dtlcpHeaderLen)
+		fullHeader := make([]byte, dtlcpHeaderLen, dtlcpHeaderLen+len(fragmentData))
 		fullHeader[0] = data[0]
 		fullHeader[1] = data[1]
 		fullHeader[2] = data[2]

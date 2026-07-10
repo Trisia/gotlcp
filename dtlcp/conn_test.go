@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // =============================================================================
@@ -921,6 +923,194 @@ func TestHandshakeFragmentReassembly(t *testing.T) {
 	}
 	if !bytes.Equal(assembled, expected) {
 		t.Fatal("重组数据与预期不匹配")
+	}
+}
+
+// =============================================================================
+// 握手后大数据传输测试 — 覆盖 writeRecordLocked 循环与 pool buffer 复用路径
+// =============================================================================
+
+// TestLargeAppDataAfterHandshake 握手后发送接近 PMTU 大小的应用数据。
+// 覆盖 writeRecordLocked 单轮循环路径。
+func TestLargeAppDataAfterHandshake(t *testing.T) {
+	certs := initTestCerts()
+	serverCfg := &Config{
+		Certificates:             []Certificate{certs.sigCert, certs.encCert},
+		Time:                     time.Now,
+		InitialRetransmitTimeout: 200 * time.Millisecond,
+		MaxRetransmitTimeout:     1 * time.Second,
+	}
+	clientCfg := &Config{
+		InsecureSkipVerify: true,
+		Time:               time.Now,
+	}
+
+	cli, svr := testHandshakePair(t, clientCfg, serverCfg)
+	if err := doHandshake(t, cli, svr); err != nil {
+		t.Fatalf("握手失败: %v", err)
+	}
+
+	// 发送接近 PMTU 的应用数据（1300 字节 — 单条记录）
+	payload := make([]byte, 1300)
+	if _, err := rand.Read(payload); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 2048)
+		n, err := svr.Read(buf)
+		if err != nil {
+			t.Errorf("服务端 Read 失败: %v", err)
+			return
+		}
+		if n != len(payload) {
+			t.Errorf("读取长度不匹配: 期望 %d, 实际 %d", len(payload), n)
+		}
+		if !bytes.Equal(buf[:n], payload) {
+			t.Error("数据不一致")
+		}
+	}()
+
+	n, err := cli.Write(payload)
+	if err != nil {
+		t.Fatalf("客户端 Write 失败: %v", err)
+	}
+	if n != len(payload) {
+		t.Fatalf("Write 长度不匹配: 期望 %d, 实际 %d", len(payload), n)
+	}
+	wg.Wait()
+}
+
+// TestHugeAppDataMultiRecord 握手后发送超大用户数据（64KB），触发多轮分片循环。
+// 验证 writeRecordLocked 中 pool buffer 在循环迭代间正确复用。
+func TestHugeAppDataMultiRecord(t *testing.T) {
+	certs := initTestCerts()
+	serverCfg := &Config{
+		Certificates:             []Certificate{certs.sigCert, certs.encCert},
+		Time:                     time.Now,
+		InitialRetransmitTimeout: 200 * time.Millisecond,
+		MaxRetransmitTimeout:     1 * time.Second,
+	}
+	clientCfg := &Config{
+		InsecureSkipVerify: true,
+		Time:               time.Now,
+	}
+
+	cli, svr := testHandshakePair(t, clientCfg, serverCfg)
+	if err := doHandshake(t, cli, svr); err != nil {
+		t.Fatalf("握手失败: %v", err)
+	}
+
+	// 64KB 数据，远超 PMTU，触发几十轮 writeRecordLocked 循环
+	payload := make([]byte, 65536)
+	if _, err := rand.Read(payload); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var received []byte
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 8192)
+		for len(received) < len(payload) {
+			n, err := svr.Read(buf)
+			if err != nil {
+				t.Errorf("服务端 Read 失败: %v", err)
+				return
+			}
+			received = append(received, buf[:n]...)
+		}
+	}()
+
+	n, err := cli.Write(payload)
+	if err != nil {
+		t.Fatalf("客户端 Write 失败: %v", err)
+	}
+	if n != len(payload) {
+		t.Fatalf("Write 长度不匹配: 期望 %d, 实际 %d", len(payload), n)
+	}
+	wg.Wait()
+
+	if len(received) != len(payload) {
+		t.Fatalf("接收长度不匹配: 期望 %d, 实际 %d", len(payload), len(received))
+	}
+	if !bytes.Equal(received, payload) {
+		t.Error("数据不一致")
+	}
+}
+
+// TestConsecutiveLargeAppData 握手后连续多次发送大数据，验证 pool buffer 跨
+// writeRecordLocked 调用正确复用。
+func TestConsecutiveLargeAppData(t *testing.T) {
+	certs := initTestCerts()
+	serverCfg := &Config{
+		Certificates:             []Certificate{certs.sigCert, certs.encCert},
+		Time:                     time.Now,
+		InitialRetransmitTimeout: 200 * time.Millisecond,
+		MaxRetransmitTimeout:     1 * time.Second,
+	}
+	clientCfg := &Config{
+		InsecureSkipVerify: true,
+		Time:               time.Now,
+	}
+
+	cli, svr := testHandshakePair(t, clientCfg, serverCfg)
+	if err := doHandshake(t, cli, svr); err != nil {
+		t.Fatalf("握手失败: %v", err)
+	}
+
+	const numChunks = 4
+	const chunkSize = 16384 // 每段 16KB
+	payloads := make([][]byte, numChunks)
+	for i := range payloads {
+		payloads[i] = make([]byte, chunkSize)
+		if _, err := rand.Read(payloads[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	totalExpected := numChunks * chunkSize
+	expected := make([]byte, totalExpected)
+	for i, p := range payloads {
+		copy(expected[i*chunkSize:], p)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var received []byte
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 8192)
+		for len(received) < totalExpected {
+			n, err := svr.Read(buf)
+			if err != nil {
+				t.Errorf("服务端 Read 失败: %v", err)
+				return
+			}
+			received = append(received, buf[:n]...)
+		}
+	}()
+
+	for i, p := range payloads {
+		n, err := cli.Write(p)
+		if err != nil {
+			t.Fatalf("客户端 Write[%d] 失败: %v", i, err)
+		}
+		if n != len(p) {
+			t.Fatalf("Write[%d] 长度不匹配: 期望 %d, 实际 %d", i, len(p), n)
+		}
+	}
+	wg.Wait()
+
+	if len(received) != totalExpected {
+		t.Fatalf("接收长度不匹配: 期望 %d, 实际 %d", totalExpected, len(received))
+	}
+	if !bytes.Equal(received, expected) {
+		t.Error("数据不一致")
 	}
 }
 

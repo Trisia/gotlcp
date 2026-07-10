@@ -113,20 +113,34 @@ func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
 //	   1 B      3 B      2 B       3 B        3 B
 const dtlcpHeaderLen = 12
 
-// dtlcpMarshalHeader 构造 DTLCP 12 字节握手消息头。
-// 返回追加了 body 后的完整字节序列。
+// dtlcpWriteHeader 将 DTLCP 12 字节握手消息头写入 dst 起始处。
+// 调用方需确保 dst 长度 ≥ dtlcpHeaderLen。
+func dtlcpWriteHeader(dst []byte, msgType uint8, bodyLen int, msgSeq uint16, fragOff, fragLen uint24) {
+	dst[0] = msgType
+	dst[1] = byte(bodyLen >> 16)
+	dst[2] = byte(bodyLen >> 8)
+	dst[3] = byte(bodyLen)
+	dst[4] = byte(msgSeq >> 8)
+	dst[5] = byte(msgSeq)
+	dst[6] = byte(fragOff >> 16)
+	dst[7] = byte(fragOff >> 8)
+	dst[8] = byte(fragOff)
+	dst[9] = byte(fragLen >> 16)
+	dst[10] = byte(fragLen >> 8)
+	dst[11] = byte(fragLen)
+}
+
+// dtlcpMarshalHeader 构造 DTLCP 12 字节握手消息头并追加 body。
+// 返回完整的字节序列。
 func dtlcpMarshalHeader(msgType uint8, body []byte, msgSeq uint16, fragOff, fragLen uint24) ([]byte, error) {
 	if fragLen == 0 {
 		fragLen = uint24(len(body))
 	}
-	var b cryptobyte.Builder
-	b.AddUint8(msgType)
-	b.AddUint24(uint32(len(body)))
-	b.AddUint16(msgSeq)
-	b.AddUint24(uint32(fragOff))
-	b.AddUint24(uint32(fragLen))
-	b.AddBytes(body)
-	return b.Bytes()
+	n := dtlcpHeaderLen + len(body)
+	x := make([]byte, n)
+	dtlcpWriteHeader(x, msgType, len(body), msgSeq, fragOff, fragLen)
+	copy(x[dtlcpHeaderLen:], body)
+	return x, nil
 }
 
 // dtlcpUnmarshalHeader 解析 DTLCP 12 字节握手消息头。
@@ -325,7 +339,7 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 	if !s.ReadUint16LengthPrefixed(&cipherSuites) {
 		return false
 	}
-	m.cipherSuites = []uint16{}
+	m.cipherSuites = make([]uint16, 0, len(cipherSuites)/2)
 	for !cipherSuites.Empty() {
 		var suite uint16
 		if !cipherSuites.ReadUint16(&suite) {
@@ -429,6 +443,7 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 				return false
 			}
 			for !curves.Empty() {
+				m.supportedCurves = make([]CurveID, 0, len(curves)/2)
 				var curve uint16
 				if !curves.ReadUint16(&curve) {
 					return false
@@ -442,6 +457,7 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 				return false
 			}
 			for !sigAndAlgs.Empty() {
+				m.supportedSignatureAlgorithms = make([]SignatureScheme, 0, len(sigAndAlgs)/2)
 				var sigAndAlg uint16
 				if !sigAndAlgs.ReadUint16(&sigAndAlg) {
 					return false
@@ -531,19 +547,22 @@ func (m *helloVerifyRequestMsg) marshal() ([]byte, error) {
 		return m.raw, nil
 	}
 
-	var body cryptobyte.Builder
-	body.AddUint16(m.serverVersion)
-	body.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(m.cookie)
-	})
-
-	bodyBytes, err := body.Bytes()
-	if err != nil {
-		return nil, err
+	bodyLen := 2 + 1 + len(m.cookie) // version(2) + cookie_len(1) + cookie
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(bodyLen)
 	}
 
-	m.raw, err = dtlcpMarshalHeader(m.messageType(), bodyBytes, m.messageSeq, m.fragmentOffset, m.fragmentLength)
-	return m.raw, err
+	n := dtlcpHeaderLen + bodyLen
+	x := make([]byte, n)
+	dtlcpWriteHeader(x, typeHelloVerifyRequest, bodyLen, m.messageSeq, m.fragmentOffset, fragLen)
+	x[12] = byte(m.serverVersion >> 8)
+	x[13] = byte(m.serverVersion)
+	x[14] = byte(len(m.cookie))
+	copy(x[15:], m.cookie)
+
+	m.raw = x
+	return x, nil
 }
 
 func (m *helloVerifyRequestMsg) unmarshal(data []byte) bool {
@@ -1280,19 +1299,23 @@ func (m *certificateVerifyMsg) marshal() ([]byte, error) {
 		return m.raw, nil
 	}
 
-	// 构建消息体：sig_length(2) + signature
-	var body cryptobyte.Builder
-	body.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(m.signature)
-	})
-
-	bodyBytes, err := body.Bytes()
-	if err != nil {
-		return nil, err
+	// 消息体：sig_length(2) + signature
+	bodyLen := 2 + len(m.signature)
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(bodyLen)
 	}
 
-	m.raw, err = dtlcpMarshalHeader(m.messageType(), bodyBytes, m.messageSeq, m.fragmentOffset, m.fragmentLength)
-	return m.raw, err
+	n := dtlcpHeaderLen + bodyLen
+	x := make([]byte, n)
+	dtlcpWriteHeader(x, typeCertificateVerify, bodyLen, m.messageSeq, m.fragmentOffset, fragLen)
+	sigLen := len(m.signature)
+	x[12] = byte(sigLen >> 8)
+	x[13] = byte(sigLen)
+	copy(x[14:], m.signature)
+
+	m.raw = x
+	return x, nil
 }
 
 func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
@@ -1344,16 +1367,19 @@ func (m *finishedMsg) marshal() ([]byte, error) {
 		return m.raw, nil
 	}
 
-	var body cryptobyte.Builder
-	body.AddBytes(m.verifyData)
-
-	bodyBytes, err := body.Bytes()
-	if err != nil {
-		return nil, err
+	bodyLen := len(m.verifyData)
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(bodyLen)
 	}
 
-	m.raw, err = dtlcpMarshalHeader(m.messageType(), bodyBytes, m.messageSeq, m.fragmentOffset, m.fragmentLength)
-	return m.raw, err
+	n := dtlcpHeaderLen + bodyLen
+	x := make([]byte, n)
+	dtlcpWriteHeader(x, typeFinished, bodyLen, m.messageSeq, m.fragmentOffset, fragLen)
+	copy(x[dtlcpHeaderLen:], m.verifyData)
+
+	m.raw = x
+	return x, nil
 }
 
 func (m *finishedMsg) unmarshal(data []byte) bool {
