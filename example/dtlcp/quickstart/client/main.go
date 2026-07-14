@@ -12,14 +12,14 @@ func main() {
 	}
 	defer conn.Close()
 
-	_, err = conn.Write([]byte("Hello DTLCP Server!"))
+	_, err = conn.WriteTo([]byte("Hello DTLCP Server!"), conn.RemoteAddr())
 	if err != nil {
 		panic(err)
 	}
 	buff := make([]byte, 516)
-	n, err := conn.Read(buff)
+	n, addr, err := conn.ReadFrom(buff)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf(">> %s\n", buff[:n])
+	fmt.Printf(">> %s (来自 %s)\n", buff[:n], addr)
 }

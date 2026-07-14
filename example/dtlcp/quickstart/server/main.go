@@ -82,8 +82,8 @@ func main() {
 		go func() {
 			defer conn.Close()
 			buf := make([]byte, 1024)
-			n, _ := conn.Read(buf)
-			conn.Write([]byte("Hello DTLCP Client!"))
+			n, addr, _ := conn.(*dtlcp.Conn).ReadFrom(buf)
+			conn.(*dtlcp.Conn).WriteTo([]byte("Hello DTLCP Client!"), addr)
 			_ = buf[:n]
 		}()
 	}

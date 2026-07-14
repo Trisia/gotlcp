@@ -104,13 +104,13 @@ func main() {
 func handleConn(conn *dtlcp.Conn) {
     defer conn.Close()
     buf := make([]byte, 1024)
-    n, err := conn.Read(buf)
+    n, addr, err := conn.ReadFrom(buf)
     if err != nil {
         fmt.Printf("读取错误: %v\n", err)
         return
     }
-    fmt.Printf("收到: %s\n", buf[:n])
-    conn.Write([]byte("Hello DTLCP Client!"))
+    fmt.Printf("收到来自 %s: %s\n", addr, buf[:n])
+    conn.WriteTo([]byte("Hello DTLCP Client!"), addr)
 }
 ```
 
@@ -136,14 +136,14 @@ func main() {
     }
     defer conn.Close()
 
-    conn.Write([]byte("Hello DTLCP Server!"))
+    conn.WriteTo([]byte("Hello DTLCP Server!"), conn.RemoteAddr())
 
     buf := make([]byte, 1024)
-    n, err := conn.Read(buf)
+    n, addr, err := conn.ReadFrom(buf)
     if err != nil {
         panic(err)
     }
-    fmt.Printf("收到: %s\n", buf[:n])
+    fmt.Printf("收到来自 %s: %s\n", addr, buf[:n])
 }
 ```
 
