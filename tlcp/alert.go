@@ -152,7 +152,13 @@ func (e alert) CN() string {
 	return "TLCP: 报警(" + strconv.Itoa(int(e)) + ")"
 }
 
-// AlertCN 错误码意义
+// AlertCN 返回 TLCP 报警错误码的中文含义。
+//
+// 参数：
+//   - code：TLCP 报警错误码，取值见本文件中的报警常量（如 alertCloseNotify、alertBadRecordMAC 等）。
+//
+// 返回值：
+//   - string：该错误码对应的中文描述；未在中文对照表中登记的错误码返回空字符串。
 func AlertCN(code uint8) string {
 	s, ok := alertTextCN[alert(code)]
 	if ok {

@@ -5,7 +5,7 @@
 package tlcp
 
 import (
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -13,8 +13,8 @@ import (
 
 // cacheEntry 证书引用缓存项目
 type cacheEntry struct {
-	refs int64             // 引用计数器
-	cert *x509.Certificate // 证书对象
+	refs int64               // 引用计数器
+	cert *smx509.Certificate // 证书对象
 }
 
 // certCache 实现了一个内部X.509证书对象的引用表，它运行一个证书被多个 Conn 共享，
@@ -41,7 +41,7 @@ var clientCertCache = new(certCache)
 // activeCert 用于给调用者持有引用保证不会被gc
 // 当持有者放弃这个引用时则减少引用计数器
 type activeCert struct {
-	cert *x509.Certificate
+	cert *smx509.Certificate
 }
 
 // active 该方法将会增加缓存中引用计数器的数目，然后设置在该引用被被回收时的回调，用于减少计数器
@@ -72,7 +72,7 @@ func (cc *certCache) newCert(der []byte) (*activeCert, error) {
 		return cc.active(entry.(*cacheEntry)), nil
 	}
 
-	cert, err := x509.ParseCertificate(der)
+	cert, err := smx509.ParseCertificate(der)
 	if err != nil {
 		return nil, err
 	}
