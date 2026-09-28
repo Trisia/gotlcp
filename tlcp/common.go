@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -41,10 +41,10 @@ const (
 	//   SM4-CBC: 最大 48 字节（SM3 HMAC 32 字节 + 块填充最多 16 字节）
 	// 2048 = 2^11，远大于实际需要的 ~50 字节，为 Go crypto/tls 的保守工程余量，
 	// 用于覆盖未来密码套件的扩展需求。
-	maxCiphertext = 16384 + 2048
-	recordHeaderLen   = 5            // record header length
-	maxHandshake      = 65536        // maximum handshake we support (protocol max is 16 MB)
-	maxUselessRecords = 16           // maximum number of consecutive non-advancing records
+	maxCiphertext     = 16384 + 2048
+	recordHeaderLen   = 5     // record header length
+	maxHandshake      = 65536 // maximum handshake we support (protocol max is 16 MB)
+	maxUselessRecords = 16    // maximum number of consecutive non-advancing records
 )
 
 // TLCP record 类型
@@ -71,6 +71,13 @@ const (
 	typeFinished           uint8 = 20
 )
 
+// HandshakeMessageTypeName 返回握手消息类型编号对应的可读名称。
+//
+// 参数：
+//   - id：握手消息类型编号，取值见 GB/T 38636-2016 6.4.5.1 定义的握手消息类型，如 typeClientHello(1)、typeServerHello(2)、typeCertificate(11)。
+//
+// 返回值：
+//   - string：已知类型返回其可读名称（如 "Client Hello"、"Finished"）；未知类型返回 "0x%02X" 格式的两位十六进制字符串，如 "0x63"。
 func HandshakeMessageTypeName(id uint8) string {
 	switch id {
 	case typeClientHello:
@@ -169,6 +176,10 @@ const (
 //	enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
 type SignatureScheme uint16
 
+// String 返回签名算法的名称，满足 fmt.Stringer 接口。
+//
+// 返回值：
+//   - string：已知取值返回其名称（SM2WithSM3 返回 "SM2WithSM3"）；未知取值返回 "SignatureScheme(十进制值)" 形式的字符串，如 "SignatureScheme(0)"。
 func (s SignatureScheme) String() string {
 	switch s {
 	case SM2WithSM3:
@@ -215,7 +226,7 @@ type ConnectionState struct {
 	//
 	// 在客户端侧，改参数不会为空，表示服务端的签名证书和加密证书
 	// 在服务端侧，若  Config.ClientAuth 不为 RequireAnyClientCert 或 RequireAndVerifyClientCert 那么则可能为空。
-	PeerCertificates []*x509.Certificate
+	PeerCertificates []*smx509.Certificate
 
 	// VerifiedChains 验证对端证书的证书链
 	//
@@ -223,7 +234,14 @@ type ConnectionState struct {
 	// 在服务端侧证书链中的证书来自于 Config.ClientCAs
 	//
 	// 若启用了 Config.InsecureSkipVerify 参数则不会存在改参数。
-	VerifiedChains [][]*x509.Certificate
+	VerifiedChains [][]*smx509.Certificate
+
+	// PeerIBCIdentity 对端 IBC 标识，仅 IBC/IBSDH 套件下非空。
+	PeerIBCIdentity []byte
+
+	// PeerIBCSysParams 对端提供的、且已通过信任池校验的 IBC 公共参数，仅 IBC/IBSDH
+	// 套件下非空。参数含义与出处见 IBCSysParams（tlcp/ibc.go）。
+	PeerIBCSysParams *IBCSysParams
 }
 
 // ClientAuthType 服务端对客户单的认证策略，用于客户端身份认证配置
@@ -283,6 +301,10 @@ type ClientHelloInfo struct {
 	// 服务端可以使用该参数选择合适的证书，做到证书的动态选择。
 	TrustedCAIndications []TrustedAuthority
 
+	// ClientID 客户端在 ClientHello 中通过 client_id(66) 扩展携带的 IBC 标识原始字节。
+	// 仅当客户端配置了 IBCIdentity 时才会存在（GM/T 0024-2023 附录 A.7）。
+	ClientID []byte
+
 	// Conn 底层连接对象，请不要读写该对象，否则会导致TLCP连接异常
 	Conn net.Conn
 
@@ -293,7 +315,10 @@ type ClientHelloInfo struct {
 	ctx context.Context
 }
 
-// Context 返回握手过程中的上下文
+// Context 返回握手过程中的上下文。
+//
+// 返回值：
+//   - context.Context：本次握手中记录下来的上下文，它由 Conn.HandshakeContext 等方法传入的 ctx 派生而来（取消会向该上下文传播）；该字段未设置（如零值构造的 ClientHelloInfo）时返回 nil。
 func (c *ClientHelloInfo) Context() context.Context {
 	return c.ctx
 }
@@ -312,7 +337,10 @@ type CertificateRequestInfo struct {
 	ctx context.Context
 }
 
-// Context 返回握手过程中的上下文
+// Context 返回握手过程中的上下文。
+//
+// 返回值：
+//   - context.Context：本次握手中记录下来的上下文，它由 Conn.HandshakeContext 等方法传入的 ctx 派生而来（取消会向该上下文传播）；该字段未设置（如手工构造的 CertificateRequestInfo）时返回 nil。
 func (c *CertificateRequestInfo) Context() context.Context {
 	return c.ctx
 }
@@ -375,7 +403,7 @@ type Config struct {
 	// 以及 verifiedChains 验证该证书相关的根证书链序列
 	//
 	// InsecureSkipVerify 与 ClientAuth 参数不会影响该函数运行。
-	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error
 
 	// VerifyConnection 【可选】如果该方法不会空，那么将会在证书验证完成后，
 	// 如果 VerifyPeerCertificate 存在则会在其后运行
@@ -388,7 +416,7 @@ type Config struct {
 
 	// RootCAs 根证书列表，客户端使用该列表的证书验证服务端证书是否有效
 	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
-	RootCAs *x509.CertPool
+	RootCAs *smx509.CertPool
 
 	// NextProtos 支持的应用层协议列表。
 	// 列表中的顺序代表支持协议的优先级索引越小越优先。
@@ -409,7 +437,7 @@ type Config struct {
 
 	// ClientCAs 服务端侧根证书列表，这些根证书将用于验证客户端证书消息中的证书
 	// 客户端证书的验证策略由  ClientAuth 参数配置。
-	ClientCAs *x509.CertPool
+	ClientCAs *smx509.CertPool
 
 	// InsecureSkipVerify 用于控制客户端是否跳过 服务端的证书有效性 和 证书与主机名 的匹配。
 	//
@@ -467,10 +495,50 @@ type Config struct {
 	// 若需要在服务端识别并且使用该参数，请实现 GetCertificate 与 GetKECertificate 方法，
 	// 从 ClientHelloInfo 中获取扩展字段，然后根据扩展字段选择合适的证书。
 	TrustedCAIndications []TrustedAuthority
+
+	// IBCIdentity 标识密码算法（SM9）身份凭据：本端标识 + 本端公共参数 + 用户私钥。
+	// 仅当 CipherSuites 中包含 IBC/IBSDH 套件时生效。
+	IBCIdentity *IBCIdentity
+
+	// GetIBCIdentity 【可选】服务端根据客户端 Hello 消息动态返回 IBC 身份凭据。
+	// 用于多 KGC、按 SNI 选择密钥，或按标识向 KGC 索取私钥的场景。
+	// 仅当 IBCIdentity 为空时调用。
+	GetIBCIdentity func(*ClientHelloInfo) (*IBCIdentity, error)
+
+	// GetClientIBCIdentity 【可选】客户端根据服务端的证书请求返回 IBC 身份凭据。
+	// 仅当 IBCIdentity 为空时调用。
+	GetClientIBCIdentity func(*CertificateRequestInfo) (*IBCIdentity, error)
+
+	// RootIBCSysParams 客户端信任的服务端 KGC 公共参数池。
+	// 对端下发的 ibc_parameter 必须命中该池，否则握手失败。
+	// 未配置（nil）时默认以本端 IBCIdentity.Parameters 作为信任池，
+	// 此时要求对端参数与本端参数属于同一 KGC。
+	RootIBCSysParams *IBCPool
+
+	// ClientIBCSysParams 服务端信任的客户端 KGC 公共参数池。
+	// 用于校验客户端 CertificateVerify 的签名主公钥。
+	// 未配置（nil）时默认以本端 IBCIdentity.Parameters 作为信任池，
+	// 此时要求对端参数与本端参数属于同一 KGC。
+	ClientIBCSysParams *IBCPool
+
+	// VerifyIBCSysParams 【可选】对端公共参数的额外校验回调，作为信任池的兜底。
+	// 未配置显式信任池时，先由本回调判定；本回调也为 nil 时，改用本端
+	// IBCIdentity.Parameters 作为默认信任池；本端同样没有公共参数时，IBC 握手直接失败。
+	// 回调收到的是已解析的对端 IBCSysParams（见 tlcp/ibc.go）。
+	VerifyIBCSysParams func(*IBCSysParams) error
+
+	// VerifyIBCIdentity 【可选】校验对端标识状态（如查询标识吊销列表）。
+	// 本库不内置撤销检查，需要时由应用在此实现。
+	VerifyIBCIdentity func(identity []byte) error
 }
 
-// Clone 复制一个新的连接配置对象
-// 复制配置信息时，您任然可以客户端或服务器同时使用 Config 对象。
+// Clone 复制一个新的连接配置对象。
+//
+// 复制配置信息时，您仍然可以在客户端或服务器中同时使用 Config 对象。
+//
+// 返回值：
+//   - *Config：与原配置各导出字段取值一致的新配置对象；其中的 IBCIdentity 会被一并克隆，而 Certificates、CipherSuites、NextProtos、CurvePreferences、TrustedCAIndications 等切片字段与 SessionCache 等接口字段为浅拷贝（与原配置共享底层数据），修改时需注意。
+//   - nil：仅当接收者为 nil 时返回。
 func (c *Config) Clone() *Config {
 	if c == nil {
 		return nil
@@ -504,6 +572,13 @@ func (c *Config) Clone() *Config {
 		OnAlert:                     c.OnAlert,
 		EnableDebug:                 c.EnableDebug,
 		TrustedCAIndications:        c.TrustedCAIndications,
+		IBCIdentity:                 c.IBCIdentity.Clone(),
+		GetIBCIdentity:              c.GetIBCIdentity,
+		GetClientIBCIdentity:        c.GetClientIBCIdentity,
+		RootIBCSysParams:            c.RootIBCSysParams,
+		ClientIBCSysParams:          c.ClientIBCSysParams,
+		VerifyIBCSysParams:          c.VerifyIBCSysParams,
+		VerifyIBCIdentity:           c.VerifyIBCIdentity,
 	}
 }
 
@@ -639,9 +714,34 @@ func (c *Config) getEKCertificate(clientHello *ClientHelloInfo) (*Certificate, e
 	return &c.Certificates[1], nil
 }
 
-// SupportsCertificate returns nil if the provided certificate is supported by
-// the server that sent the CertificateRequest. Otherwise, it returns an error
-// describing the reason for the incompatibility.
+// hasX509Certificates 判断配置是否具备完整的 X.509 双证书来源。
+//
+// TLCP 服务端必须同时提供签名证书与加密证书（GB/T 38636-2020 双证书体系），
+// 二者可分别来自静态配置或回调：
+//   - 签名证书：Certificates[0]，或 GetCertificate 回调；
+//   - 加密证书：Certificates[1]，或 GetKECertificate 回调。
+//
+// 该判断只依据配置本身，不调用回调：回调可能在握手时基于 SNI 决定不提供证书，
+// 那属于运行期决策。仅配置 IBCIdentity/GetIBCIdentity、未配置完整 X.509 证书的
+// 服务端会返回 false，此时只有 IBC/IBSDH 套件可用。
+//
+// 返回值：
+//   - bool：签名证书来源与加密证书来源同时存在时返回 true。
+func (c *Config) hasX509Certificates() bool {
+	hasSignCert := len(c.Certificates) > 0 || c.GetCertificate != nil
+	hasEncCert := len(c.Certificates) >= 2 || c.GetKECertificate != nil
+	return hasSignCert && hasEncCert
+}
+
+// SupportsCertificate 判断发送证书请求的服务端是否接受给定的证书。
+//
+// 若 CertificateRequestInfo.AcceptableCAs 为空，则不做检查直接返回 nil；否则依次检查给定证书链中每张证书的签发者（RawIssuer）是否命中 AcceptableCAs。若证书被接受返回 nil，否则返回描述不兼容原因的错误。
+//
+// 参数：
+//   - c：待检查的密钥对与证书，不能为 nil；检查依据是其中的 Certificate 证书链，链中首张证书可使用已解析的 Leaf 以省去解析。
+//
+// 返回值：
+//   - error：命中 AcceptableCAs 中任意一项时返回 nil；解析证书失败或证书链未由可接受的 CA 签发（含证书链为空的情形）时返回非 nil 的错误。
 func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	if len(cri.AcceptableCAs) == 0 {
 		return nil
@@ -653,7 +753,7 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 		// chain.Leaf was nil.
 		if j != 0 || x509Cert == nil {
 			var err error
-			if x509Cert, err = x509.ParseCertificate(cert); err != nil {
+			if x509Cert, err = smx509.ParseCertificate(cert); err != nil {
 				return fmt.Errorf("failed to parse certificate #%d in the chain: %w", j, err)
 			}
 		}
@@ -685,15 +785,15 @@ type Certificate struct {
 	//
 	// 可以通过 smx509.ParseCertificate 解析 Certificate.Certificate 中的第一个元素解析设置，
 	// 通过该种方式可以减少在握手环节的证书解析的时间。
-	Leaf *x509.Certificate
+	Leaf *smx509.Certificate
 }
 
 // leaf 返还 Certificate.Certificate[0] 的解析结果。
-func (c *Certificate) leaf() (*x509.Certificate, error) {
+func (c *Certificate) leaf() (*smx509.Certificate, error) {
 	if c.Leaf != nil {
 		return c.Leaf, nil
 	}
-	return x509.ParseCertificate(c.Certificate[0])
+	return smx509.ParseCertificate(c.Certificate[0])
 }
 
 type handshakeMessage interface {
@@ -718,14 +818,22 @@ func unexpectedMessageError(wanted, got interface{}) error {
 // CertificateVerificationError is returned when certificate verification fails during the handshake.
 type CertificateVerificationError struct {
 	// UnverifiedCertificates and its contents should not be modified.
-	UnverifiedCertificates []*x509.Certificate
+	UnverifiedCertificates []*smx509.Certificate
 	Err                    error
 }
 
+// Error 返回证书验证失败的错误描述，满足 error 接口。
+//
+// 返回值：
+//   - string：形如 "tlcp: failed to verify certificate: %s" 的错误文本，其中 %s 为内部 Err 字段的描述。
 func (e *CertificateVerificationError) Error() string {
 	return fmt.Sprintf("tlcp: failed to verify certificate: %s", e.Err)
 }
 
+// Unwrap 返回导致证书验证失败的底层错误，供 errors.Is 与 errors.As 展开错误链。
+//
+// 返回值：
+//   - error：CertificateVerificationError.Err 字段的值；该字段未设置时返回 nil。
 func (e *CertificateVerificationError) Unwrap() error {
 	return e.Err
 }

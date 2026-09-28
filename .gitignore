@@ -62,3 +62,5 @@ venv
 docs
 .superpowers
 .agents
+.go*
+.apidoc-check

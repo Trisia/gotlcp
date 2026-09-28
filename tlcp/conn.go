@@ -26,7 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // Conn 表示一个TLCP连接，实现了 net.Conn 接口
@@ -51,12 +51,16 @@ type Conn struct {
 	// connection so far. If renegotiation is disabled then this is either
 	// zero or one.
 	handshakes        int
-	didResume         bool                // 表示是否为会话重用
-	cipherSuite       uint16              // 密码套件ID
-	activeCertHandles []*activeCert       // 证书缓存引用，在运行期间持有该引用维持缓存，用于减少重复的DER证书解析造成而外性能损耗。
-	peerCertificates  []*x509.Certificate // 对端数字证书列表
+	didResume         bool                  // 表示是否为会话重用
+	cipherSuite       uint16                // 密码套件ID
+	activeCertHandles []*activeCert         // 证书缓存引用，在运行期间持有该引用维持缓存，用于减少重复的DER证书解析造成而外性能损耗。
+	peerCertificates  []*smx509.Certificate // 对端数字证书列表
 	// verifiedChains 用于验证对端证书的根证书链
-	verifiedChains [][]*x509.Certificate
+	verifiedChains [][]*smx509.Certificate
+	// peerIBCIdentity / peerIBCSysParams 仅 IBC/IBSDH 套件下非空，
+	// peerIBCIdentity 为对端标识内容（identityData），peerIBCSysParams 为命中的本地信任池参数。
+	peerIBCIdentity  []byte
+	peerIBCSysParams *IBCSysParams
 	// serverName 由客户端Hello消息SNI扩展中指定的服务器名（域名）
 	serverName string
 
@@ -100,48 +104,82 @@ type Conn struct {
 	tmp [16]byte
 }
 
-// LocalAddr 返回连接本地的网络地址
+// LocalAddr 返回连接本地的网络地址。
+//
+// 返回值：
+//   - net.Addr：底层网络连接的本地地址，其具体类型由底层连接实现决定，如 *net.TCPAddr。
 func (c *Conn) LocalAddr() net.Addr {
 	return c.conn.LocalAddr()
 }
 
-// RemoteAddr 返回连接对端的网络地址
+// RemoteAddr 返回连接对端的网络地址。
+//
+// 返回值：
+//   - net.Addr：底层网络连接的对端地址，其具体类型由底层连接实现决定，如 *net.TCPAddr。
 func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
 // SetDeadline 设置对连接 读取或写入 终止时间。
-// 若 t 为0表示不会超时。
-// 在超时后将会导致TLCP中断，后续的写入都将会返回同样的错误。
+//
+// 参数：
+//   - t：终止时间；若 t 为 0 表示不会超时。
+//
+// 返回值：
+//   - error：由底层连接的 SetDeadline 返回，设置失败时返回非 nil。
+//
+// 读超时属于临时错误（net.Error 且 Temporary 为 true），不会破坏连接状态；
+// 写超时后 TLCP 连接状态将被破坏，后续所有写入都会返回同一个错误。
 func (c *Conn) SetDeadline(t time.Time) error {
 	return c.conn.SetDeadline(t)
 }
 
-// SetReadDeadline sets the read deadline on the underlying connection.
-// A zero value for t means Read will not time out.
+// SetReadDeadline 设置底层连接的读取终止时间。
+//
+// 参数：
+//   - t：读取终止时间；若 t 为 0 表示 Read 不会超时。
+//
+// 返回值：
+//   - error：由底层连接的 SetReadDeadline 返回，设置失败时返回非 nil。
 func (c *Conn) SetReadDeadline(t time.Time) error {
 	return c.conn.SetReadDeadline(t)
 }
 
-// SetWriteDeadline sets the write deadline on the underlying connection.
-// A zero value for t means Write will not time out.
-// After a Write has timed out, the TLS state is corrupt and all future writes will return the same error.
+// SetWriteDeadline 设置底层连接的写入终止时间。
+//
+// 参数：
+//   - t：写入终止时间；若 t 为 0 表示 Write 不会超时。
+//
+// 返回值：
+//   - error：由底层连接的 SetWriteDeadline 返回，设置失败时返回非 nil。
+//
+// 在某次 Write 超时后，TLCP 连接状态将被破坏，之后所有的写入都会返回同样的错误。
 func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return c.conn.SetWriteDeadline(t)
 }
 
 // NetConn 返回被TLCP包装的原始的网络连接对象，如：TCP连接对象。
+//
+// 返回值：
+//   - net.Conn：底层的原始网络连接对象，其具体类型由创建该 TLCP 连接时传入的实现决定。
+//
 // 注意直接读写该连接对象将会导致会话终止。
 func (c *Conn) NetConn() net.Conn {
 	return c.conn
 }
 
-// PeerCertificates 对端证书列表
-func (c *Conn) PeerCertificates() []*x509.Certificate {
+// PeerCertificates 返回握手过程中记录的对端证书列表。
+//
+// 返回值：
+//   - []*smx509.Certificate：对端数字证书列表；客户端侧为服务端证书且顺序为 [签名证书, 加密证书]，服务端侧为客户端提供的证书，握手未完成或对端未提供证书时可能为 nil。
+func (c *Conn) PeerCertificates() []*smx509.Certificate {
 	return c.peerCertificates
 }
 
-// IsClient 是否客户端，true - 客户端；false - 服务端
+// IsClient 返回该连接是否为客户端。
+//
+// 返回值：
+//   - bool：true 表示客户端；false 表示服务端。
 func (c *Conn) IsClient() bool {
 	return c.isClient
 }
@@ -494,6 +532,10 @@ type RecordHeaderError struct {
 	Conn net.Conn
 }
 
+// Error 返回记录层头部非法错误的描述文本，满足 error 接口。
+//
+// 返回值：
+//   - string：由 Msg 字段加上 "tlcp: " 前缀构成的错误描述。
 func (e RecordHeaderError) Error() string { return "tlcp: " + e.Msg }
 
 func (c *Conn) newRecordHeaderError(conn net.Conn, msg string) (err RecordHeaderError) {
@@ -764,6 +806,16 @@ func (c *Conn) sendAlert(err alert) error {
 	return c.sendAlertLocked(err)
 }
 
+// sendAlertForError 发送 err 携带的 TLCP 告警并原样返回 err；
+// err 未携带告警码时使用 fallback。
+func (c *Conn) sendAlertForError(err error, fallback alert) error {
+	if err == nil {
+		return nil
+	}
+	_ = c.sendAlert(alertForError(err, fallback))
+	return err
+}
+
 const (
 	// tcpMSSEstimate is a conservative estimate of the TCP maximum segment
 	// size (MSS). A constant is used, rather than querying the kernel for
@@ -989,7 +1041,13 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 	case typeServerHello:
 		m = new(serverHelloMsg)
 	case typeCertificate:
-		m = new(certificateMsg)
+		// IBC 套件使用同类型的 IBC 变体 Certificate 消息，
+		// 报文结构与 X.509 版本不同，按已协商的密码套件区分。
+		if cipherSuiteIsIBC(c.cipherSuite) {
+			m = new(ibcCertificateMsg)
+		} else {
+			m = new(certificateMsg)
+		}
 	case typeServerKeyExchange:
 		m = new(serverKeyExchangeMsg)
 	case typeCertificateRequest:
@@ -1027,12 +1085,17 @@ var (
 	errShutdown = errors.New("tlcp: protocol is shutdown")
 )
 
-// Write writes data to the connection.
+// Write 将数据作为应用层数据记录写入连接。
 //
-// As Write calls Handshake, in order to prevent indefinite blocking a deadline
-// must be set for both Read and Write before Write is called when the handshake
-// has not yet completed. See SetDeadline, SetReadDeadline, and
-// SetWriteDeadline.
+// 参数：
+//   - b：待写入的应用层明文数据，长度可以为 0；数据会被切分为不超过记录层最大明文载荷的记录后写入。
+//
+// 返回值：
+//   - int：成功写入的明文字节数；发生错误时可能小于 len(b)。
+//   - error：握手失败、连接已关闭、已发送 close_notify 或记录层已存在永久错误时返回非 nil。
+//
+// 由于 Write 会调用 Handshake，在握手尚未完成时，为了避免无限期阻塞，必须在调用 Write 之前
+// 同时为 Read 和 Write 设置截止时间，参见 SetDeadline、SetReadDeadline 与 SetWriteDeadline。
 func (c *Conn) Write(b []byte) (int, error) {
 	// interlock with Close below
 	for {
@@ -1070,12 +1133,17 @@ func (c *Conn) Write(b []byte) (int, error) {
 	//return n + m, c.out.setErrorLocked(err)
 }
 
-// Read reads data from the connection.
+// Read 从连接中读取应用层数据。
 //
-// As Read calls Handshake, in order to prevent indefinite blocking a deadline
-// must be set for both Read and Write before Read is called when the handshake
-// has not yet completed. See SetDeadline, SetReadDeadline, and
-// SetWriteDeadline.
+// 参数：
+//   - b：用于接收明文的缓冲区；长度可以为 0，此时仅执行握手并返回 (0, nil)。
+//
+// 返回值：
+//   - int：本次读取到的明文字节数，可以为 0。
+//   - error：握手失败或读取失败时返回非 nil；收到对端的 close_notify 报警时返回 io.EOF，此时可能同时返回了已读到的明文（n > 0），调用方应先处理这 n 个字节再判定连接结束。
+//
+// 由于 Read 会调用 Handshake，在握手尚未完成时，为了避免无限期阻塞，必须在调用 Read 之前
+// 同时为 Read 和 Write 设置截止时间，参见 SetDeadline、SetReadDeadline 与 SetWriteDeadline。
 func (c *Conn) Read(b []byte) (int, error) {
 	if err := c.Handshake(); err != nil {
 		return 0, err
@@ -1113,7 +1181,12 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-// Close closes the connection.
+// Close 关闭连接。
+//
+// 返回值：
+//   - error：连接已进入关闭流程时返回 net.ErrClosed；有 Write 正在进行时仅关闭底层连接并返回其错误；握手已完成但发送 close_notify 报警失败时返回包装了该失败的告警错误（连接仍会被关闭）；关闭底层连接失败时返回底层错误。
+//
+// 当发送 close_notify 失败而随后关闭底层连接也失败时，返回的是底层关闭错误，告警错误会被丢弃。
 func (c *Conn) Close() error {
 	// Interlock with Conn.Write above.
 	var x int32
@@ -1154,9 +1227,12 @@ func (c *Conn) Close() error {
 
 var errEarlyCloseWrite = errors.New("tlcp: CloseWrite called before handshake complete")
 
-// CloseWrite shuts down the writing side of the connection. It should only be
-// called once the handshake has completed and does not call CloseWrite on the
-// underlying connection. Most callers should just use Close.
+// CloseWrite 关闭连接的写入方向。它只应在握手完成之后调用，且不会对底层连接调用 CloseWrite，大多数调用者直接使用 Close 即可。
+//
+// 返回值：
+//   - error：握手尚未完成时返回错误 errEarlyCloseWrite；发送 close_notify 报警失败时返回该错误。
+//
+// 调用后该连接的 TLCP 写方向永久不可用（实现会把写截止时间置为当前时刻），后续 Write 会直接失败。
 func (c *Conn) CloseWrite() error {
 	if !c.handshakeComplete() {
 		return errEarlyCloseWrite
@@ -1180,28 +1256,28 @@ func (c *Conn) closeNotify() error {
 	return c.closeNotifyErr
 }
 
-// Handshake runs the client or server handshake
-// protocol if it has not yet been run.
+// Handshake 若尚未执行过握手，则执行客户端或服务端的握手协议。
 //
-// Most uses of this package need not call Handshake explicitly: the
-// first Read or Write will call it automatically.
+// 返回值：
+//   - error：握手失败时返回非 nil；一旦某次握手失败，后续调用会返回同一个错误。
 //
-// For control over canceling or setting a timeout on a handshake, use
-// HandshakeContext or the Dialer's DialContext method instead.
+// 本包的大多数使用方式无需显式调用 Handshake：首次 Read 或 Write 会自动调用它。
+// 若需要取消握手或为其设置超时，请改用 HandshakeContext 或 Dialer 的 DialContext 方法。
 func (c *Conn) Handshake() error {
 	return c.HandshakeContext(context.Background())
 }
 
-// HandshakeContext runs the client or server handshake
-// protocol if it has not yet been run.
+// HandshakeContext 若尚未执行过握手，则在指定上下文中执行客户端或服务端的握手协议。
 //
-// The provided Context must be non-nil. If the context is canceled before
-// the handshake is complete, the handshake is interrupted and an error is returned.
-// Once the handshake has completed, cancellation of the context will not affect the
-// connection.
+// 参数：
+//   - ctx：握手使用的上下文，不能为 nil；若握手完成之前上下文被取消，握手会被中断并返回错误。
 //
-// Most uses of this package need not call HandshakeContext explicitly: the
-// first Read or Write will call it automatically.
+// 返回值：
+//   - error：握手失败时返回非 nil；上下文在握手完成前被取消时返回上下文错误。
+//
+// 注意：上下文在握手完成前被取消时，实现会直接关闭底层连接，该连接此后不可再使用。
+// 一旦握手完成，上下文的取消不会影响该连接。
+// 本包的大多数使用方式无需显式调用 HandshakeContext：首次 Read 或 Write 会自动调用它。
 func (c *Conn) HandshakeContext(ctx context.Context) error {
 	// Delegate to unexported method for named return
 	// without confusing documented signature.
@@ -1281,7 +1357,10 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 	return c.handshakeErr
 }
 
-// ConnectionState returns basic TLS details about the connection.
+// ConnectionState 返回该连接的基本 TLCP 详情。
+//
+// 返回值：
+//   - ConnectionState：连接状态的快照，包含协议版本、是否完成握手、是否为会话重用、密码套件、协商出的应用层协议、服务端名称、对端证书与证书链以及 IBC 相关上下文等字段；该调用不会触发握手，握手未完成（HandshakeComplete 为 false）时这些字段可能为零值，也可能保留握手过程中已写入的部分取值，不应视为完整可信。
 func (c *Conn) ConnectionState() ConnectionState {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
@@ -1298,12 +1377,18 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	state.NegotiatedProtocol = c.clientProtocol
 	state.PeerCertificates = c.peerCertificates
 	state.VerifiedChains = c.verifiedChains
+	state.PeerIBCIdentity = c.peerIBCIdentity
+	state.PeerIBCSysParams = c.peerIBCSysParams
 	return state
 }
 
-// VerifyHostname checks that the peer certificate chain is valid for
-// connecting to host. If so, it returns nil; if not, it returns an error
-// describing the problem.
+// VerifyHostname 检查对端证书链对于连接到 host 是否有效。若有效返回 nil；否则返回描述问题的错误。
+//
+// 参数：
+//   - host：待校验的主机名，通常为不含端口的域名。
+//
+// 返回值：
+//   - error：在服务端连接上调用、握手尚未完成、握手未验证对端证书链，或证书链对 host 无效时返回非 nil。
 func (c *Conn) VerifyHostname(host string) error {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()

@@ -19,13 +19,45 @@ import (
 	"github.com/emmansun/gmsm/ecdh"
 )
 
-// SM2KeyAgreement SM2密钥交换接口，接口设计参考 GB/T 36322-2018
+// SM2KeyAgreement SM2 密钥交换接口，接口设计参考 GB/T 36322-2018
 type SM2KeyAgreement interface {
 	// GenerateAgreementData 发起方生成临时公钥，接口设计参考 GB/T 36322-2018 6.3.15
+	//
+	// 参数：
+	//   - sponsorId：发起方标识（用户 ID），参与后续会话密钥派生；可以为 nil（本包内部调用即传入 nil）。
+	//   - keyLen：期望的会话密钥长度，单位为字节，必须大于 0。
+	//
+	// 返回值：
+	//   - sponsorPubKey：发起方长期公钥。
+	//   - sponsorTmpPubKey：发起方本次生成的临时公钥。
+	//   - err：keyLen 非法或临时密钥生成失败时返回非 nil。
 	GenerateAgreementData(sponsorId []byte, keyLen int) (sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, err error)
 	// GenerateKey 发起方计算会话密钥，接口设计参考 GB/T 36322-2018 6.3.16
+	//
+	// 调用前必须先成功调用 GenerateAgreementData，由该方法保存发起方标识与密钥长度。
+	//
+	// 参数：
+	//   - responseId：响应方标识（用户 ID），参与会话密钥派生；可以为 nil。
+	//   - responsePubKey：响应方长期公钥，不能为 nil。
+	//   - responseTmpPubKey：响应方临时公钥，不能为 nil。
+	//
+	// 返回值：
+	//   - []byte：长度为 GenerateAgreementData 所指定 keyLen 的会话密钥。
+	//   - error：未先调用 GenerateAgreementData 或密钥协商失败时返回非 nil；responsePubKey 或 responseTmpPubKey 为 nil 时会在底层解引用 panic。
 	GenerateKey(responseId []byte, responsePubKey, responseTmpPubKey *ecdh.PublicKey) ([]byte, error)
 	// GenerateAgreementDataAndKey 响应方计算会话密钥并返回临时公钥，接口设计参考 GB/T 36322-2018 6.3.17
+	//
+	// 参数：
+	//   - responseId：响应方标识（用户 ID），参与会话密钥派生。
+	//   - sponsorId：发起方标识（用户 ID），参与会话密钥派生。
+	//   - sponsorPubKey：发起方长期公钥，不能为 nil。
+	//   - sponsorTmpPubKey：发起方临时公钥，不能为 nil。
+	//   - keyLen：期望的会话密钥长度，单位为字节，必须大于 0；底层实现不做校验，传入负值可能导致 panic。
+	//
+	// 返回值：
+	//   - *ecdh.PublicKey：响应方本次生成的临时公钥。
+	//   - []byte：长度为 keyLen 的会话密钥。
+	//   - error：临时密钥生成或密钥协商失败时返回非 nil；赞助方公钥为 nil 时会在底层解引用 panic。
 	GenerateAgreementDataAndKey(responseId, sponsorId []byte, sponsorPubKey, sponsorTmpPubKey *ecdh.PublicKey, keyLen int) (*ecdh.PublicKey, []byte, error)
 }
 

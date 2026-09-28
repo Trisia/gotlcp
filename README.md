@@ -18,11 +18,13 @@ GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完�
 
 ### TLCP
 
-TLCP 遵循 GB/T 38636-2020，基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
+TLCP 遵循 GB/T 38636-2020，并依据 GM/T 0024-2023《SSL VPN 技术规范》扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
 
 - **密码套件：** ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
+- **IBC 密码套件：** IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3（基于 SM9 标识密码，**默认关闭**，需显式配置 `CipherSuites` 与 `IBCIdentity` 后启用） ***New***
 
 - **双证书：** 签名证书 + 加密证书，服务端必须同时提供
+- **标识密码（IBC）：** 无需 X.509 证书，公钥由标识与 KGC 公共参数推导，信任锚为带外预置的公共参数池
 - **会话重用：** 通过 LRU 缓存和会话票据支持
 
 ### DTLCP
@@ -39,6 +41,8 @@ DTLCP 遵循 GM/T 0128-2023，基于 UDP（`net.PacketConn`）提供数据报传
 - **epoch + 序列号滑动窗口：** 防止重放攻击
 
 > **密码套件优先级：** ECC_SM4_GCM_SM3 > ECC_SM4_CBC_SM3 > ECDHE_SM4_GCM_SM3 > ECDHE_SM4_CBC_SM3
+>
+> **IBC/IBSDH 套件不在默认优先级内**，只有在 `Config.CipherSuites` 中显式列出、且本端配置了 IBC 能力时才会参与协商。
 
 *若 clone 和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
@@ -117,6 +121,8 @@ func main() {
 - 完整代码见 [example/quickstart/server/main.go](./example/quickstart/server/main.go)
 
 > 若您需要同时支持 TLCP/TLS 协议，请参考 [GoTLCP 协议适配器](./pa/README.md) 相关内容。
+>
+> 若您需要使用基于 SM9 的标识密码（IBC/IBSDH）密码套件，请参考 [IBC 快速入门](./doc/IBC-QuickStart.md) 与 [IBC 配置与使用指南](./doc/IBC-Config.md)。
 
 ## DTLCP 快速开始
 
@@ -194,17 +200,23 @@ func main() {
 ### TLCP
 
 - **[关于 TLCP 协议](./doc/AboutTLCP.md)** — TLCP 协议介绍、握手流程、密码套件说明，适合了解 TLCP 协议原理
-- **[数字证书及密钥](./doc/CertAndKey.md)** — 签名证书与加密证书的解析和构造方法，用于准备 TLCP/DTLCP 双证书配置
+- **[数字证书及密钥](./doc/CertAndKey.md)** — 签名证书与加密证书的解析和构造方法，以及 SM9/IBC 标识密钥与公共参数，用于准备 TLCP/DTLCP 双证书或 IBC 配置
 - **[客户端配置](./doc/ClientConfig.md)** — TLCP 客户端 Config 字段详解，用于开发 TLCP 客户端应用
 - **[服务端配置](./doc/ServerConfig.md)** — TLCP 服务端 Config 字段详解，用于开发 TLCP 服务端应用
 - **[HTTPS 配置](./doc/HTTPsConfig.md)** — TLCP HTTPS 客户端和 Gin/Fiber 服务端配置，用于搭建国密 HTTPS 服务
 - **[协议适配器](./pa/README.md)** — TLCP/TLS 自适应监听器，用于同时提供 TLCP 和 TLS 服务
+
+### IBC（标识密码）
+
+- **[IBC 快速入门](./doc/IBC-QuickStart.md)** — IBC 密码套件概述、KGC 公共参数与用户私钥准备、可运行的服务端/客户端示例，适合快速上手
+- **[IBC 配置与使用指南](./doc/IBC-Config.md)** — IBC 相关 Config 字段、信任池、双向认证、会话重用、安全模型与告警映射
 
 ### DTLCP
 
 - **[DTLCP 快速入门](./doc/DTLCP-QuickStart.md)** — DTLCP 协议概述、服务端/客户端快速启动，适合快速上手 DTLCP
 - **[DTLCP 配置与使用指南](./doc/DTLCP-Config.md)** — DTLCP Config 字段详解、安全配置建议，用于开发 DTLCP 应用
 - **[DTLCP 设计文档](./doc/DTLCP-Design.md)** — 协议栈架构、记录层、握手协议、Flight 机制、重传状态机、Cookie 防 DoS 等原理说明
+
 
 ### 其他
 

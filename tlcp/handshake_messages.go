@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"strings"
 
-
 	"golang.org/x/crypto/cryptobyte"
 )
 

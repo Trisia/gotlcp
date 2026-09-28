@@ -12,19 +12,23 @@ package tlcp
 
 import (
 	"container/list"
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 	"sync"
 	"time"
 )
 
 // SessionState 包含了TLCP会话相关的密码参数，用于会话重用
 type SessionState struct {
-	sessionId        []byte              // 会话ID
-	vers             uint16              // TLCP 版本号
-	cipherSuite      uint16              // 握手使用的密码套件ID
-	masterSecret     []byte              // 握手协议协商得到的主密钥
-	peerCertificates []*x509.Certificate // 对端证书
-	createdAt        time.Time           // Session创建时间
+	sessionId        []byte                // 会话ID
+	vers             uint16                // TLCP 版本号
+	cipherSuite      uint16                // 握手使用的密码套件ID
+	masterSecret     []byte                // 握手协议协商得到的主密钥
+	peerCertificates []*smx509.Certificate // 对端证书
+	createdAt        time.Time             // Session创建时间
+
+	// IBC 相关上下文，仅 IBC/IBSDH 套件下非空。
+	ibcPeerIdentity []byte // 对端 IBC 标识（原始字节）
+	ibcSysParams    []byte // 会话使用的 IBCSysParams（DER）
 }
 
 // SessionCache 会话缓存器，用于缓存TLCP连接建立后的会话信息 SessionState
@@ -33,12 +37,24 @@ type SessionState struct {
 // 会话缓存器的实现应该考虑到多 goroutines 并发访问的问题。
 type SessionCache interface {
 
-	// Get 缓存中 sessionKey 的 SessionState，若不存在则 返回 ok  false
+	// Get 返回缓存中 sessionKey 对应的会话状态。
 	//
-	// 特殊的若 sessionKey 为 "" 空串时，返回最近一个会话
+	// 参数：
+	//   - sessionKey：会话标识；特殊的若 sessionKey 为 "" 空串时，返回最近一个会话。
+	//
+	// 返回值：
+	//   - session：sessionKey 对应的 SessionState，未命中时为 nil。
+	//   - ok：是否命中，true 表示缓存中存在该会话。
 	Get(sessionKey string) (session *SessionState, ok bool)
 
-	// Put 添加一个会话对象到缓存中
+	// Put 添加一个会话对象到缓存中。
+	//
+	// 参数：
+	//   - sessionKey：会话标识；若缓存中已存在该标识，则更新其会话状态。
+	//   - cs：待缓存的会话状态；若 sessionKey 已在缓存中且 cs 为 nil，则删除该会话。
+	//
+	// 注意：若 sessionKey 不在缓存中且 cs 为 nil，当前实现仍会插入一个会话状态为 nil 的条目，
+	// 之后 Get(sessionKey) 会返回 (nil, true)。
 	Put(sessionKey string, cs *SessionState)
 }
 
@@ -57,10 +73,13 @@ type lruSessionCacheEntry struct {
 	state      *SessionState
 }
 
-// NewLRUSessionCache 返回一个指定容量的 最近最少使用缓存（LRU）对象。
-// 在缓存空间不足时，优先淘汰最近最少使用的缓存部分。
+// NewLRUSessionCache 返回一个指定容量的 最近最少使用缓存（LRU）对象，在缓存空间不足时，优先淘汰最近最少使用的缓存部分。
 //
-// 当 capacity 小于1时，使用默认容量 64
+// 参数：
+//   - capacity：缓存可容纳的会话数量上限；当 capacity 小于 1 时，使用默认容量 64。
+//
+// 返回值：
+//   - SessionCache：基于 LRU 策略实现的会话缓存器；其实现内部使用互斥锁，可安全地被多个 goroutine 并发访问。
 func NewLRUSessionCache(capacity int) SessionCache {
 	const defaultSessionCacheCapacity = 64
 
