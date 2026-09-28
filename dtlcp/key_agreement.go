@@ -21,7 +21,7 @@ import (
 
 	"github.com/emmansun/gmsm/ecdh"
 	"github.com/emmansun/gmsm/sm2"
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // 密钥协商接口，实现了客户端 或 服务端的密钥协商协议
@@ -69,7 +69,7 @@ type eccKeyAgreement struct {
 	x, y      *big.Int
 
 	// 加密证书
-	encipherCert *x509.Certificate
+	encipherCert *smx509.Certificate
 }
 
 func (e *eccKeyAgreement) generateServerKeyExchange(hs *serverHandshakeState) (*serverKeyExchangeMsg, error) {

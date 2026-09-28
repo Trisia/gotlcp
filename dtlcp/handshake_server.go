@@ -34,7 +34,7 @@ import (
 	"net"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // =============================================================================
@@ -59,7 +59,7 @@ type serverHandshakeState struct {
 	masterSecret     []byte              // 主密钥
 	sigCert          *Certificate        // 签名证书
 	encCert          *Certificate        // 加密证书
-	peerCertificates []*x509.Certificate // 客户端证书，可能为空
+	peerCertificates []*smx509.Certificate // 客户端证书，可能为空
 	// DTLCP 特有字段
 	cookieVerified bool   // cookie 是否已验证通过
 	flightData     []byte // 当前 flight 的发送数据，用于重传
@@ -986,10 +986,10 @@ func (hs *serverHandshakeState) createSessionState() {
 // processCertsFromClient 处理客户端证书链，进行证书验证。
 func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	certificates := certificate.Certificate
-	certs := make([]*x509.Certificate, len(certificates))
+	certs := make([]*smx509.Certificate, len(certificates))
 	var err error
 	for i, asn1Data := range certificates {
-		if certs[i], err = x509.ParseCertificate(asn1Data); err != nil {
+		if certs[i], err = smx509.ParseCertificate(asn1Data); err != nil {
 			_ = c.sendAlert(alertBadCertificate)
 			return errors.New("dtlcp: failed to parse client certificate: " + err.Error())
 		}
@@ -1007,14 +1007,14 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	}
 
 	if c.config.ClientAuth >= VerifyClientCertIfGiven && len(certs) > 0 {
-		keyUsages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+		keyUsages := []smx509.ExtKeyUsage{smx509.ExtKeyUsageClientAuth, smx509.ExtKeyUsageServerAuth}
 		if c.config.ClientAuth == RequireAndVerifyAnyKeyUsageClientCert {
-			keyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+			keyUsages = []smx509.ExtKeyUsage{smx509.ExtKeyUsageAny}
 		}
-		opts := x509.VerifyOptions{
+		opts := smx509.VerifyOptions{
 			Roots:         c.config.ClientCAs,
 			CurrentTime:   c.config.time(),
-			Intermediates: x509.NewCertPool(),
+			Intermediates: smx509.NewCertPool(),
 			KeyUsages:     keyUsages,
 		}
 
@@ -1028,10 +1028,10 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 
 		chains, err := certs[0].Verify(opts)
 		if err != nil {
-			var errCertificateInvalid x509.CertificateInvalidError
-			if errors.As(err, &x509.UnknownAuthorityError{}) {
+			var errCertificateInvalid smx509.CertificateInvalidError
+			if errors.As(err, &smx509.UnknownAuthorityError{}) {
 				_ = c.sendAlert(alertUnknownCA)
-			} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
+			} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == smx509.Expired {
 				_ = c.sendAlert(alertCertificateExpired)
 			} else {
 				_ = c.sendAlert(alertBadCertificate)
@@ -1042,10 +1042,10 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 		if isECDHE && len(certs) > 1 {
 			_, err = certs[1].Verify(opts)
 			if err != nil {
-				var errCertificateInvalid x509.CertificateInvalidError
-				if errors.As(err, &x509.UnknownAuthorityError{}) {
+				var errCertificateInvalid smx509.CertificateInvalidError
+				if errors.As(err, &smx509.UnknownAuthorityError{}) {
 					_ = c.sendAlert(alertUnknownCA)
-				} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == x509.Expired {
+				} else if errors.As(err, &errCertificateInvalid) && errCertificateInvalid.Reason == smx509.Expired {
 					_ = c.sendAlert(alertCertificateExpired)
 				} else {
 					_ = c.sendAlert(alertBadCertificate)

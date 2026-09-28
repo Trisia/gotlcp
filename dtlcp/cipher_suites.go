@@ -38,7 +38,9 @@ var (
 )
 
 // CipherSuites 返回支持的密码算法套件列表。
-// 按优先级排序：ECC_SM4_GCM_SM3 > ECC_SM4_CBC_SM3 > ECDHE_SM4_GCM_SM3 > ECDHE_SM4_CBC_SM3。
+//
+// 返回值：
+//   - []*CipherSuite：本库支持的非不安全密码套件；实现中切片的实际排列顺序为 ECDHE_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECC_SM4_GCM_SM3，以该实际返回顺序为准。
 func CipherSuites() []*CipherSuite {
 	return []*CipherSuite{
 		{ECDHE_SM4_CBC_SM3, "ECDHE_SM4_CBC_SM3", supportedOnlyTLCP, false},
@@ -49,13 +51,20 @@ func CipherSuites() []*CipherSuite {
 }
 
 // InsecureCipherSuites 返回已知不安全的密码套件列表，当前为空。
+//
+// 返回值：
+//   - []*CipherSuite：已知不安全的密码套件；当前实现始终返回长度为 0 的非 nil 空切片。
 func InsecureCipherSuites() []*CipherSuite {
 	return []*CipherSuite{}
 }
 
 // CipherSuiteName 通过密码套件 ID 返回标准名称。
-// 例如输入 0xe013 返回 "ECC_SM4_CBC_SM3"。
-// 若 ID 未知，返回 "0xXXXX" 格式的十六进制表示。
+//
+// 参数：
+//   - id：16 位密码套件 ID，例如输入 0xe013 对应 "ECC_SM4_CBC_SM3"。
+//
+// 返回值：
+//   - string：匹配到的密码套件标准名称；若在支持列表与不安全列表中均未找到，返回 "0xXXXX" 格式的十六进制表示。
 func CipherSuiteName(id uint16) string {
 	for _, c := range CipherSuites() {
 		if c.ID == id {

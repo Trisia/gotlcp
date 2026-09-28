@@ -152,7 +152,13 @@ func (e alert) CN() string {
 	return "TLCP: 报警(" + strconv.Itoa(int(e)) + ")"
 }
 
-// AlertCN 错误码意义
+// AlertCN 返回 DTLCP 告警错误码对应的中文意义，覆盖 GB/T 38636-2016 6.4.3.3 定义的标准告警以及 GM/T 0024 网关-网关协议的扩展错误码。
+//
+// 参数：
+//   - code：告警错误码，取值参见本包内部 alert 常量，例如 0 表示 close notify、40 表示协商失败、90 表示用户取消操作。
+//
+// 返回值：
+//   - string：该错误码对应的中文描述，如 "协商失败"；当 code 不在已知错误码范围内时返回空字符串。
 func AlertCN(code uint8) string {
 	s, ok := alertTextCN[alert(code)]
 	if ok {

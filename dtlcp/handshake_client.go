@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // clientHandshakeState 客户端握手上下文参数
@@ -41,7 +41,7 @@ type clientHandshakeState struct {
 	session          *SessionState       // 会话状态
 	authCert         *Certificate        // 客户端认证密钥对
 	encCert          *Certificate        // 客户端加密证书
-	peerCertificates []*x509.Certificate // 服务端证书，依次为签名证书、加密证书
+	peerCertificates []*smx509.Certificate // 服务端证书，依次为签名证书、加密证书
 	// DTLCP 特有字段
 	cookie       []byte           // 从 HelloVerifyRequest 收到的 cookie
 	initialHello *clientHelloMsg  // 保存初始 ClientHello（cookie 为空时），用于重传
@@ -802,7 +802,7 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 
 func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	activeHandles := make([]*activeCert, len(certificates))
-	certs := make([]*x509.Certificate, len(certificates))
+	certs := make([]*smx509.Certificate, len(certificates))
 	for i, asn1Data := range certificates {
 		cert, err := clientCertCache.newCert(asn1Data)
 		if err != nil {
@@ -819,11 +819,11 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	}
 
 	if !c.config.InsecureSkipVerify {
-		opts := x509.VerifyOptions{
+		opts := smx509.VerifyOptions{
 			Roots:         c.config.RootCAs,
 			CurrentTime:   c.config.time(),
 			DNSName:       c.config.ServerName,
-			Intermediates: x509.NewCertPool(),
+			Intermediates: smx509.NewCertPool(),
 		}
 
 		for _, cert := range certs[2:] {

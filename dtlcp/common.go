@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 const (
@@ -48,9 +48,9 @@ const (
 	//   | Type | Version | Epoch  | SeqNum | Length |
 	//   +------+---------+--------+--------+--------+
 	//     1 B     2 B      2 B      6 B      2 B
-	recordHeaderLen = 13 // DTLCP 记录头长度（字节）
-	maxHandshake            = 65536 // maximum handshake we support (protocol max is 16 MB)
-	maxUselessRecords       = 16    // maximum number of consecutive non-advancing records
+	recordHeaderLen   = 13    // DTLCP 记录头长度（字节）
+	maxHandshake      = 65536 // maximum handshake we support (protocol max is 16 MB)
+	maxUselessRecords = 16    // maximum number of consecutive non-advancing records
 	// maxHandshakeFragments 单条握手消息允许的最大分片迭代次数。
 	// 防止恶意对端发送大量微小分片导致的无限循环和栈溢出。
 	//
@@ -59,8 +59,8 @@ const (
 	//   单分片 body = PMTU - recordHeaderLen(13) - dtlcpHeaderLen(12) ≈ 551
 	//   最大分片数 = maxHandshake(65536) / 551 ≈ 119
 	//   256 提供 2x+ 安全余量，同时阻止单字节分片攻击 (65536/1=65536)。
-	maxHandshakeFragments = 256
-	defaultReplayWindowSize = 64    // DTLCP 重放保护滑动窗口默认大小（RFC 6347 §4.1.2.6）
+	maxHandshakeFragments   = 256
+	defaultReplayWindowSize = 64 // DTLCP 重放保护滑动窗口默认大小（RFC 6347 §4.1.2.6）
 
 	// 2*MSL 驻留期 (RFC 6347 §4.2.4)
 	mslPeriod   = 60 * time.Second // RFC 6298 MSL
@@ -92,6 +92,13 @@ const (
 	typeFinished           uint8 = 20
 )
 
+// HandshakeMessageTypeName 返回握手消息类型编号对应的可读名称。
+//
+// 参数：
+//   - id：握手消息类型编号，取值见本包的 typeClientHello、typeServerHello、typeHelloVerifyRequest 等常量。
+//
+// 返回值：
+//   - string：已知类型的英文名称（如 "Client Hello"）；未知类型返回 "0xXX" 格式的十六进制文本。
 func HandshakeMessageTypeName(id uint8) string {
 	switch id {
 	case typeClientHello:
@@ -198,6 +205,10 @@ const (
 //	enum { anonymous(0), rsa(1), dsa(2), ecdsa(3), sm2(4), (255) }
 type SignatureScheme uint16
 
+// String 返回签名算法的可读名称，满足 fmt.Stringer 接口。
+//
+// 返回值：
+//   - string：SM2WithSM3 返回 "SM2WithSM3"；其他取值返回 "SignatureScheme(<十进制值>)"。
 func (s SignatureScheme) String() string {
 	switch s {
 	case SM2WithSM3:
@@ -242,10 +253,10 @@ type ConnectionState struct {
 	ServerName string
 
 	// PeerCertificates 对端证书链，按发送顺序排列。
-	PeerCertificates []*x509.Certificate
+	PeerCertificates []*smx509.Certificate
 
 	// VerifiedChains 证书验证后的证书链。
-	VerifiedChains [][]*x509.Certificate
+	VerifiedChains [][]*smx509.Certificate
 }
 
 // ClientAuthType 定义服务端对客户端身份的认证策略，用于 Config.ClientAuth。
@@ -304,7 +315,10 @@ type ClientHelloInfo struct {
 	ctx context.Context
 }
 
-// Context 返回握手过程中的上下文
+// Context 返回握手过程中的上下文。
+//
+// 返回值：
+//   - context.Context：该 ClientHelloInfo 关联的握手上下文；若对象并非由握手流程构造，则未设置的 ctx 可能为 nil。
 func (c *ClientHelloInfo) Context() context.Context {
 	return c.ctx
 }
@@ -323,7 +337,10 @@ type CertificateRequestInfo struct {
 	ctx context.Context
 }
 
-// Context 返回握手过程中的上下文
+// Context 返回握手过程中的上下文。
+//
+// 返回值：
+//   - context.Context：该 CertificateRequestInfo 关联的握手上下文；若对象并非由握手流程构造，则未设置的 ctx 可能为 nil。
 func (c *CertificateRequestInfo) Context() context.Context {
 	return c.ctx
 }
@@ -386,7 +403,7 @@ type Config struct {
 	// 以及 verifiedChains 验证该证书相关的根证书链序列
 	//
 	// InsecureSkipVerify 与 ClientAuth 参数不会影响该函数运行。
-	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*smx509.Certificate) error
 
 	// VerifyConnection 【可选】如果该方法不会空，那么将会在证书验证完成后，
 	// 如果 VerifyPeerCertificate 存在则会在其后运行
@@ -399,7 +416,7 @@ type Config struct {
 
 	// RootCAs 根证书列表，客户端使用该列表的证书验证服务端证书是否有效
 	// 如果这个字段为空，则使用主机上的根证书集合（从操作系统中加载）
-	RootCAs *x509.CertPool
+	RootCAs *smx509.CertPool
 
 	// NextProtos 支持的应用层协议列表。
 	// 列表中的顺序代表支持协议的优先级索引越小越优先。
@@ -420,7 +437,7 @@ type Config struct {
 
 	// ClientCAs 服务端侧根证书列表，这些根证书将用于验证客户端证书消息中的证书
 	// 客户端证书的验证策略由  ClientAuth 参数配置。
-	ClientCAs *x509.CertPool
+	ClientCAs *smx509.CertPool
 
 	// InsecureSkipVerify 用于控制客户端是否跳过 服务端的证书有效性 和 证书与主机名 的匹配。
 	//
@@ -509,8 +526,13 @@ type Config struct {
 	NewTimer func(d time.Duration) *TimerHandle
 }
 
-// Clone 复制一个新的连接配置对象
-// 复制配置信息时，您任然可以客户端或服务器同时使用 Config 对象。
+// Clone 复制一个新的连接配置对象。
+//
+// 返回值：
+//   - *Config：字段值与接收者相同的新配置对象；如果接收者为 nil，则返回 nil。
+//
+// 复制配置信息时，您仍然可以在客户端或服务器中同时使用 Config 对象。
+// 注意本方法为浅拷贝，切片（如 Certificates、CipherSuites）与函数等字段与原配置共享底层数据。
 func (c *Config) Clone() *Config {
 	if c == nil {
 		return nil
@@ -518,37 +540,37 @@ func (c *Config) Clone() *Config {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return &Config{
-		Rand:                        c.Rand,
-		Time:                        c.Time,
-		Certificates:                c.Certificates,
-		GetCertificate:              c.GetCertificate,
-		GetKECertificate:            c.GetKECertificate,
-		GetClientCertificate:        c.GetClientCertificate,
-		GetClientKECertificate:      c.GetClientKECertificate,
-		GetConfigForClient:          c.GetConfigForClient,
-		VerifyPeerCertificate:       c.VerifyPeerCertificate,
-		VerifyConnection:            c.VerifyConnection,
-		RootCAs:                     c.RootCAs,
-		NextProtos:                  c.NextProtos,
-		ServerName:                  c.ServerName,
-		ClientECDHEParamsAsVector:   c.ClientECDHEParamsAsVector,
-		ClientAuth:                  c.ClientAuth,
-		ClientCAs:                   c.ClientCAs,
-		InsecureSkipVerify:          c.InsecureSkipVerify,
-		CipherSuites:                c.CipherSuites,
-		SessionCache:                c.SessionCache,
-		MinVersion:                  c.MinVersion,
-		MaxVersion:                  c.MaxVersion,
-		CurvePreferences:            c.CurvePreferences,
-		OnAlert:                     c.OnAlert,
-		EnableDebug:                 c.EnableDebug,
-		TrustedCAIndications:        c.TrustedCAIndications,
-		PMTU:                        c.PMTU,
-		CookieSecret:                c.CookieSecret,
-		ReplayWindow:                c.ReplayWindow,
-		InitialRetransmitTimeout:    c.InitialRetransmitTimeout,
-		MaxRetransmitTimeout:        c.MaxRetransmitTimeout,
-		NewTimer:                    c.NewTimer,
+		Rand:                      c.Rand,
+		Time:                      c.Time,
+		Certificates:              c.Certificates,
+		GetCertificate:            c.GetCertificate,
+		GetKECertificate:          c.GetKECertificate,
+		GetClientCertificate:      c.GetClientCertificate,
+		GetClientKECertificate:    c.GetClientKECertificate,
+		GetConfigForClient:        c.GetConfigForClient,
+		VerifyPeerCertificate:     c.VerifyPeerCertificate,
+		VerifyConnection:          c.VerifyConnection,
+		RootCAs:                   c.RootCAs,
+		NextProtos:                c.NextProtos,
+		ServerName:                c.ServerName,
+		ClientECDHEParamsAsVector: c.ClientECDHEParamsAsVector,
+		ClientAuth:                c.ClientAuth,
+		ClientCAs:                 c.ClientCAs,
+		InsecureSkipVerify:        c.InsecureSkipVerify,
+		CipherSuites:              c.CipherSuites,
+		SessionCache:              c.SessionCache,
+		MinVersion:                c.MinVersion,
+		MaxVersion:                c.MaxVersion,
+		CurvePreferences:          c.CurvePreferences,
+		OnAlert:                   c.OnAlert,
+		EnableDebug:               c.EnableDebug,
+		TrustedCAIndications:      c.TrustedCAIndications,
+		PMTU:                      c.PMTU,
+		CookieSecret:              c.CookieSecret,
+		ReplayWindow:              c.ReplayWindow,
+		InitialRetransmitTimeout:  c.InitialRetransmitTimeout,
+		MaxRetransmitTimeout:      c.MaxRetransmitTimeout,
+		NewTimer:                  c.NewTimer,
 	}
 }
 
@@ -684,9 +706,13 @@ func (c *Config) getEKCertificate(clientHello *ClientHelloInfo) (*Certificate, e
 	return &c.Certificates[1], nil
 }
 
-// SupportsCertificate returns nil if the provided certificate is supported by
-// the server that sent the CertificateRequest. Otherwise, it returns an error
-// describing the reason for the incompatibility.
+// SupportsCertificate 检查给定证书是否被发送 CertificateRequest 的服务端所接受。
+//
+// 参数：
+//   - c：待检查的证书与私钥对，不能为 nil，且其 Certificate 字段至少应包含一张证书。
+//
+// 返回值：
+//   - error：当 CertificateRequestInfo.AcceptableCAs 为空，或证书链中某张证书的签发者名称（RawIssuer）与 AcceptableCAs 中的任一项相等时返回 nil，表示该证书可被接受；否则返回描述不兼容原因的错误（如 "chain is not signed by an acceptable CA"），证书链解析失败时也会返回对应错误。
 func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	if len(cri.AcceptableCAs) == 0 {
 		return nil
@@ -698,7 +724,7 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 		// chain.Leaf was nil.
 		if j != 0 || x509Cert == nil {
 			var err error
-			if x509Cert, err = x509.ParseCertificate(cert); err != nil {
+			if x509Cert, err = smx509.ParseCertificate(cert); err != nil {
 				return fmt.Errorf("failed to parse certificate #%d in the chain: %w", j, err)
 			}
 		}
@@ -726,15 +752,15 @@ type Certificate struct {
 	OCSPStaple []byte
 
 	// Leaf 已解析的叶子证书 X.509 对象。
-	Leaf *x509.Certificate
+	Leaf *smx509.Certificate
 }
 
 // leaf 返还 Certificate.Certificate[0] 的解析结果。
-func (c *Certificate) leaf() (*x509.Certificate, error) {
+func (c *Certificate) leaf() (*smx509.Certificate, error) {
 	if c.Leaf != nil {
 		return c.Leaf, nil
 	}
-	return x509.ParseCertificate(c.Certificate[0])
+	return smx509.ParseCertificate(c.Certificate[0])
 }
 
 // handshakeState 四态握手状态机
@@ -796,15 +822,23 @@ func unexpectedMessageError(wanted, got interface{}) error {
 // 握手期间对端证书未通过验证时产生。
 type CertificateVerificationError struct {
 	// UnverifiedCertificates 未通过验证的证书链。
-	UnverifiedCertificates []*x509.Certificate
+	UnverifiedCertificates []*smx509.Certificate
 	// Err 具体的验证错误原因。
 	Err error
 }
 
+// Error 返回证书验证失败的错误描述，满足 error 接口。
+//
+// 返回值：
+//   - string：形如 "dtlcp: failed to verify certificate: <具体原因>" 的错误文本，具体原因取自 Err 字段。
 func (e *CertificateVerificationError) Error() string {
 	return fmt.Sprintf("dtlcp: failed to verify certificate: %s", e.Err)
 }
 
+// Unwrap 返回导致证书验证失败的底层错误，供 errors.Is 与 errors.As 展开错误链。
+//
+// 返回值：
+//   - error：Err 字段记录的具体验证错误原因；该字段可能为 nil。
 func (e *CertificateVerificationError) Unwrap() error {
 	return e.Err
 }

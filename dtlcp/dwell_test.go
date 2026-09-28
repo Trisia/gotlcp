@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // =============================================================================
@@ -17,7 +17,7 @@ import (
 // realTimerHandshakeConfig 返回使用真实定时器+短超时的配置。
 // 用于驱动握手完成（mock timer 无法自动触发重传）。
 func realTimerHandshakeConfig(certs *testCerts) (*Config, *Config) {
-	rootPool := x509.NewCertPool()
+	rootPool := smx509.NewCertPool()
 	rootPool.AddCert(certs.rootCert)
 	clientCfg := &Config{
 		Certificates:             []Certificate{certs.sigCert, certs.encCert},

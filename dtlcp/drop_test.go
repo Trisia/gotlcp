@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // =============================================================================
@@ -48,7 +48,7 @@ func (l *lossyPacketConn) SetWriteDeadline(t time.Time) error { return l.inner.S
 // handshakeTestConfig 返回用于丢包测试的客户端和服务端配置。
 // 使用 mock timer 加速重传测试。
 func handshakeTestConfig(certs *testCerts) (*Config, *Config) {
-	rootPool := x509.NewCertPool()
+	rootPool := smx509.NewCertPool()
 	rootPool.AddCert(certs.rootCert)
 
 	clientCfg := &Config{

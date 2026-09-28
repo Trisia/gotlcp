@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/emmansun/gmsm/sm2"
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // =============================================================================
@@ -261,7 +261,7 @@ var mockOne32 = []byte{
 
 // testCerts 持有测试所需的所有证书和密钥。
 type testCerts struct {
-	rootCert *x509.Certificate  // 根 CA 证书
+	rootCert *smx509.Certificate  // 根 CA 证书
 	rootKey  *sm2.PrivateKey   // 根 CA 私钥
 
 	sigCert Certificate  // 签名证书（服务器）
@@ -290,21 +290,21 @@ func newTestCerts() *testCerts {
 	}
 
 	// 2. 创建根 CA 证书模板
-	rootTemplate := &x509.Certificate{
+	rootTemplate := &smx509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{Country: []string{"CN"}, Organization: []string{"Test CA"}, CommonName: "TEST_ROOT_CA"},
 		NotBefore:             time.Now().AddDate(0, -1, 0),
 		NotAfter:              time.Now().AddDate(10, 0, 0),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage:              smx509.KeyUsageCertSign | smx509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
 
-	rootDER, err := x509.CreateCertificate(rand.Reader, rootTemplate, rootTemplate, &rootKey.PublicKey, rootKey)
+	rootDER, err := smx509.CreateCertificate(rand.Reader, rootTemplate, rootTemplate, &rootKey.PublicKey, rootKey)
 	if err != nil {
 		panic(err)
 	}
-	rootCert, err := x509.ParseCertificate(rootDER)
+	rootCert, err := smx509.ParseCertificate(rootDER)
 	if err != nil {
 		panic(err)
 	}
@@ -315,16 +315,16 @@ func newTestCerts() *testCerts {
 		panic(err)
 	}
 
-	sigTemplate := &x509.Certificate{
+	sigTemplate := &smx509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject:      pkix.Name{Country: []string{"CN"}, Organization: []string{"Test Server"}, CommonName: "TEST_SIG_CERT"},
 		NotBefore:    time.Now().AddDate(0, -1, 0),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:     smx509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []smx509.ExtKeyUsage{smx509.ExtKeyUsageServerAuth},
 	}
 
-	sigDER, err := x509.CreateCertificate(rand.Reader, sigTemplate, rootCert, &sigKey.PublicKey, rootKey)
+	sigDER, err := smx509.CreateCertificate(rand.Reader, sigTemplate, rootCert, &sigKey.PublicKey, rootKey)
 	if err != nil {
 		panic(err)
 	}
@@ -335,16 +335,16 @@ func newTestCerts() *testCerts {
 		panic(err)
 	}
 
-	encTemplate := &x509.Certificate{
+	encTemplate := &smx509.Certificate{
 		SerialNumber: big.NewInt(3),
 		Subject:      pkix.Name{Country: []string{"CN"}, Organization: []string{"Test Server"}, CommonName: "TEST_ENC_CERT"},
 		NotBefore:    time.Now().AddDate(0, -1, 0),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment | x509.KeyUsageKeyAgreement,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:     smx509.KeyUsageKeyEncipherment | smx509.KeyUsageDataEncipherment | smx509.KeyUsageKeyAgreement,
+		ExtKeyUsage:  []smx509.ExtKeyUsage{smx509.ExtKeyUsageServerAuth},
 	}
 
-	encDER, err := x509.CreateCertificate(rand.Reader, encTemplate, rootCert, &encKey.PublicKey, rootKey)
+	encDER, err := smx509.CreateCertificate(rand.Reader, encTemplate, rootCert, &encKey.PublicKey, rootKey)
 	if err != nil {
 		panic(err)
 	}
@@ -359,8 +359,8 @@ func newTestCerts() *testCerts {
 	}
 
 	// 设置 Leaf 字段以减少握手证书解析时间
-	sigCert.Leaf, _ = x509.ParseCertificate(sigDER)
-	encCert.Leaf, _ = x509.ParseCertificate(encDER)
+	sigCert.Leaf, _ = smx509.ParseCertificate(sigDER)
+	encCert.Leaf, _ = smx509.ParseCertificate(encDER)
 
 	return &testCerts{
 		rootCert: rootCert,

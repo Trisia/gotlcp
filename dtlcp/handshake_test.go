@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	x509 "github.com/emmansun/gmsm/smx509"
+	"github.com/emmansun/gmsm/smx509"
 )
 
 // =============================================================================
@@ -258,7 +258,7 @@ func TestDTLCPMutualAuth(t *testing.T) {
 	certs := initTestCerts()
 
 	// 创建客户端证书池并添加 CA 证书
-	clientCertPool := x509.NewCertPool()
+	clientCertPool := smx509.NewCertPool()
 	clientCertPool.AddCert(certs.rootCert)
 
 	// 服务端也需要客户端证书（这里复用签名证书作为客户端证书）
