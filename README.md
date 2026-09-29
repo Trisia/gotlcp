@@ -16,6 +16,11 @@ GoTLCP 采用 Go 语言实现的国密传输层密码协议套件，同时支持
 
 GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完整握手、会话重用、传输保护、单向身份认证（认证服务端）和双向身份认证。
 
+**全面支持支持国产商用密码全系列密码套件**
+
+- **SM2系列**：ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
+- **SM9系列**：IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3
+
 ### TLCP
 
 TLCP 遵循 GB/T 38636-2020，并依据 GM/T 0024-2023《SSL VPN 技术规范》扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
