@@ -9,19 +9,21 @@
 
 GoTLCP 采用 Go 语言实现的国密传输层密码协议套件，同时支持以下两个协议标准：
 
-- **TLCP** 遵循 *GB/T 38636-2020《信息安全技术 传输层密码协议*，并依据 *GM/T 0024-2023《SSL VPN 技术规范》*扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
+- **TLCP** 遵循 **GB/T 38636-2020《信息安全技术 传输层密码协议（TLCP）》** ，并依据 **GM/T 0024-2023《SSL VPN 技术规范》** 扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
 
-- **DTLCP** 遵循 *GM/T 0128-2023*，基于 UDP（`net.PacketConn`）提供数据报传输层密码保护，适用于需要国密安全通信但无法依赖 TCP 可靠传输的场景。
+- **DTLCP** 遵循 **GM/T 0128-2023《数据报传输层密码协议规范（DTLCP）》**，基于 UDP（`net.PacketConn`）提供数据报传输层密码保护，适用于需要国密安全通信但无法依赖 TCP 可靠传输的场景。
 
 
 ![协议关系](doc/img/dtlcp/protocol-relationship.svg)
 
 GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完整握手、会话重用、传输保护、单向身份认证（认证服务端）和双向身份认证。
 
-**全面支持支持国产商用密码全系列密码套件**
+**全面支持国产商用密码全系列密码套件**
 
 - **SM2系列**：ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
 - **SM9系列**：IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3
+
+兼容适配各类Web框架，包括Gin、Fiber、go http。
 
 *若 clone 和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
