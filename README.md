@@ -9,8 +9,10 @@
 
 GoTLCP 采用 Go 语言实现的国密传输层密码协议套件，同时支持以下两个协议标准：
 
-- **TLCP** — 遵循 GB/T 38636-2020《信息安全技术 传输层密码协议》，基于 TCP 传输的传输层密码协议（也称 GMSSL）
-- **DTLCP** — 遵循 GM/T 0128-2023《数据报传输层密码协议》，基于 UDP 传输的数据报传输层密码协议
+- **TLCP** 遵循 *GB/T 38636-2020《信息安全技术 传输层密码协议*，并依据 *GM/T 0024-2023《SSL VPN 技术规范》*扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
+
+- **DTLCP** 遵循 *GM/T 0128-2023*，基于 UDP（`net.PacketConn`）提供数据报传输层密码保护，适用于需要国密安全通信但无法依赖 TCP 可靠传输的场景。
+
 
 ![协议关系](doc/img/dtlcp/protocol-relationship.svg)
 
@@ -20,36 +22,6 @@ GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完�
 
 - **SM2系列**：ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
 - **SM9系列**：IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3
-
-### TLCP
-
-TLCP 遵循 GB/T 38636-2020，并依据 GM/T 0024-2023《SSL VPN 技术规范》扩展支持基于 SM9 的标识密码（IBC）密码套件；基于 TCP（`net.Conn`）提供可靠传输，适用于 Web 服务、API 网关等基于 TCP 的国密安全通信场景。
-
-- **密码套件：** ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
-- **IBC 密码套件：** IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3（基于 SM9 标识密码，**默认关闭**，需显式配置 `CipherSuites` 与 `IBCIdentity` 后启用） ***New***
-
-- **双证书：** 签名证书 + 加密证书，服务端必须同时提供
-- **标识密码（IBC）：** 无需 X.509 证书，公钥由标识与 KGC 公共参数推导，信任锚为带外预置的公共参数池
-- **会话重用：** 通过 LRU 缓存和会话票据支持
-
-### DTLCP
-
-DTLCP 遵循 GM/T 0128-2023，基于 UDP（`net.PacketConn`）提供数据报传输层密码保护，适用于需要国密安全通信但无法依赖 TCP 可靠传输的场景。
-
-- **密码套件：** ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
-- **IBC 密码套件：** IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3（基于 SM9 标识密码，**默认关闭**，需显式配置 `CipherSuites` 与 `IBCIdentity` 后启用；超 `PMTU` 的 IBC 握手消息自动分片重组） ***New***
-
-- **双证书：** 签名证书 + 加密证书，服务端必须同时提供
-- **标识密码（IBC）：** 无需 X.509 证书，公钥由标识与 KGC 公共参数推导，信任锚为带外预置的公共参数池
-- **会话重用：** 通过 LRU 缓存和会话票据支持
-- **四态握手状态机：** Preparing → Sending → Waiting → Finished，适应 UDP 异步收发
-- **指数退避重传：** 握手消息超时自动重传，退避策略保证收敛
-- **无状态 Cookie 防 DoS：** 服务端通过 HelloVerifyRequest + HMAC-SM3 Cookie 验证客户端可达性
-- **epoch + 序列号滑动窗口：** 防止重放攻击
-
-> **密码套件优先级：** ECC_SM4_GCM_SM3 > ECC_SM4_CBC_SM3 > ECDHE_SM4_GCM_SM3 > ECDHE_SM4_CBC_SM3
->
-> **IBC/IBSDH 套件不在默认优先级内**，只有在 `Config.CipherSuites` 中显式列出、且本端配置了 IBC 能力时才会参与协商。
 
 *若 clone 和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
