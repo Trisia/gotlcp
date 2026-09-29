@@ -34,6 +34,13 @@
 | `EnableDebug` | `bool` | `false` | 开启调试日志 |
 | `ClientECDHEParamsAsVector` | `bool` | `false` | ECDHE 兼容性开关。若与其他 TLCP 实现的 ECDHE 集成测试失败，可尝试设为 `true` |
 | `TrustedCAIndications` | `[]TrustedAuthority` | `nil` | 客户端指定信任的 CA 列表，服务端需配合 `GetCertificate`/`GetKECertificate` 使用 |
+| `IBCIdentity` | `*IBCIdentity` | `nil` | 本端 SM9 标识身份（标识 + 公共参数 + 三把用户私钥），启用 IBC/IBSDH 套件（§4.7） |
+| `GetIBCIdentity` | `func(*ClientHelloInfo) (*IBCIdentity, error)` | `nil` | 服务端动态选择 IBC 身份，仅在 `IBCIdentity` 为空时调用 |
+| `GetClientIBCIdentity` | `func(*CertificateRequestInfo) (*IBCIdentity, error)` | `nil` | 客户端响应服务端 IBC 证书请求 |
+| `RootIBCSysParams` | `*IBCPool` | `nil` | 客户端信任的服务端 KGC 公共参数池；`nil` 时以本端 `IBCIdentity.Parameters` 为信任池 |
+| `ClientIBCSysParams` | `*IBCPool` | `nil` | 服务端信任的客户端 KGC 公共参数池；`nil` 时以本端 `IBCIdentity.Parameters` 为信任池 |
+| `VerifyIBCSysParams` | `func(*IBCSysParams) error` | `nil` | 信任池未命中时的公共参数校验回调 |
+| `VerifyIBCIdentity` | `func([]byte) error` | `nil` | 对端标识校验回调（吊销、命名策略等） |
 
 ### 1.2 DTLCP 特有字段
 
@@ -57,6 +64,8 @@
 | `RequireAnyClientCert` | 要求客户端发送证书，但不验证有效性 |
 | `VerifyClientCertIfGiven` | 若客户端提供了证书则验证，否则跳过 |
 | `RequireAndVerifyClientCert` | 要求客户端发送证书并验证有效性 |
+
+> 使用 IBC/IBSDH 套件时，`ClientAuth` 的含义相同，但校验对象是客户端标识与 KGC 公共参数而非证书；其中 IBSDH 会自动要求客户端认证（§4.7）。
 
 ---
 
@@ -314,8 +323,14 @@ config := &dtlcp.Config{
 | `ECC_SM4_CBC_SM3` | `0xe011` | ECC | SM4-CBC | 否 |
 | `ECDHE_SM4_GCM_SM3` | `0xe053` | ECDHE | SM4-GCM | 是 |
 | `ECDHE_SM4_CBC_SM3` | `0xe051` | ECDHE | SM4-CBC | 是 |
+| `IBC_SM4_GCM_SM3` | `0xe057` | IBC | SM4-GCM | 否 |
+| `IBC_SM4_CBC_SM3` | `0xe017` | IBC | SM4-CBC | 否 |
+| `IBSDH_SM4_GCM_SM3` | `0xe055` | IBSDH | SM4-GCM | 是 |
+| `IBSDH_SM4_CBC_SM3` | `0xe015` | IBSDH | SM4-CBC | 是 |
 
 GCM 为认证加密模式，性能优于 CBC；ECDHE 提供前向安全性，但需客户端双证书。
+
+> **IBC/IBSDH 套件基于 SM9 标识密码，不使用 X.509 证书，默认关闭**：只有在 `Config.CipherSuites` 中显式列出、且本端配置了 IBC 能力（`IBCIdentity` 或 `GetIBCIdentity` / `GetClientIBCIdentity`）时才会参与协商。配置方式见 §4.7 与 [IBC 配置与使用指南](./IBC-Config.md)。
 
 > 完整代码：[example/dtlcp/cipher_suites/](../example/dtlcp/cipher_suites/)
 
@@ -380,6 +395,37 @@ config := &dtlcp.Config{
 ```
 
 > 完整代码：[example/dtlcp/custom_verify/](../example/dtlcp/custom_verify/)
+
+### 4.7 标识密码（IBC / IBSDH）
+
+DTLCP 与 TLCP 使用同一套 IBC API（`dtlcp.IBCIdentity`、`dtlcp.IBCPool`、`dtlcp.LoadIBCIdentity` 等），无需 X.509 证书：
+
+```go
+// 服务端：仅配置 IBC 身份，无需 Certificates
+config := &dtlcp.Config{
+    CipherSuites:       []uint16{dtlcp.IBC_SM4_GCM_SM3, dtlcp.IBSDH_SM4_GCM_SM3},
+    IBCIdentity:        serverIBC,        // 标识 + KGC 公共参数 + 三把用户私钥
+    ClientIBCSysParams: clientPool,       // 信任的客户端 KGC 公共参数
+    ClientAuth:         dtlcp.RequireAndVerifyClientCert,
+}
+ln, err := dtlcp.Listen("udp", ":8443", config)
+
+// 客户端
+conn, err := dtlcp.Dial("udp", "127.0.0.1:8443", &dtlcp.Config{
+    CipherSuites:     []uint16{dtlcp.IBC_SM4_GCM_SM3, dtlcp.IBSDH_SM4_GCM_SM3},
+    IBCIdentity:      clientIBC,
+    RootIBCSysParams: serverPool,
+})
+```
+
+DTLCP 特有说明：
+
+- **握手分片**：IBC 变体 Certificate 消息携带完整 `IBCSysParams`，超过 `Config.PMTU` 时自动分片（§2.1）并在对端重组；
+- **IBSDH 强制客户端认证**：使用 IBSDH 套件时服务端自动要求客户端身份（除非显式配置 `ClientAuth: RequestClientCert`），客户端的标识通过 ClientHello 的 `client_id(66)` 扩展传递；
+- **会话重用**：与 X.509 套件一样支持，需两端配置 `SessionCache`；
+- **状态读取**：握手完成后 `ConnectionState().PeerIBCIdentity` / `PeerIBCSysParams` 给出对端标识与公共参数。
+
+> 完整配置项、信任池与安全模型见 **[IBC 配置与使用指南](./IBC-Config.md)**；可运行示例：[example/dtlcp/ibc/](../example/dtlcp/ibc/)。
 
 ---
 

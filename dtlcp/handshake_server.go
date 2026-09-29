@@ -21,6 +21,7 @@
 package dtlcp
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -60,6 +61,17 @@ type serverHandshakeState struct {
 	sigCert          *Certificate        // 签名证书
 	encCert          *Certificate        // 加密证书
 	peerCertificates []*smx509.Certificate // 客户端证书，可能为空
+
+	// hasX509Cert 表示本端是否具备 X.509 双证书能力（由配置静态判定），
+	// 非 IBC 套件必须以它为协商前提，仅有 IBC 身份时为 false。
+	hasX509Cert bool
+
+	// IBC 相关上下文，仅 IBC/IBSDH 套件下使用。
+	ibcIdentity      *IBCIdentity  // 本端 IBC 配置
+	ibcClientIDRaw   []byte        // client_id(66) 扩展中的原始标识字节
+	peerIBCIdentity  []byte        // 客户端标识内容（identityData）
+	peerIBCSysParams *IBCSysParams // 已命中本地信任池的客户端公共参数
+
 	// DTLCP 特有字段
 	cookieVerified bool   // cookie 是否已验证通过
 	flightData     []byte // 当前 flight 的发送数据，用于重传
@@ -357,6 +369,10 @@ func (hs *serverHandshakeState) processClientHello() error {
 		c.serverName = hs.clientHello.serverName
 	}
 
+	// client_id(66) 扩展：IBSDH 下服务端需要它来计算 R_A = r_A · Q_B。
+	// 若最终选中的不是 IBSDH 套件，则该扩展被静默忽略。
+	hs.ibcClientIDRaw = hs.clientHello.ibsdhClientID
+
 	// 协商应用层协议
 	selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols)
 	if err != nil {
@@ -366,38 +382,88 @@ func (hs *serverHandshakeState) processClientHello() error {
 	hs.hello.alpnProtocol = selectedProto
 	c.clientProtocol = selectedProto
 
-	// 选择签名证书
 	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
-	hs.sigCert, err = c.config.getCertificate(helloInfo)
+
+	// 选择 IBC 配置：IBCIdentity 优先，其次向应用索取。
+	if c.config.IBCIdentity != nil {
+		hs.ibcIdentity = c.config.IBCIdentity
+	} else if c.config.GetIBCIdentity != nil {
+		ibcCfg, err := c.config.GetIBCIdentity(helloInfo)
+		if err != nil {
+			_ = c.sendAlert(alertInternalError)
+			return err
+		}
+		hs.ibcIdentity = ibcCfg
+	}
+
+	// 凭据能力判定与证书选择。
+	//
+	// 本端是否具备 X.509 双证书能力由配置静态决定（Certificates / GetCertificate /
+	// GetKECertificate），因此这里先判定能力、再按能力选择证书；不再通过
+	// getCertificate 返回 errNoCertificates 后结合 ibcIdentity 是否非空来吞掉错误，
+	// 也不再依赖 cipherSuiteOk 中 ecSignOk/ecDecryptOk 为 false 的副作用反推可用套件。
+	hs.hasX509Cert = c.config.hasX509Certificates()
+	if hs.hasX509Cert {
+		// 证书选择回调可基于 SNI 拒绝提供证书，此时 selected 为 false，转入仅 IBC 模式。
+		if hs.hasX509Cert, err = hs.selectX509Certificates(helloInfo); err != nil {
+			return err
+		}
+	}
+	if !hs.hasX509Cert && hs.ibcIdentity == nil {
+		// 既无 X.509 双证书，也无 IBC 身份凭据，本次握手没有可用凭据。
+		_ = c.sendAlert(alertUnrecognizedName)
+		return errNoCertificates
+	}
+
+	return nil
+}
+
+// selectX509Certificates 选择服务端的签名证书与加密证书，并记录二者私钥的算法能力。
+//
+// 调用前应先用 Config.hasX509Certificates 判定配置中存在完整的 X.509 双证书来源。
+// 与直接调用 Config.getCertificate/Config.getEKCertificate 的区别在于：
+//   - 不把 errNoCertificates 当作致命错误，而是通过返回值 selected=false 报告
+//     "证书来源本次未提供证书"（例如 GetCertificate 回调按 SNI 拒绝），
+//     由调用方决定是转入仅 IBC 模式还是终止握手；
+//   - 返回 selected=true 时保证 hs.sigCert 与 hs.encCert 均非 nil。
+//
+// 参数：
+//   - helloInfo：客户端 Hello 消息信息，供证书选择回调使用。
+//
+// 返回值：
+//   - selected：是否选出了可用的双证书；为 false 时 err 必为 nil。
+//   - error：证书选择回调返回其它错误，或证书私钥算法不受支持时返回非 nil。
+func (hs *serverHandshakeState) selectX509Certificates(helloInfo *ClientHelloInfo) (selected bool, err error) {
+	c := hs.c
+
+	sigCert, err := c.config.getCertificate(helloInfo)
 	if err != nil {
 		if err == errNoCertificates {
-			_ = c.sendAlert(alertUnrecognizedName)
-		} else {
-			_ = c.sendAlert(alertInternalError)
+			return false, nil
 		}
-		return err
+		_ = c.sendAlert(alertInternalError)
+		return false, err
 	}
-	if hs.clientHello.serverName != "" && hs.sigCert != nil {
+	encCert, err := c.config.getEKCertificate(helloInfo)
+	if err != nil {
+		if err == errNoCertificates {
+			return false, nil
+		}
+		_ = c.sendAlert(alertInternalError)
+		return false, err
+	}
+	if sigCert == nil || encCert == nil {
+		// 证书来源未报错却没有给出证书，按"本次未提供"处理。
+		return false, nil
+	}
+	hs.sigCert, hs.encCert = sigCert, encCert
+
+	if hs.clientHello.serverName != "" {
+		// 服务端证书中的主机名与客户端提供的主机名匹配
+		// 设置主机名ACK标志，发送ACK
 		hs.hello.serverNameAck = true
 	}
 
-	// 选择加密证书
-	hs.encCert, err = c.config.getEKCertificate(helloInfo)
-	if err != nil {
-		if err == errNoCertificates {
-			_ = c.sendAlert(alertUnrecognizedName)
-		} else {
-			_ = c.sendAlert(alertInternalError)
-		}
-		return err
-	}
-
-	if hs.encCert == nil || hs.sigCert == nil {
-		_ = c.sendAlert(alertInternalError)
-		return errors.New("dtlcp: no valid certificates configured")
-	}
-
-	// 确定签名密钥类型
 	if priv, ok := hs.sigCert.PrivateKey.(crypto.Signer); ok {
 		switch priv.Public().(type) {
 		case *ecdsa.PublicKey:
@@ -406,11 +472,9 @@ func (hs *serverHandshakeState) processClientHello() error {
 			hs.rsaSignOk = true
 		default:
 			_ = c.sendAlert(alertInternalError)
-			return fmt.Errorf("dtlcp: unsupported signing key type (%T)", priv.Public())
+			return false, fmt.Errorf("dtlcp: unsupported signing key type (%T)", priv.Public())
 		}
 	}
-
-	// 确定解密密钥类型
 	if priv, ok := hs.encCert.PrivateKey.(crypto.Decrypter); ok {
 		switch priv.Public().(type) {
 		case *ecdsa.PublicKey:
@@ -419,11 +483,11 @@ func (hs *serverHandshakeState) processClientHello() error {
 			hs.rsaDecryptOk = true
 		default:
 			_ = c.sendAlert(alertInternalError)
-			return fmt.Errorf("dtlcp: unsupported decryption key type (%T)", priv.Public())
+			return false, fmt.Errorf("dtlcp: unsupported decryption key type (%T)", priv.Public())
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 // =============================================================================
@@ -445,6 +509,12 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 			}
 		}
 	}
+	// IBC/IBSDH 套件不进默认推荐顺序，仅当服务端显式配置时参与协商。
+	for _, id := range configCipherSuites {
+		if cipherSuites[id].isIBC() && !containsUint16(preferenceList, id) {
+			preferenceList = append(preferenceList, id)
+		}
+	}
 
 	hs.suite = selectCipherSuite(preferenceList, hs.clientHello.cipherSuites, hs.cipherSuiteOk)
 	if hs.suite == nil {
@@ -457,6 +527,23 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 
 // cipherSuiteOk 检查密码套件是否与当前密钥类型兼容。
 func (hs *serverHandshakeState) cipherSuiteOk(c *cipherSuite) bool {
+	if c.flags&suiteIBC != 0 {
+		// IBC 套件不依赖 X.509 证书，但要求本端具备 IBC 身份凭据；
+		// IBSDH 还要求配置了密钥交换私钥（应为按 hid=0x02 派生的那一把，
+		// 本库不校验派生 hid）。
+		if hs.ibcIdentity == nil {
+			return false
+		}
+		if c.flags&suiteIBSDH != 0 {
+			return hs.ibcIdentity.canKeyExchange()
+		}
+		return true
+	}
+	// 非 IBC 套件都要求服务端提供 X.509 双证书。证书能力由 hasX509Cert 显式表达，
+	// 不再借助 ecSignOk/ecDecryptOk 为 false 来隐式拒绝。
+	if !hs.hasX509Cert {
+		return false
+	}
 	if c.flags&suiteECSign != 0 {
 		if !hs.ecSignOk {
 			return false
@@ -548,6 +635,20 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 
 	c.peerCertificates = hs.sessionState.peerCertificates
 
+	// 恢复 IBC 上下文，用于填充 ConnectionState。
+	// 重用握手不重新校验 IBCSysParams.validity。
+	if len(hs.sessionState.ibcSysParams) > 0 {
+		params, err := ParseIBCSysParams(hs.sessionState.ibcSysParams)
+		if err != nil {
+			_ = c.sendAlert(alertInternalError)
+			return errors.New("dtlcp: invalid IBC parameters in session state")
+		}
+		hs.peerIBCSysParams = params
+		hs.peerIBCIdentity = hs.sessionState.ibcPeerIdentity
+		c.peerIBCIdentity = hs.peerIBCIdentity
+		c.peerIBCSysParams = params
+	}
+
 	if c.config.VerifyConnection != nil {
 		if err := c.config.VerifyConnection(c.connectionStateLocked()); err != nil {
 			_ = c.sendAlert(alertBadCertificate)
@@ -581,7 +682,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	c := hs.c
 
 	// OCSP stapling 支持
-	if hs.clientHello.ocspStapling && len(hs.sigCert.OCSPStaple) > 0 {
+	if hs.sigCert != nil && hs.clientHello.ocspStapling && len(hs.sigCert.OCSPStaple) > 0 {
 		hs.hello.ocspStapling = true
 		hs.hello.ocspResponse = hs.sigCert.OCSPStaple
 	}
@@ -594,8 +695,16 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 
 	// 客户端认证策略
 	authPolice := c.config.ClientAuth
-	// GM/T 38636-2016 6.4.5.8：使用ECDHE算法时，要求客户端发送证书
-	if hs.suite.id == ECDHE_SM4_CBC_SM3 || hs.suite.id == ECDHE_SM4_GCM_SM3 {
+	if hs.suite.isIBC() {
+		// GM/T 0024-2023 + 方案 §6.3：IBSDH 的密钥交换（genSignature=false）
+		// 本身不校验客户端持有加密私钥，必须由 CertificateVerify 补齐。
+		if hs.suite.isIBSDH() {
+			if authPolice != RequestClientCert {
+				authPolice = RequireAndVerifyClientCert
+			}
+		}
+	} else if hs.suite.id == ECDHE_SM4_CBC_SM3 || hs.suite.id == ECDHE_SM4_GCM_SM3 {
+		// GM/T 38636-2016 6.4.5.8：使用ECDHE算法时，要求客户端发送证书
 		if authPolice != RequestClientCert {
 			authPolice = RequireAndVerifyClientCert
 		}
@@ -622,19 +731,32 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	// 发送 Certificate
-	certMsg := new(certificateMsg)
-	certMsg.certificates = [][]byte{
-		hs.sigCert.Certificate[0], hs.encCert.Certificate[0],
-	}
-	if len(hs.sigCert.Certificate) > 1 {
-		certMsg.certificates = append(certMsg.certificates, hs.sigCert.Certificate[1:]...)
-	} else if len(hs.encCert.Certificate) > 1 {
-		certMsg.certificates = append(certMsg.certificates, hs.encCert.Certificate[1:]...)
-	}
-	certMsg.setMessageSeq(c.messageSeq)
-	c.messageSeq++
-	if _, err := c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
-		return err
+	if hs.suite.isIBC() {
+		// GM/T 0024-2023 6.4.5.3：IBC 变体 Certificate 消息。
+		ibcCertMsg, err := hs.ibcCertificateMessage()
+		if err != nil {
+			return c.sendAlertForError(err, alertInternalError)
+		}
+		ibcCertMsg.setMessageSeq(c.messageSeq)
+		c.messageSeq++
+		if _, err := c.writeHandshakeRecord(ibcCertMsg, &hs.finishedHash); err != nil {
+			return err
+		}
+	} else {
+		certMsg := new(certificateMsg)
+		certMsg.certificates = [][]byte{
+			hs.sigCert.Certificate[0], hs.encCert.Certificate[0],
+		}
+		if len(hs.sigCert.Certificate) > 1 {
+			certMsg.certificates = append(certMsg.certificates, hs.sigCert.Certificate[1:]...)
+		} else if len(hs.encCert.Certificate) > 1 {
+			certMsg.certificates = append(certMsg.certificates, hs.encCert.Certificate[1:]...)
+		}
+		certMsg.setMessageSeq(c.messageSeq)
+		c.messageSeq++
+		if _, err := c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
+			return err
+		}
 	}
 
 	// 发送 ServerKeyExchange
@@ -656,9 +778,15 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	var certReq *certificateRequestMsg
 	if authPolice >= RequestClientCert {
 		certReq = new(certificateRequestMsg)
-		certReq.certificateTypes = []byte{
-			byte(certTypeRSASign),
-			byte(certTypeECDSASign),
+		if hs.suite.isIBC() {
+			// GM/T 0024-2023 6.4.5.5：certificate_types 取 ibc_params(80)，
+			// certificate_authorities 为 IBC 密钥管理中心的信任域名列表。
+			certReq.certificateTypes = []byte{byte(certTypeIbcParams)}
+		} else {
+			certReq.certificateTypes = []byte{
+				byte(certTypeRSASign),
+				byte(certTypeECDSASign),
+			}
 		}
 		if c.config.ClientCAs != nil {
 			certReq.certificateAuthorities = c.config.ClientCAs.Subjects()
@@ -701,22 +829,37 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		if err != nil {
 			return err
 		}
-		clientCertMsg, ok := msg.(*certificateMsg)
-		if !ok {
-			_ = c.sendAlert(alertUnexpectedMessage)
-			return unexpectedMessageError(clientCertMsg, msg)
-		}
-		if err := transcriptMsg(clientCertMsg, &hs.finishedHash); err != nil {
-			return err
-		}
+		if hs.suite.isIBC() {
+			// IBC 变体 Certificate 消息：ibc_id + ibc_parameter
+			clientCertMsg, ok := msg.(*ibcCertificateMsg)
+			if !ok {
+				_ = c.sendAlert(alertUnexpectedMessage)
+				return unexpectedMessageError(clientCertMsg, msg)
+			}
+			if err := transcriptMsg(clientCertMsg, &hs.finishedHash); err != nil {
+				return err
+			}
+			if err := hs.processClientIBCCertificate(clientCertMsg, requiresClientCert(authPolice)); err != nil {
+				return err
+			}
+		} else {
+			clientCertMsg, ok := msg.(*certificateMsg)
+			if !ok {
+				_ = c.sendAlert(alertUnexpectedMessage)
+				return unexpectedMessageError(clientCertMsg, msg)
+			}
+			if err := transcriptMsg(clientCertMsg, &hs.finishedHash); err != nil {
+				return err
+			}
 
-		if err := c.processCertsFromClient(Certificate{Certificate: clientCertMsg.certificates}); err != nil {
-			return err
+			if err := c.processCertsFromClient(Certificate{Certificate: clientCertMsg.certificates}); err != nil {
+				return err
+			}
+			if len(clientCertMsg.certificates) != 0 {
+				pub = c.peerCertificates[0].PublicKey
+			}
+			hs.peerCertificates = c.peerCertificates
 		}
-		if len(clientCertMsg.certificates) != 0 {
-			pub = c.peerCertificates[0].PublicKey
-		}
-		hs.peerCertificates = c.peerCertificates
 	}
 
 	if c.config.VerifyConnection != nil {
@@ -750,7 +893,33 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	setZero(preMasterSecret)
 
 	// 读取客户端 CertificateVerify（如果客户端发送了证书）
-	if len(c.peerCertificates) > 0 {
+	if hs.suite.isIBC() {
+		if len(c.peerIBCIdentity) > 0 {
+			msg, err := c.readNextFlightMsg(flightData)
+			if err != nil {
+				return err
+			}
+			certVerify, ok := msg.(*certificateVerifyMsg)
+			if !ok {
+				_ = c.sendAlert(alertUnexpectedMessage)
+				return unexpectedMessageError(certVerify, msg)
+			}
+			// GM/T 0024-2023 6.4.5.9：对自 ClientHello 起至本消息之前的全部
+			// 握手消息的 SM3 摘要做 SM9 签名（ibs_sm3）。
+			signed := hs.finishedHash.Sum()
+			if hs.peerIBCSysParams == nil {
+				_ = c.sendAlert(alertHandshakeFailure)
+				return errors.New("dtlcp: missing client IBC parameters")
+			}
+			if err := verifyIBSHandshakeSignature(hs.peerIBCSysParams.SignMasterPublicKey, c.peerIBCIdentity, signed, certVerify.signature); err != nil {
+				_ = c.sendAlert(alertBadCertificate)
+				return errors.New("dtlcp: invalid signature by the client identity: " + err.Error())
+			}
+			if err := transcriptMsg(certVerify, &hs.finishedHash); err != nil {
+				return err
+			}
+		}
+	} else if len(c.peerCertificates) > 0 {
 		msg, err := c.readNextFlightMsg(flightData)
 		if err != nil {
 			return err
@@ -975,8 +1144,69 @@ func (hs *serverHandshakeState) createSessionState() {
 		masterSecret:     masterSecretCopy,
 		peerCertificates: hs.peerCertificates,
 		createdAt:        time.Now(),
+		ibcPeerIdentity:  hs.peerIBCIdentity,
+	}
+	if hs.peerIBCSysParams != nil {
+		cs.ibcSysParams = hs.peerIBCSysParams.Raw
 	}
 	hs.c.config.SessionCache.Put(sessionKey, cs)
+}
+
+// =============================================================================
+// IBC 服务端握手辅助
+// =============================================================================
+
+// ibcCertificateMessage 构造服务端的 IBC 变体 Certificate 消息。
+func (hs *serverHandshakeState) ibcCertificateMessage() (*ibcCertificateMsg, error) {
+	if hs.ibcIdentity == nil {
+		return nil, newIBCError(alertHandshakeFailure, "missing local IBC configuration")
+	}
+	if len(hs.ibcIdentity.Identity) == 0 {
+		return nil, newIBCError(alertIdentityNeed, "missing local IBC identity")
+	}
+	if hs.ibcIdentity.Parameters == nil {
+		return nil, newIBCError(alertBadIbcparam, "missing local IBC parameters")
+	}
+	der, err := hs.ibcIdentity.Parameters.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	return &ibcCertificateMsg{ibcID: hs.ibcIdentity.Identity, ibcParameter: der}, nil
+}
+
+// processClientIBCCertificate 处理客户端回复的 IBC 变体 Certificate 消息。
+//
+// 客户端公共参数必须命中 Config.ClientIBCSysParams（或由回调判定）；
+// 当 client_id(66) 扩展与 Certificate 中的标识同时出现时，比对标识内容，
+// 不一致回 illegal_parameter(47)。
+func (hs *serverHandshakeState) processClientIBCCertificate(certMsg *ibcCertificateMsg, required bool) error {
+	c := hs.c
+	if certMsg == nil || len(certMsg.ibcID) == 0 || len(certMsg.ibcParameter) == 0 {
+		// 空标识/空参数表示客户端没有提供 IBC 证书。
+		if required {
+			_ = c.sendAlert(alertBadCertificate)
+			return errors.New("dtlcp: client didn't provide an IBC identity")
+		}
+		return nil
+	}
+	params, err := c.verifyPeerIBCSysParams(certMsg.ibcParameter, certMsg.ibcID, false,
+		hs.ibcIdentity.sysParams())
+	if err != nil {
+		return err
+	}
+	identity := certMsg.identityContent()
+	if len(hs.ibcClientIDRaw) > 0 {
+		clientID := identityDataOf(hs.ibcClientIDRaw)
+		if !bytes.Equal(clientID, identity) {
+			_ = c.sendAlert(alertIllegalParameter)
+			return newIBCError(alertIllegalParameter, "client_id extension and Certificate identity mismatch")
+		}
+	}
+	hs.peerIBCIdentity = identity
+	hs.peerIBCSysParams = params
+	c.peerIBCIdentity = identity
+	c.peerIBCSysParams = params
+	return nil
 }
 
 // =============================================================================
@@ -1099,6 +1329,7 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 		ServerName:           clientHello.serverName,
 		SupportedVersions:    supportedVers,
 		TrustedCAIndications: clientHello.trustedAuthorities,
+		ClientID:             clientHello.ibsdhClientID,
 		Conn:                 c,
 		config:               c.config,
 		ctx:                  ctx,

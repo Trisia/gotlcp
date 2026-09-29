@@ -257,6 +257,13 @@ type ConnectionState struct {
 
 	// VerifiedChains 证书验证后的证书链。
 	VerifiedChains [][]*smx509.Certificate
+
+	// PeerIBCIdentity 对端 IBC 标识，仅 IBC/IBSDH 套件下非空。
+	PeerIBCIdentity []byte
+
+	// PeerIBCSysParams 对端提供的、且已通过信任池校验的 IBC 公共参数，仅 IBC/IBSDH
+	// 套件下非空。参数含义与出处见 IBCSysParams（dtlcp/ibc.go）。
+	PeerIBCSysParams *IBCSysParams
 }
 
 // ClientAuthType 定义服务端对客户端身份的认证策略，用于 Config.ClientAuth。
@@ -304,6 +311,10 @@ type ClientHelloInfo struct {
 	// 注意该参数为可选参数，在客户端发送TrustedAuthority扩展字段时才会存在。
 	// 服务端可以使用该参数选择合适的证书，做到证书的动态选择。
 	TrustedCAIndications []TrustedAuthority
+
+	// ClientID 客户端在 ClientHello 中通过 client_id(66) 扩展携带的 IBC 标识原始字节。
+	// 仅当客户端配置了 IBCIdentity 时才会存在（GM/T 0024-2023 附录 A.7）。
+	ClientID []byte
 
 	// Conn 底层连接对象，请不要读写该对象，否则会导致TLCP连接异常
 	Conn net.Conn
@@ -490,6 +501,41 @@ type Config struct {
 	// 从 ClientHelloInfo 中获取扩展字段，然后根据扩展字段选择合适的证书。
 	TrustedCAIndications []TrustedAuthority
 
+	// IBCIdentity 标识密码算法（SM9）身份凭据：本端标识 + 本端公共参数 + 用户私钥。
+	// 仅当 CipherSuites 中包含 IBC/IBSDH 套件时生效。
+	IBCIdentity *IBCIdentity
+
+	// GetIBCIdentity 【可选】服务端根据客户端 Hello 消息动态返回 IBC 身份凭据。
+	// 用于多 KGC、按 SNI 选择密钥，或按标识向 KGC 索取私钥的场景。
+	// 仅当 IBCIdentity 为空时调用。
+	GetIBCIdentity func(*ClientHelloInfo) (*IBCIdentity, error)
+
+	// GetClientIBCIdentity 【可选】客户端根据服务端的证书请求返回 IBC 身份凭据。
+	// 仅当 IBCIdentity 为空时调用。
+	GetClientIBCIdentity func(*CertificateRequestInfo) (*IBCIdentity, error)
+
+	// RootIBCSysParams 客户端信任的服务端 KGC 公共参数池。
+	// 对端下发的 ibc_parameter 必须命中该池，否则握手失败。
+	// 未配置（nil）时默认以本端 IBCIdentity.Parameters 作为信任池，
+	// 此时要求对端参数与本端参数属于同一 KGC。
+	RootIBCSysParams *IBCPool
+
+	// ClientIBCSysParams 服务端信任的客户端 KGC 公共参数池。
+	// 用于校验客户端 CertificateVerify 的签名主公钥。
+	// 未配置（nil）时默认以本端 IBCIdentity.Parameters 作为信任池，
+	// 此时要求对端参数与本端参数属于同一 KGC。
+	ClientIBCSysParams *IBCPool
+
+	// VerifyIBCSysParams 【可选】对端公共参数的额外校验回调，作为信任池的兜底。
+	// 未配置显式信任池时，先由本回调判定；本回调也为 nil 时，改用本端
+	// IBCIdentity.Parameters 作为默认信任池；本端同样没有公共参数时，IBC 握手直接失败。
+	// 回调收到的是已解析的对端 IBCSysParams（见 dtlcp/ibc.go）。
+	VerifyIBCSysParams func(*IBCSysParams) error
+
+	// VerifyIBCIdentity 【可选】校验对端标识状态（如查询标识吊销列表）。
+	// 本库不内置撤销检查，需要时由应用在此实现。
+	VerifyIBCIdentity func(identity []byte) error
+
 	// === DTLCP 特有配置 ===
 
 	// PMTU 路径 MTU（Maximum Transmission Unit），单位：字节。
@@ -565,6 +611,13 @@ func (c *Config) Clone() *Config {
 		OnAlert:                   c.OnAlert,
 		EnableDebug:               c.EnableDebug,
 		TrustedCAIndications:      c.TrustedCAIndications,
+		IBCIdentity:               c.IBCIdentity.Clone(),
+		GetIBCIdentity:            c.GetIBCIdentity,
+		GetClientIBCIdentity:      c.GetClientIBCIdentity,
+		RootIBCSysParams:          c.RootIBCSysParams,
+		ClientIBCSysParams:        c.ClientIBCSysParams,
+		VerifyIBCSysParams:        c.VerifyIBCSysParams,
+		VerifyIBCIdentity:         c.VerifyIBCIdentity,
 		PMTU:                      c.PMTU,
 		CookieSecret:              c.CookieSecret,
 		ReplayWindow:              c.ReplayWindow,
@@ -704,6 +757,25 @@ func (c *Config) getEKCertificate(clientHello *ClientHelloInfo) (*Certificate, e
 		return nil, errNoCertificates
 	}
 	return &c.Certificates[1], nil
+}
+
+// hasX509Certificates 判断配置是否具备完整的 X.509 双证书来源。
+//
+// DTLCP 服务端必须同时提供签名证书与加密证书（GB/T 38636-2020 双证书体系），
+// 二者可分别来自静态配置或回调：
+//   - 签名证书：Certificates[0]，或 GetCertificate 回调；
+//   - 加密证书：Certificates[1]，或 GetKECertificate 回调。
+//
+// 该判断只依据配置本身，不调用回调：回调可能在握手时基于 SNI 决定不提供证书，
+// 那属于运行期决策。仅配置 IBCIdentity/GetIBCIdentity、未配置完整 X.509 证书的
+// 服务端会返回 false，此时只有 IBC/IBSDH 套件可用。
+//
+// 返回值：
+//   - bool：签名证书来源与加密证书来源同时存在时返回 true。
+func (c *Config) hasX509Certificates() bool {
+	hasSignCert := len(c.Certificates) > 0 || c.GetCertificate != nil
+	hasEncCert := len(c.Certificates) >= 2 || c.GetKECertificate != nil
+	return hasSignCert && hasEncCert
 }
 
 // SupportsCertificate 检查给定证书是否被发送 CertificateRequest 的服务端所接受。

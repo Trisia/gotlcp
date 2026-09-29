@@ -86,6 +86,11 @@ type Conn struct {
 	verifiedChains    [][]*smx509.Certificate
 	activeCertHandles []*activeCert
 
+	// peerIBCIdentity / peerIBCSysParams 仅 IBC/IBSDH 套件下非空，
+	// peerIBCIdentity 为对端标识内容（identityData），peerIBCSysParams 为命中的本地信任池参数。
+	peerIBCIdentity  []byte
+	peerIBCSysParams *IBCSysParams
+
 	// 其他
 	clientFinished [12]byte
 	serverFinished [12]byte
@@ -665,7 +670,12 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			// DTLCP 沿用 TLCP 版本号 0x0101，TLS 为 0x0301~0x0304，均 < 0x1000；
 			// DTLS 1.0(0xFEFF)/1.2(0xFEFD) 均 >= 0x1000。
 			// 配合首条记录必须为 Alert 或 Handshake 的类型检查，可有效防止 DTLS 客户端误连。
-			if (typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000 {
+			//
+			// 判定只针对连接的首条记录（epoch=0 且 seq_num=0）：会话重用时服务端会把
+			// ServerHello 与随后的 CCS/Finished 合并到同一个 UDP 数据报中，这些后续记录
+			// 出现在同一个 rawInputBuf 里，此时 haveVers 尚未设置，不能按首记录判定。
+			if epoch == 0 && seqNum == 0 &&
+				((typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000) {
 				return c.in.setErrorLocked(c.newRecordHeaderError(c.remoteAddr, "first record does not look like a TLCP handshake"))
 			}
 		}
@@ -1159,7 +1169,13 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 		case typeServerHello:
 			m = new(serverHelloMsg)
 		case typeCertificate:
-			m = new(certificateMsg)
+			// IBC 套件使用同类型的 IBC 变体 Certificate 消息，
+			// 报文结构与 X.509 版本不同，按已协商的密码套件区分。
+			if cipherSuiteIsIBC(c.cipherSuite) {
+				m = new(ibcCertificateMsg)
+			} else {
+				m = new(certificateMsg)
+			}
 		case typeServerKeyExchange:
 			m = new(serverKeyExchangeMsg)
 		case typeCertificateRequest:
@@ -1684,6 +1700,8 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	state.NegotiatedProtocol = c.clientProtocol
 	state.PeerCertificates = c.peerCertificates
 	state.VerifiedChains = c.verifiedChains
+	state.PeerIBCIdentity = c.peerIBCIdentity
+	state.PeerIBCSysParams = c.peerIBCSysParams
 	return state
 }
 

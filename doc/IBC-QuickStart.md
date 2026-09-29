@@ -1,6 +1,8 @@
 # IBC 快速入门
 
-IBC（Identity-Based Cryptography，标识密码）是 GoTLCP 依据 GM/T 0024-2023 实现的 4 个基于 SM9 的 TLCP 密码套件，**不使用 X.509 证书**，公钥由标识（如 `server@kgc.example`）与 KGC 公共参数直接推导。
+IBC（Identity-Based Cryptography，标识密码）是 GoTLCP 依据 GM/T 0024-2023 实现的 4 个基于 SM9 的密码套件，**不使用 X.509 证书**，公钥由标识（如 `server@kgc.example`）与 KGC 公共参数直接推导。
+
+> **协议支持：** 4 个套件同时可用于 **TLCP**（TCP，`tlcp` 包）与 **DTLCP**（UDP，`dtlcp` 包）。两个包的 IBC API 名称、类型与配置字段完全一致，差异只在连接建立方式与传输语义，见文末 [DTLCP（UDP）](#dtlcpudp)。
 
 | 套件名 | 密钥交换 | 加密 | 校验 | 值 |
 |--------|---------|------|------|-----|
@@ -17,7 +19,7 @@ IBC（Identity-Based Cryptography，标识密码）是 GoTLCP 依据 GM/T 0024-2
 
 ## IBC标识
 
-IBC 不使用证书，本端身份由 `tlcp.IBCIdentity` 表示：
+IBC 不使用证书，本端身份由 `IBCIdentity`（TLCP 为 `tlcp.IBCIdentity`，DTLCP 为 `dtlcp.IBCIdentity`）表示：
 
 ```go
 type IBCIdentity struct {
@@ -72,3 +74,34 @@ conn, err := tlcp.Dial("tcp", "127.0.0.1:8443", &tlcp.Config{
 - 密钥生成：[example/ibc/genkey/main.go](../example/ibc/genkey/main.go)
 - 服务端：[example/ibc/quickstart/server/main.go](../example/ibc/quickstart/server/main.go)
 - 客户端：[example/ibc/quickstart/client/main.go](../example/ibc/quickstart/client/main.go)
+
+## DTLCP（UDP）
+
+DTLCP 使用 `dtlcp` 包中的同名符号（`dtlcp.IBCIdentity`、`dtlcp.IBCPool`、`dtlcp.LoadIBCIdentity`、`dtlcp.IBC_SM4_GCM_SM3` …），配置字段与 TLCP 完全相同；只有建立连接的方式不同：服务端用 `dtlcp.Listen("udp", …)` + `Accept`，或直接对 `net.PacketConn` 调用 `dtlcp.Server`；客户端用 `dtlcp.Dial("udp", …)` 或 `dtlcp.Client`。
+
+```go
+// 服务端（UDP）
+config := &dtlcp.Config{
+	CipherSuites:       []uint16{dtlcp.IBC_SM4_GCM_SM3, dtlcp.IBSDH_SM4_GCM_SM3},
+	IBCIdentity:        serverIdent,     // 服务端标识 + 公共参数 + 私钥
+	ClientIBCSysParams: pool,            // 信任的客户端 KGC 公共参数
+	ClientAuth:         dtlcp.RequireAndVerifyClientCert, // IBSDH 会自动要求客户端认证
+}
+ln, err := dtlcp.Listen("udp", ":8443", config)
+
+// 客户端（UDP）
+conn, err := dtlcp.Dial("udp", "127.0.0.1:8443", &dtlcp.Config{
+	CipherSuites:     []uint16{dtlcp.IBC_SM4_GCM_SM3, dtlcp.IBSDH_SM4_GCM_SM3},
+	IBCIdentity:      clientIdent,       // 客户端标识 + 公共参数 + 私钥
+	RootIBCSysParams: pool,              // 信任的服务端 KGC 公共参数
+})
+```
+
+DTLCP 下的额外注意点：
+
+1. **握手消息自动分片**：IBC 变体 Certificate 消息携带完整的 `IBCSysParams`（通常数百字节），当超过 `Config.PMTU` 时由 DTLCP 按 RFC 6347 §4.2.3 自动分片传输并在对端重组，无需应用干预；若 `PMTU` 配置过小需保证仍能容纳 12 字节握手消息头。
+2. **握手重传**：DTLCP 依赖 `InitialRetransmitTimeout` / `MaxRetransmitTimeout` 进行指数退避重传；对端参数校验失败等致命错误会立即以告警终止握手。
+3. **会话重用**：DTLCP 同样支持 IBC 会话重用，需两端配置 `SessionCache`；DTLCP 的会话缓存以对端地址为键，因此同一客户端的地址变化会影响命中（详见 [DTLCP 配置与使用指南](./DTLCP-Config.md)）。
+4. **数据报语义**：握手完成后可用 `Read`/`Write`（流式，不保证报文边界）或 `ReadFrom`/`WriteTo`（保留报文边界）收发数据；`ConnectionState().PeerIBCIdentity` / `PeerIBCSysParams` 与 TLCP 一致。
+
+完整示例：[example/dtlcp/ibc/quickstart/server/main.go](../example/dtlcp/ibc/quickstart/server/main.go)、[example/dtlcp/ibc/quickstart/client/main.go](../example/dtlcp/ibc/quickstart/client/main.go)。与 TLCP 示例一致，两个 quickstart 文件内嵌了预置的测试密钥材料（不读写任何密钥文件，可直接运行）；需要更换材料时运行 [example/dtlcp/ibc/genkey/main.go](../example/dtlcp/ibc/genkey/main.go)，把输出的常量块替换进去即可。

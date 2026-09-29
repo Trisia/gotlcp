@@ -14,7 +14,7 @@ GoTLCP 采用 Go 语言实现的国密传输层密码协议套件，同时支持
 
 ![协议关系](doc/img/dtlcp/protocol-relationship.svg)
 
-GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完整握手、会话重用（TLCP）、传输保护、单向身份认证（认证服务端）和双向身份认证。
+GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完整握手、会话重用、传输保护、单向身份认证（认证服务端）和双向身份认证。
 
 ### TLCP
 
@@ -32,8 +32,10 @@ TLCP 遵循 GB/T 38636-2020，并依据 GM/T 0024-2023《SSL VPN 技术规范》
 DTLCP 遵循 GM/T 0128-2023，基于 UDP（`net.PacketConn`）提供数据报传输层密码保护，适用于需要国密安全通信但无法依赖 TCP 可靠传输的场景。
 
 - **密码套件：** ECC_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECDHE_SM4_CBC_SM3
+- **IBC 密码套件：** IBC_SM4_GCM_SM3、IBC_SM4_CBC_SM3、IBSDH_SM4_GCM_SM3、IBSDH_SM4_CBC_SM3（基于 SM9 标识密码，**默认关闭**，需显式配置 `CipherSuites` 与 `IBCIdentity` 后启用；超 `PMTU` 的 IBC 握手消息自动分片重组） ***New***
 
 - **双证书：** 签名证书 + 加密证书，服务端必须同时提供
+- **标识密码（IBC）：** 无需 X.509 证书，公钥由标识与 KGC 公共参数推导，信任锚为带外预置的公共参数池
 - **会话重用：** 通过 LRU 缓存和会话票据支持
 - **四态握手状态机：** Preparing → Sending → Waiting → Finished，适应 UDP 异步收发
 - **指数退避重传：** 握手消息超时自动重传，退避策略保证收敛
@@ -208,8 +210,8 @@ func main() {
 
 ### IBC（标识密码）
 
-- **[IBC 快速入门](./doc/IBC-QuickStart.md)** — IBC 密码套件概述、KGC 公共参数与用户私钥准备、可运行的服务端/客户端示例，适合快速上手
-- **[IBC 配置与使用指南](./doc/IBC-Config.md)** — IBC 相关 Config 字段、信任池、双向认证、会话重用、安全模型与告警映射
+- **[IBC 快速入门](./doc/IBC-QuickStart.md)** — IBC 密码套件概述、KGC 公共参数与用户私钥准备、可运行的服务端/客户端示例（TLCP 与 DTLCP），适合快速上手
+- **[IBC 配置与使用指南](./doc/IBC-Config.md)** — IBC 相关 Config 字段、信任池、双向认证、会话重用、安全模型与告警映射（TLCP 与 DTLCP 通用）
 
 ### DTLCP
 

@@ -46,6 +46,12 @@ type clientHandshakeState struct {
 	cookie       []byte           // 从 HelloVerifyRequest 收到的 cookie
 	initialHello *clientHelloMsg  // 保存初始 ClientHello（cookie 为空时），用于重传
 	flightData   []byte           // Flight 5 原始字节缓存，用于超时重传
+
+	// IBC 相关上下文，仅 IBC/IBSDH 套件下使用。
+	ibcIdentity        *IBCIdentity  // 本端 IBC 配置
+	peerIBCIdentityRaw []byte        // 服务端 ibc_id 原始报文字节
+	peerIBCIdentity    []byte        // 服务端标识内容（identityData）
+	peerIBCSysParams   *IBCSysParams // 已命中本地信任池的服务端公共参数
 }
 
 // =============================================================================
@@ -137,6 +143,35 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 		}
 		hello.cipherSuites = append(hello.cipherSuites, suiteId)
 	}
+
+	// IBC/IBSDH 套件不进默认推荐顺序，仅当本端显式在 CipherSuites 中配置、
+	// 且具备 IBC 能力时参与协商（与服务端 pickCipherSuite 同一处理方式）。
+	// 能力开启条件：静态配置 IBCIdentity，或配置了 GetClientIBCIdentity 回调。
+	if config.IBCIdentity != nil || config.GetClientIBCIdentity != nil {
+		for _, suiteId := range configCipherSuites {
+			suite := cipherSuites[suiteId]
+			if !suite.isIBC() {
+				continue
+			}
+			// IBSDH 还要求本端持有密钥交换私钥（应为按 hid=0x02 派生的那一把，
+			// 本库不校验派生 hid）。静态配置
+			// IBCIdentity 时缺失该私钥，则本端无法完成密钥交换，该套件不发送；
+			// 仅配置回调时在 ClientHello 阶段无法预知凭据，先发送该套件，
+			// 由回调在握手阶段提供，届时不合规会以握手失败告终。
+			if suite.isIBSDH() && config.IBCIdentity != nil && !config.IBCIdentity.canKeyExchange() {
+				continue
+			}
+			hello.cipherSuites = append(hello.cipherSuites, suiteId)
+		}
+	}
+
+	// GM/T 0024-2023 附录 A.7：客户端配置了 IBCIdentity 时发送 client_id(66) 扩展。
+	// 发送时机在 ClientHello，此时尚未协商出套件；服务端仅在选中 IBSDH 时消费，
+	// 选中其它套件时静默忽略。
+	if config.IBCIdentity != nil {
+		setClientIDExtension(hello, config.IBCIdentity.Identity)
+	}
+
 	// GM/T0024-2023 A.5 Signature Algorithms
 	for _, sigAlg := range hello.cipherSuites {
 		if sigAlg == ECDHE_SM4_GCM_SM3 ||
@@ -448,6 +483,12 @@ func (hs *clientHandshakeState) pickCipherSuite() error {
 	}
 
 	hs.c.cipherSuite = hs.suite.id
+
+	// IBC 套件下本端必须有 IBC 配置；若只有 GetClientIBCIdentity，
+	// 则等到收到 CertificateRequest 时再向应用索取。
+	if hs.suite.isIBC() {
+		hs.ibcIdentity = hs.c.config.IBCIdentity
+	}
 	return nil
 }
 
@@ -463,28 +504,42 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if err != nil {
 		return err
 	}
-	certMsg, ok := msg.(*certificateMsg)
-	if !ok || len(certMsg.certificates) == 0 {
-		_ = c.sendAlert(alertUnexpectedMessage)
-		return unexpectedMessageError(certMsg, msg)
-	}
 
-	msg, err = c.readHandshake(&hs.finishedHash)
-	if err != nil {
-		return err
-	}
-
-	if c.handshakes == 0 {
-		if err = c.verifyServerCertificate(certMsg.certificates); err != nil {
+	var certMsg *certificateMsg
+	if hs.suite.isIBC() {
+		// IBC 变体 Certificate 消息：ibc_id + ibc_parameter
+		if err = hs.processServerIBCCertificate(msg); err != nil {
+			return err
+		}
+		msg, err = c.readHandshake(&hs.finishedHash)
+		if err != nil {
 			return err
 		}
 	} else {
-		if !bytes.Equal(c.peerCertificates[0].Raw, certMsg.certificates[0]) {
-			_ = c.sendAlert(alertBadCertificate)
-			return errors.New("dtlcp: server's identity changed during renegotiation")
+		var certOK bool
+		certMsg, certOK = msg.(*certificateMsg)
+		if !certOK || len(certMsg.certificates) == 0 {
+			_ = c.sendAlert(alertUnexpectedMessage)
+			return unexpectedMessageError(certMsg, msg)
 		}
+
+		msg, err = c.readHandshake(&hs.finishedHash)
+		if err != nil {
+			return err
+		}
+
+		if c.handshakes == 0 {
+			if err = c.verifyServerCertificate(certMsg.certificates); err != nil {
+				return err
+			}
+		} else {
+			if !bytes.Equal(c.peerCertificates[0].Raw, certMsg.certificates[0]) {
+				_ = c.sendAlert(alertBadCertificate)
+				return errors.New("dtlcp: server's identity changed during renegotiation")
+			}
+		}
+		hs.peerCertificates = c.peerCertificates
 	}
-	hs.peerCertificates = c.peerCertificates
 
 	keyAgreement := hs.suite.ka(c.vers)
 
@@ -512,19 +567,33 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		certRequested = true
 
 		cri := &CertificateRequestInfo{AcceptableCAs: certReq.certificateAuthorities, Version: c.vers, ctx: hs.ctx}
-		if clientAuthCert, err = c.getClientCertificate(cri); err != nil {
-			_ = c.sendAlert(alertInternalError)
-			return err
-		}
-		if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
-			if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
+		if hs.suite.isIBC() {
+			// IBC 双向认证：本端 IBC 身份优先取静态配置，其次向应用索取。
+			ibcIdentity, err := c.getClientIBCIdentity(cri)
+			if err != nil {
 				_ = c.sendAlert(alertInternalError)
 				return err
 			}
-		}
+			if ibcIdentity == nil {
+				_ = c.sendAlert(alertHandshakeFailure)
+				return errors.New("dtlcp: server requested IBC client authentication but no IBC configuration is available")
+			}
+			hs.ibcIdentity = ibcIdentity
+		} else {
+			if clientAuthCert, err = c.getClientCertificate(cri); err != nil {
+				_ = c.sendAlert(alertInternalError)
+				return err
+			}
+			if clientEncCert, err = c.getClientKECertificate(cri); err != nil {
+				if c.cipherSuite == ECDHE_SM4_CBC_SM3 || c.cipherSuite == ECDHE_SM4_GCM_SM3 {
+					_ = c.sendAlert(alertInternalError)
+					return err
+				}
+			}
 
-		hs.authCert = clientAuthCert
-		hs.encCert = clientEncCert
+			hs.authCert = clientAuthCert
+			hs.encCert = clientEncCert
+		}
 
 		msg, err = c.readHandshake(&hs.finishedHash)
 		if err != nil {
@@ -541,18 +610,31 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 	// 发送 Flight 5 的握手消息（在 handshake() 中统一发送）
 	if certRequested {
-		certMsg = new(certificateMsg)
-		if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
-			certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
-		}
-		if clientEncCert != nil && len(clientEncCert.Certificate) > 0 {
-			certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
-		}
+		if hs.suite.isIBC() {
+			// IBC 变体 Certificate 消息：ibc_id + ibc_parameter
+			ibcCertMsg, err := hs.ibcCertificateMessage()
+			if err != nil {
+				return c.sendAlertForError(err, alertInternalError)
+			}
+			ibcCertMsg.setMessageSeq(c.messageSeq)
+			c.messageSeq++
+			if _, err = c.writeHandshakeRecord(ibcCertMsg, &hs.finishedHash); err != nil {
+				return err
+			}
+		} else {
+			certMsg = new(certificateMsg)
+			if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
+				certMsg.certificates = append(certMsg.certificates, clientAuthCert.Certificate[0])
+			}
+			if clientEncCert != nil && len(clientEncCert.Certificate) > 0 {
+				certMsg.certificates = append(certMsg.certificates, clientEncCert.Certificate[0])
+			}
 
-		certMsg.setMessageSeq(c.messageSeq)
-		c.messageSeq++
-		if _, err = c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
-			return err
+			certMsg.setMessageSeq(c.messageSeq)
+			c.messageSeq++
+			if _, err = c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -570,7 +652,23 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 
 	// CertificateVerify
-	if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
+	if hs.suite.isIBC() {
+		// IBC 双向认证：用本端 SM9 签名私钥（hid=0x01）对自 ClientHello 起
+		// 至本消息之前的全部握手消息摘要签名（ibs_sm3）。
+		if certRequested && hs.ibcIdentity != nil && hs.ibcIdentity.SignPrivateKey != nil {
+			certVerify := &certificateVerifyMsg{}
+			certVerify.signature, err = signIBSHandshake(c, hs.ibcIdentity.SignPrivateKey, hs.finishedHash.Sum())
+			if err != nil {
+				_ = c.sendAlert(alertInternalError)
+				return err
+			}
+			certVerify.setMessageSeq(c.messageSeq)
+			c.messageSeq++
+			if _, err := c.writeHandshakeRecord(certVerify, &hs.finishedHash); err != nil {
+				return err
+			}
+		}
+	} else if clientAuthCert != nil && len(clientAuthCert.Certificate) > 0 {
 		certVerify := &certificateVerifyMsg{}
 
 		sigType, newHash, err := typeAndHashFrom(hs.suite.id)
@@ -598,6 +696,144 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	hs.finishedHash.discardHandshakeBuffer()
 
 	return nil
+}
+
+// =============================================================================
+// IBC 客户端握手辅助
+// =============================================================================
+
+// processServerIBCCertificate 处理服务端下发的 IBC 变体 Certificate 消息。
+//
+// 对端带来的 ibc_parameter 必须命中本地信任池（或由回调判定），
+// 随后使用池中的参数进行验签与加密，绝不允许直接用对端带来的公钥。
+func (hs *clientHandshakeState) processServerIBCCertificate(msg any) error {
+	c := hs.c
+	certMsg, ok := msg.(*ibcCertificateMsg)
+	if !ok {
+		_ = c.sendAlert(alertUnexpectedMessage)
+		return unexpectedMessageError(certMsg, msg)
+	}
+	params, err := c.verifyPeerIBCSysParams(certMsg.ibcParameter, certMsg.ibcID, true,
+		hs.ibcIdentity.sysParams())
+	if err != nil {
+		return err
+	}
+	hs.peerIBCIdentityRaw = certMsg.ibcID
+	hs.peerIBCIdentity = certMsg.identityContent()
+	hs.peerIBCSysParams = params
+	c.peerIBCIdentity = hs.peerIBCIdentity
+	c.peerIBCSysParams = params
+	return nil
+}
+
+// ibcCertificateMessage 构造本端的 IBC 变体 Certificate 消息。
+func (hs *clientHandshakeState) ibcCertificateMessage() (*ibcCertificateMsg, error) {
+	if hs.ibcIdentity == nil {
+		return nil, newIBCError(alertHandshakeFailure, "missing local IBC configuration")
+	}
+	if len(hs.ibcIdentity.Identity) == 0 {
+		return nil, newIBCError(alertIdentityNeed, "missing local IBC identity")
+	}
+	if hs.ibcIdentity.Parameters == nil {
+		return nil, newIBCError(alertBadIbcparam, "missing local IBC parameters")
+	}
+	der, err := hs.ibcIdentity.Parameters.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	return &ibcCertificateMsg{ibcID: hs.ibcIdentity.Identity, ibcParameter: der}, nil
+}
+
+// verifyPeerIBCSysParams 校验对端下发的 IBC 公共参数并返回可用于后续密码运算的受信参数。
+//
+// isClient 为 true 表示调用方是客户端（信任池为 Config.RootIBCSysParams，
+// 且受 Config.InsecureSkipVerify 影响）；否则为服务端（信任池为 Config.ClientIBCSysParams）。
+// local 为本端配置的 IBC 公共参数（IBCIdentity.Parameters），在信任池与校验回调均未配置时
+// 作为默认信任池：要求对端参数与本端参数属于同一 KGC，命中后使用本端参数完成后续运算。
+//
+// 信任来源优先级：显式信任池 → Config.VerifyIBCSysParams 回调 → 本端公共参数（默认信任池）。
+// 三者均不可用时直接失败（IBC 没有"系统级 KGC"）。
+func (c *Conn) verifyPeerIBCSysParams(paramsDER, identityRaw []byte, isClient bool, local *IBCSysParams) (*IBCSysParams, error) {
+	params, err := ParseIBCSysParams(paramsDER)
+	if err != nil {
+		return nil, c.sendAlertForError(err, alertBadIbcparam)
+	}
+
+	// 在 IBC 套件下，InsecureSkipVerify=true 会同时跳过 IBC 公共参数校验
+	//（信任池与回调全部失效），连接易受中间人攻击，仅供测试。
+	if isClient && c.config.InsecureSkipVerify {
+		return params, nil
+	}
+
+	pool := c.config.ClientIBCSysParams
+	if isClient {
+		pool = c.config.RootIBCSysParams
+	}
+	switch {
+	case pool != nil:
+		trusted, ok := pool.Lookup(params)
+		if !ok {
+			_ = c.sendAlert(alertHandshakeFailure)
+			return nil, errors.New("dtlcp: peer IBC parameters are not trusted")
+		}
+		// 使用池中（而非对端下发）的公共参数进行后续验签与加密。
+		params = trusted
+	case c.config.VerifyIBCSysParams != nil:
+		if err := c.config.VerifyIBCSysParams(params); err != nil {
+			_ = c.sendAlert(alertHandshakeFailure)
+			return nil, err
+		}
+	case local != nil:
+		// 未配置信任池与回调时，默认信任本端配置的 IBC 公共参数：
+		// 对端参数必须与本端参数属于同一 KGC（districtName + districtSerial + 主公钥相等），
+		// 命中后同样改用本端参数，而不是对端下发的参数。
+		if !local.sameKGC(params) {
+			_ = c.sendAlert(alertHandshakeFailure)
+			return nil, errors.New("dtlcp: peer IBC parameters are not trusted")
+		}
+		params = local
+	default:
+		_ = c.sendAlert(alertHandshakeFailure)
+		return nil, errors.New("dtlcp: no trusted IBC parameters configured")
+	}
+
+	if err := params.VerifyValidity(c.config.time()); err != nil {
+		return nil, c.sendAlertForError(err, alertUnsupportedIbcparam)
+	}
+
+	identity := identityDataOf(identityRaw)
+	if len(identity) == 0 {
+		_ = c.sendAlert(alertIdentityNeed)
+		return nil, newIBCError(alertIdentityNeed, "peer IBC identity is missing")
+	}
+	if c.config.VerifyIBCIdentity != nil {
+		if err := c.config.VerifyIBCIdentity(identity); err != nil {
+			_ = c.sendAlert(alertBadCertificate)
+			return nil, err
+		}
+	}
+	return params, nil
+}
+
+// getClientIBCIdentity 返回客户端用于 IBC 双向认证的配置。
+func (c *Conn) getClientIBCIdentity(cri *CertificateRequestInfo) (*IBCIdentity, error) {
+	if c.config.IBCIdentity != nil {
+		return c.config.IBCIdentity, nil
+	}
+	if c.config.GetClientIBCIdentity != nil {
+		return c.config.GetClientIBCIdentity(cri)
+	}
+	return nil, nil
+}
+
+// containsUint16 判断切片中是否包含指定值。
+func containsUint16(list []uint16, v uint16) bool {
+	for _, item := range list {
+		if item == v {
+			return true
+		}
+	}
+	return false
 }
 
 // =============================================================================
@@ -683,6 +919,19 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	c.peerCertificates = hs.session.peerCertificates
+
+	// 恢复 IBC 上下文，用于填充 ConnectionState。
+	if len(hs.session.ibcSysParams) > 0 {
+		params, err := ParseIBCSysParams(hs.session.ibcSysParams)
+		if err != nil {
+			_ = c.sendAlert(alertInternalError)
+			return false, errors.New("dtlcp: invalid IBC parameters in session state")
+		}
+		hs.peerIBCSysParams = params
+		hs.peerIBCIdentity = hs.session.ibcPeerIdentity
+		c.peerIBCIdentity = hs.session.ibcPeerIdentity
+		c.peerIBCSysParams = params
+	}
 	return true, nil
 }
 
@@ -769,6 +1018,10 @@ func (hs *clientHandshakeState) createNewSession() error {
 		masterSecret:     masterSecretCopy,
 		createdAt:        time.Now(),
 		peerCertificates: hs.peerCertificates,
+		ibcPeerIdentity:  hs.peerIBCIdentity,
+	}
+	if hs.peerIBCSysParams != nil {
+		cs.ibcSysParams = hs.peerIBCSysParams.Raw
 	}
 	dst := hs.c.remoteAddr.String()
 	hs.c.config.SessionCache.Put(sessionKey, cs)

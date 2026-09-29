@@ -26,6 +26,10 @@ type SessionState struct {
 	masterSecret     []byte                // 握手协议协商得到的主密钥
 	peerCertificates []*smx509.Certificate // 对端证书
 	createdAt        time.Time             // Session创建时间
+
+	// IBC 相关上下文，仅 IBC/IBSDH 套件下非空。
+	ibcPeerIdentity []byte // 对端 IBC 标识（原始字节）
+	ibcSysParams    []byte // 会话使用的 IBCSysParams（DER）
 }
 
 // SessionCache 会话缓存器接口，用于存储和检索会话状态。

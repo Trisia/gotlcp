@@ -39,6 +39,11 @@ var (
 
 // CipherSuites 返回支持的密码算法套件列表。
 //
+// IBC/IBSDH 套件基于 SM9 标识密码算法，默认不在推荐列表中，
+// 需要显式配置 Config.CipherSuites 与 Config.IBCIdentity 才会启用。
+// 其中 IBSDH 套件还要求 IBCIdentity 中配置密钥交换私钥（应配置按 hid=0x02 派生的那一把，
+// 但本库不校验其派生 hid）。
+//
 // 返回值：
 //   - []*CipherSuite：本库支持的非不安全密码套件；实现中切片的实际排列顺序为 ECDHE_SM4_CBC_SM3、ECDHE_SM4_GCM_SM3、ECC_SM4_CBC_SM3、ECC_SM4_GCM_SM3，以该实际返回顺序为准。
 func CipherSuites() []*CipherSuite {
@@ -47,6 +52,10 @@ func CipherSuites() []*CipherSuite {
 		{ECDHE_SM4_GCM_SM3, "ECDHE_SM4_GCM_SM3", supportedOnlyTLCP, false},
 		{ECC_SM4_CBC_SM3, "ECC_SM4_CBC_SM3", supportedOnlyTLCP, false},
 		{ECC_SM4_GCM_SM3, "ECC_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{IBSDH_SM4_CBC_SM3, "IBSDH_SM4_CBC_SM3", supportedOnlyTLCP, false},
+		{IBSDH_SM4_GCM_SM3, "IBSDH_SM4_GCM_SM3", supportedOnlyTLCP, false},
+		{IBC_SM4_CBC_SM3, "IBC_SM4_CBC_SM3", supportedOnlyTLCP, false},
+		{IBC_SM4_GCM_SM3, "IBC_SM4_GCM_SM3", supportedOnlyTLCP, false},
 	}
 }
 
@@ -90,6 +99,15 @@ const (
 	// certificate is ECDSA or EdDSA. If this is not set then the cipher suite
 	// is RSA based.
 	suiteECSign
+	// suiteIBC indicates that the cipher suite uses the SM9 identity-based
+	// cryptography (IBC/IBSDH) instead of X.509 certificates. Such suites are
+	// only selectable when the local side has an IBCIdentity configured.
+	suiteIBC
+	// suiteIBSDH indicates that the cipher suite uses the SM9 identity-based
+	// key exchange (IBSDH), which additionally requires the local side to hold
+	// a key exchange private key (which should be derived with hid=0x02; the
+	// library does not verify its hid).
+	suiteIBSDH
 )
 
 // A cipherSuite is a TLS 1.0–1.2 cipher suite, and defines the key exchange
@@ -114,6 +132,30 @@ var cipherSuites = map[uint16]*cipherSuite{
 
 	ECDHE_SM4_GCM_SM3: {ECDHE_SM4_GCM_SM3, 16, 0, 4, ecdheKA, suiteECSign | suiteECDHE, nil, nil, aeadSM4GCM},
 	ECDHE_SM4_CBC_SM3: {ECDHE_SM4_CBC_SM3, 16, 32, 16, ecdheKA, suiteECSign | suiteECDHE, cipherSM4, macSM3, nil},
+
+	// GM/T 0024-2023 表 2 中的 IBC/IBSDH 套件，基于 SM9 标识密码算法。
+	IBSDH_SM4_GCM_SM3: {IBSDH_SM4_GCM_SM3, 16, 0, 4, ibsdhKA, suiteECSign | suiteIBC | suiteIBSDH, nil, nil, aeadSM4GCM},
+	IBSDH_SM4_CBC_SM3: {IBSDH_SM4_CBC_SM3, 16, 32, 16, ibsdhKA, suiteECSign | suiteIBC | suiteIBSDH, cipherSM4, macSM3, nil},
+	IBC_SM4_GCM_SM3:   {IBC_SM4_GCM_SM3, 16, 0, 4, ibcKA, suiteECSign | suiteIBC, nil, nil, aeadSM4GCM},
+	IBC_SM4_CBC_SM3:   {IBC_SM4_CBC_SM3, 16, 32, 16, ibcKA, suiteECSign | suiteIBC, cipherSM4, macSM3, nil},
+}
+
+// isIBC 判断密码套件是否使用 SM9 标识密码（IBC/IBSDH）。
+func (c *cipherSuite) isIBC() bool {
+	return c != nil && c.flags&suiteIBC != 0
+}
+
+// isIBSDH 判断密码套件是否使用 SM9 标识密码的密钥交换（IBSDH）。
+//
+// IBSDH 套件除 IBC 身份外还要求本端配置密钥交换私钥（应为按 hid=0x02 派生的那一把；
+// 本库只判断其是否存在，不校验派生 hid）。
+func (c *cipherSuite) isIBSDH() bool {
+	return c != nil && c.flags&suiteIBSDH != 0
+}
+
+// cipherSuiteIsIBC 判断给定套件ID是否使用 SM9 标识密码。
+func cipherSuiteIsIBC(id uint16) bool {
+	return cipherSuites[id].isIBC()
 }
 
 // selectCipherSuite 从推荐ID和候选ID中选择出符合条件的密钥套件
@@ -270,6 +312,16 @@ func eccKA(version uint16) keyAgreementProtocol {
 // SM2 ECDHE 密钥协商协议
 func ecdheKA(version uint16) keyAgreementProtocol {
 	return &sm2ECDHEKeyAgreement{}
+}
+
+// SM9 IBC 密钥交换：客户端用服务端标识与加密主公钥封装预主密钥。
+func ibcKA(version uint16) keyAgreementProtocol {
+	return &ibcKeyAgreement{}
+}
+
+// SM9 IBSDH 密钥交换：服务端为发起方 A，客户端为响应方 B。
+func ibsdhKA(version uint16) keyAgreementProtocol {
+	return &ibsdhKeyAgreement{}
 }
 
 func cipherSM4(key, iv []byte, isRead bool) interface{} {

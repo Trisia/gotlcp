@@ -180,6 +180,7 @@ go run example/dtlcp/quickstart/client/main.go
 - **ECDHE 前向安全** — [example/dtlcp/ecdhe/](../example/dtlcp/ecdhe/)，双向认证 + ECDHE，需双证书
 - **跳过证书校验** — [example/dtlcp/skip_verify/](../example/dtlcp/skip_verify/)，仅测试用，不验证证书
 - **自定义证书校验** — [example/dtlcp/custom_verify/](../example/dtlcp/custom_verify/)，通过 VerifyPeerCertificate 回调
+- **标识密码（IBC/IBSDH）** — [example/dtlcp/ibc/](../example/dtlcp/ibc/)，不使用 X.509 证书，基于 SM9 标识与 KGC 公共参数完成握手（详见 [IBC 配置与使用指南](./IBC-Config.md)）
 
 ### 会话与传输
 

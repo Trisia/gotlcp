@@ -27,7 +27,7 @@ import (
 // 参数：
 //   - pconn：已建立的底层数据报连接，作为 DTLCP 记录层的承载，不能为 nil。
 //   - addr：对端（客户端）地址，用于确定该连接的数据报来源以及发送目标；可以为 nil，此时不校验数据报来源，并把收到的第一个报文地址回填为对端地址（允许 nil 存在来源伪造风险，仅适用于测试或已自行校验来源的场景）。
-//   - config：DTLCP 配置对象，不能为 nil，且至少提供签名密钥对和签名证书、加密密钥对和加密证书（Certificates 顺序为 [签名密钥对, 加密密钥对]）；也可以通过 Config.GetCertificate 与 Config.GetKECertificate 动态获取相应密钥对与证书。
+//   - config：DTLCP 配置对象，不能为 nil，且至少提供签名密钥对和签名证书、加密密钥对和加密证书（Certificates 顺序为 [签名密钥对, 加密密钥对]）；也可以通过 Config.GetCertificate 与 Config.GetKECertificate 动态获取相应密钥对与证书。仅使用 IBC/IBSDH 套件时，可只配置 Config.IBCIdentity（或 Config.GetIBCIdentity），无需任何 X.509 证书。
 //
 // 返回值：
 //   - *Conn：包装后的 DTLCP 服务端连接，尚未完成握手，首次 Read/Write 时自动触发。
@@ -61,7 +61,7 @@ func Server(pconn net.PacketConn, addr net.Addr, config *Config) *Conn {
 // 参数：
 //   - pconn：已建立的底层数据报连接，作为 DTLCP 记录层的承载，不能为 nil。
 //   - addr：服务端地址，用于确定握手与数据传输的对端；可以为 nil，此时不校验数据报来源，并把收到的第一个报文地址回填为对端地址（允许 nil 存在来源伪造风险，仅适用于测试或已自行校验来源的场景）。
-//   - config：DTLCP 配置对象，不能为 nil；若服务端要求客户端身份认证，还需在 Certificates 中提供签名密钥对和签名证书。
+//   - config：DTLCP 配置对象，不能为 nil；若服务端要求客户端身份认证，还需在 Certificates 中提供签名密钥对和签名证书，或在使用 IBC/IBSDH 套件时配置 Config.IBCIdentity / Config.GetClientIBCIdentity 提供 IBC 标识身份。
 //
 // 返回值：
 //   - *Conn：包装后的 DTLCP 客户端连接，尚未完成握手，首次 Read/Write 时自动触发。
@@ -149,7 +149,9 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 // 参数：
 //   - network：网络协议名，DTLCP 面向数据报传输，通常为 "udp"（也支持 "udp4"、"udp6"）；取值语义与 net.ListenPacket 一致。
 //   - laddr：本地监听地址，格式为 "host:port"，例如 ":8443"。
-//   - config：DTLCP 配置对象，不能为 nil，且 Certificates、GetCertificate、GetConfigForClient 三者至少设置其一，否则返回错误；本方法不校验加密证书（Certificates[1] 或 GetKECertificate 缺失要到握手阶段才失败）。
+//   - config：DTLCP 配置对象，不能为 nil，且 Certificates、GetCertificate、GetConfigForClient
+//     三者至少设置其一，或 IBCIdentity、GetIBCIdentity 至少设置其一（仅使用 IBC/IBSDH 套件、
+//     不配置任何 X.509 证书的服务端）；本方法不校验加密证书（Certificates[1] 或 GetKECertificate 缺失要到握手阶段才失败）。
 //
 // 返回值：
 //   - net.Listener：DTLCP 监听器，其 Accept 返回的连接均为 *Conn，可用于接受 DTLCP 连接。
@@ -160,8 +162,9 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 // 因此同一个监听端口可以同时服务多个客户端。Conn.Close 只注销对应客户端，不会关闭监听 socket。
 func Listen(network, laddr string, config *Config) (net.Listener, error) {
 	if config == nil || len(config.Certificates) == 0 &&
-		config.GetCertificate == nil && config.GetConfigForClient == nil {
-		return nil, errors.New("dtlcp: neither Certificates, GetCertificate, nor GetConfigForClient set in Config")
+		config.GetCertificate == nil && config.GetConfigForClient == nil &&
+		config.IBCIdentity == nil && config.GetIBCIdentity == nil {
+		return nil, errors.New("dtlcp: neither Certificates, GetCertificate, GetConfigForClient, nor IBCIdentity set in Config")
 	}
 	pconn, err := net.ListenPacket(network, laddr)
 	if err != nil {

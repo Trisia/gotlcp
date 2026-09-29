@@ -16,7 +16,7 @@
 
 ### 1.1 支持的密码套件
 
-GoTLCP 依据 GM/T 0024-2023 表 2 实现以下 4 个基于 SM9 标识密码的 TLCP 密码套件：
+GoTLCP 依据 GM/T 0024-2023 表 2 实现以下 4 个基于 SM9 标识密码的密码套件，**TLCP（TCP）与 DTLCP（UDP）两个协议均可使用**：
 
 | 常量 | 套件名 | 密钥交换 | 加密 | 校验 | 值 |
 |------|--------|---------|------|------|-----|
@@ -47,11 +47,28 @@ GoTLCP 依据 GM/T 0024-2023 表 2 实现以下 4 个基于 SM9 标识密码的 
 - 一个可用的 KGC，能提供**公共参数**与**用户私钥**；
 - 公共参数必须通过**带外渠道**预置到对端信任池（`RootIBCSysParams` / `ClientIBCSysParams`），或由校验回调判定。
 
-### 1.4 相关文档
+### 1.4 TLCP 与 DTLCP 的差异
+
+本文档中的配置项、类型与信任判定逻辑在 `tlcp` 与 `dtlcp` 两个包中**完全同名同义**（例如 `tlcp.IBCIdentity` 对应 `dtlcp.IBCIdentity`），仅连接建立方式与传输层行为不同：
+
+| 维度 | TLCP（`tlcp` 包） | DTLCP（`dtlcp` 包） |
+|------|-------------------|---------------------|
+| 传输 | TCP，`net.Conn` | UDP，`net.PacketConn` |
+| 服务端 | `tlcp.Listen("tcp", addr, config)` + `Accept` | `dtlcp.Listen("udp", addr, config)` + `Accept`，或对 `net.PacketConn` 调用 `dtlcp.Server` |
+| 客户端 | `tlcp.Dial("tcp", addr, config)` | `dtlcp.Dial("udp", addr, config)`，或 `dtlcp.Client` |
+| 握手报文 | 无握手消息头 | 12 字节握手头（含 `message_seq`、分片字段），超 `PMTU` 的 IBC Certificate 消息自动分片重组 |
+| 可靠性 | 由 TCP 保证 | 指数退避重传 + `HelloVerifyRequest` Cookie 防 DoS |
+| 应用数据 | 字节流语义 | `Read`/`Write` 为流式，`ReadFrom`/`WriteTo` 保留报文边界 |
+| 会话重用键 | 服务端地址 / 会话 ID | 对端地址 + 会话 ID（`SessionCache`） |
+
+因此，下文示例若使用 `tlcp.` 前缀，改写为 `dtlcp.` 并替换 `Listen`/`Dial` 的网络参数即可用于 DTLCP；DTLCP 的完整可运行示例见 [example/dtlcp/ibc](../example/dtlcp/ibc)。
+
+### 1.5 相关文档
 
 | 文档 | 内容 |
 |------|------|
 | [IBC 快速入门](./IBC-QuickStart.md) | 单文件可运行示例、运行方式 |
+| [DTLCP 配置与使用指南](./DTLCP-Config.md) | DTLCP 的 Config 字段、重传、Cookie、PMTU 等传输层配置 |
 | [客户端配置](./ClientConfig.md) / [服务端配置](./ServerConfig.md) | 通用 Config 字段 |
 | [数字证书及密钥](./CertAndKey.md) | 第 1、2 章仅 ECC/ECDHE 套件适用；第 3 章为 SM9/IBC 的密钥与公共参数 |
 
@@ -523,6 +540,8 @@ config := &tlcp.Config{
 - **不重新校验** `IBCSysParams.validity`；
 - 会话状态中缓存了对端标识与公共参数，重用后 `ConnectionState.PeerIBCIdentity` / `PeerIBCSysParams` 仍可读取；
 - 可通过 `Conn.ConnectionState().DidResume` 确认是否命中重用。
+
+> **DTLCP**：IBC 会话重用在 DTLCP 下同样可用（`dtlcp.NewLRUSessionCache`），但 DTLCP 的会话缓存以**对端地址**为键，客户端地址变化（NAT 重绑定、重启换端口）会导致无法命中；此外 DTLCP 重用握手的 `ServerHello` 会与 `ChangeCipherSpec`/`Finished` 合并在同一数据报中传输。
 
 ### 6.9 与 ECC/ECDHE 混合协商
 
