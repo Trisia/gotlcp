@@ -27,6 +27,8 @@ GoTLCP 实现了记录层协议、握手协议族以及密钥计算，支持完�
 
 *若 clone 和文档预览存在困难，请移步 [https://gitee.com/Trisia/gotlcp](https://gitee.com/Trisia/gotlcp)*
 
+**若您想快速实现TLCP（国密）HTTPS代理，可以考虑使用 [tlcpchan工具 . https://github.com/Trisia/tlcpchan](https://github.com/Trisia/tlcpchan)**
+
 ## 安装
 
 为了安装使用 GoTLCP，您需要首先安装 [Go](https://go.dev/) 并且设置您的 Go 环境，GoTLCP 至少需要您的 Go 版本在 **1.25 及以上**。
