@@ -1042,6 +1042,8 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 
 	finished := new(finishedMsg)
 	finished.verifyData = hs.finishedHash.clientSum(hs.masterSecret)
+	finished.setMessageSeq(c.messageSeq)
+	c.messageSeq++
 	if _, err := c.writeHandshakeRecord(finished, &hs.finishedHash); err != nil {
 		return err
 	}
