@@ -3,7 +3,10 @@
 
 package dtlcp
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // RetransmitTimer DTLCP 重传定时器，支持指数退避策略。
 // 初始超时 = Config.InitialRetransmitTimeout（默认 1s）。
@@ -14,6 +17,10 @@ type RetransmitTimer struct {
 	current  time.Duration
 	max      time.Duration
 	newTimer func(time.Duration) *TimerHandle
+
+	// handleMu 保护 handle，定时器可能由握手 goroutine 更新、
+	// 被测试或并发调用方读取。
+	handleMu sync.Mutex
 	handle   *TimerHandle
 }
 
@@ -29,7 +36,10 @@ func newRetransmitTimer(initial, max time.Duration, newTimer func(time.Duration)
 
 // start 启动定时器（使用当前超时值）
 func (t *RetransmitTimer) start() {
-	t.handle = t.newTimer(t.current)
+	handle := t.newTimer(t.current)
+	t.handleMu.Lock()
+	t.handle = handle
+	t.handleMu.Unlock()
 }
 
 // backoff 指数退避：当前值翻倍，不超过 max，然后重启
@@ -49,21 +59,34 @@ func (t *RetransmitTimer) reset() {
 
 // stop 停止定时器
 func (t *RetransmitTimer) stop() {
-	if t.handle != nil {
-		t.handle.Stop()
-		t.handle = nil
+	t.handleMu.Lock()
+	handle := t.handle
+	t.handle = nil
+	t.handleMu.Unlock()
+	if handle != nil {
+		handle.Stop()
 	}
 }
 
 // fired 检查定时器是否已触发（非阻塞）
 func (t *RetransmitTimer) fired() bool {
-	if t.handle == nil {
+	t.handleMu.Lock()
+	handle := t.handle
+	t.handleMu.Unlock()
+	if handle == nil {
 		return false
 	}
 	select {
-	case <-t.handle.C:
+	case <-handle.C:
 		return true
 	default:
 		return false
 	}
+}
+
+// currentHandle 返回当前定时器句柄，无定时器时返回 nil。
+func (t *RetransmitTimer) currentHandle() *TimerHandle {
+	t.handleMu.Lock()
+	defer t.handleMu.Unlock()
+	return t.handle
 }

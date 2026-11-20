@@ -81,6 +81,7 @@ const (
 // TLCP GB/T 38636-2016 6.4.5.1 握手消息类型定义
 const (
 	typeClientHello        uint8 = 1
+	typeHelloRequest       uint8 = 0 // 重握手的发起消息
 	typeServerHello        uint8 = 2
 	typeHelloVerifyRequest uint8 = 3 // DTLCP 新增：HelloVerifyRequest 消息
 	typeCertificate        uint8 = 11
@@ -101,6 +102,8 @@ const (
 //   - string：已知类型的英文名称（如 "Client Hello"）；未知类型返回 "0xXX" 格式的十六进制文本。
 func HandshakeMessageTypeName(id uint8) string {
 	switch id {
+	case typeHelloRequest:
+		return "Hello Request"
 	case typeClientHello:
 		return "Client Hello"
 	case typeServerHello:
@@ -482,6 +485,21 @@ type Config struct {
 	// OnAlert 在发生报警时回调该方法，在该方法内请不要执行耗时操作！
 	OnAlert func(code uint8, conn *Conn)
 
+	// OnRenegotiation 【可选】 客户端收到服务端 HelloRequest 时调用，
+	// 用于决定是否接受本次重握手。
+	//
+	// 参数：
+	//   - *RenegotiationOffer：本次重握手请求的上下文，包含连接对象、
+	//     已完成的握手轮数与重握手前的连接状态快照。
+	//
+	// 返回值：
+	//   - bool：返回 true 继续本次重握手；返回 false 则回退到原有会话，
+	//     并向服务端发送 no_renegotiation 告警，连接保持可用。
+	//
+	// 该字段为空时视为拒绝重握手。注意：一旦返回 true，重握手失败将
+	// 关闭连接，应用数据在重握手期间阻塞，请勿在该方法内执行耗时操作。
+	OnRenegotiation func(*RenegotiationOffer) bool
+
 	// mutex protects sessionTicketKeys and autoSessionTicketKeys.
 	mutex sync.RWMutex
 
@@ -609,6 +627,7 @@ func (c *Config) Clone() *Config {
 		MaxVersion:                c.MaxVersion,
 		CurvePreferences:          c.CurvePreferences,
 		OnAlert:                   c.OnAlert,
+		OnRenegotiation:           c.OnRenegotiation,
 		EnableDebug:               c.EnableDebug,
 		TrustedCAIndications:      c.TrustedCAIndications,
 		IBCIdentity:               c.IBCIdentity.Clone(),
@@ -833,6 +852,20 @@ func (c *Certificate) leaf() (*smx509.Certificate, error) {
 		return c.Leaf, nil
 	}
 	return smx509.ParseCertificate(c.Certificate[0])
+}
+
+// RenegotiationOffer 描述一次服务端发起重握手请求的上下文，
+// 由客户端在收到 HelloRequest 时通过 Config.OnRenegotiation 获得。
+type RenegotiationOffer struct {
+	// Conn 收到重握手请求的连接。
+	Conn *Conn
+
+	// HandshakeCount 本连接已完成的历史握手轮数，首次握手完成后为 1。
+	// 该值为拒绝本轮重握手时恢复旧会话所用的计数，不含本次被提议的握手。
+	HandshakeCount int
+
+	// PreviousState 重握手请求前生效的连接状态快照。
+	PreviousState ConnectionState
 }
 
 // handshakeState 四态握手状态机

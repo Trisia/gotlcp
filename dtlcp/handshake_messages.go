@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"strings"
 
-
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -155,13 +154,13 @@ func dtlcpUnmarshalHeader(data []byte) (msgType uint8, bodyLen uint32, messageSe
 		return 0, 0, 0, 0, 0, nil, false
 	}
 	if fragmentLength > 0 {
-			if int(fragmentLength) > len(s) {
-				return 0, 0, 0, 0, 0, nil, false
-			}
-			body = []byte(s[:fragmentLength])
-		} else {
-			body = []byte(s)
+		if int(fragmentLength) > len(s) {
+			return 0, 0, 0, 0, 0, nil, false
 		}
+		body = []byte(s[:fragmentLength])
+	} else {
+		body = []byte(s)
+	}
 	return msgType, bodyLen, messageSeq, fragmentOffset, fragmentLength, body, true
 }
 
@@ -172,20 +171,20 @@ func dtlcpUnmarshalHeader(data []byte) (msgType uint8, bodyLen uint32, messageSe
 type clientHelloMsg struct {
 	raw                []byte
 	vers               uint16
-	random             []byte          // 32 字节
-	sessionId          []byte          // 会话标识
-	cookie             []byte          // DTLCP 新增：cookie<0..2^8-1>
-	cipherSuites       []uint16        // 密码套件列表
-	compressionMethods []uint8         // 压缩方法
+	random             []byte   // 32 字节
+	sessionId          []byte   // 会话标识
+	cookie             []byte   // DTLCP 新增：cookie<0..2^8-1>
+	cipherSuites       []uint16 // 密码套件列表
+	compressionMethods []uint8  // 压缩方法
 
 	// GM/T 0024-2023 6.4.5.2.3 Hello消息扩展字段
 	serverName                   string             // 服务器名称
-	trustedAuthorities           []TrustedAuthority  // 信任的CA证书信息
-	ocspStapling                 bool                // 证书状态请求
-	supportedCurves              []CurveID           // 支持的椭圆曲线
-	supportedSignatureAlgorithms []SignatureScheme   // 支持的签名算法
-	alpnProtocols                []string            // 支持的应用层协议
-	ibsdhClientID                []byte              // IBSDH密钥交换 客户端标识
+	trustedAuthorities           []TrustedAuthority // 信任的CA证书信息
+	ocspStapling                 bool               // 证书状态请求
+	supportedCurves              []CurveID          // 支持的椭圆曲线
+	supportedSignatureAlgorithms []SignatureScheme  // 支持的签名算法
+	alpnProtocols                []string           // 支持的应用层协议
+	ibsdhClientID                []byte             // IBSDH密钥交换 客户端标识
 
 	// DTLCP 分片字段
 	messageSeq     uint16
@@ -527,6 +526,66 @@ func (m *clientHelloMsg) getMessageSeq() uint16 {
 }
 
 // =============================================================================
+// helloRequestMsg — 重握手发起消息
+// =============================================================================
+
+// helloRequestMsg 是服务端发起重握手的 HelloRequest 消息（GM/T 0128—2023 6.4.5.4.4）。
+// 消息体为空，message_seq 为 0。
+type helloRequestMsg struct {
+	raw []byte
+
+	// DTLCP 分片字段
+	messageSeq     uint16
+	fragmentOffset uint24
+	fragmentLength uint24
+}
+
+// marshal 编码 HelloRequest 消息。
+func (m *helloRequestMsg) marshal() ([]byte, error) {
+	if m.raw != nil {
+		return m.raw, nil
+	}
+	x := make([]byte, dtlcpHeaderLen)
+	dtlcpWriteHeader(x, typeHelloRequest, 0, m.messageSeq, m.fragmentOffset, 0)
+	m.raw = x
+	return x, nil
+}
+
+// unmarshal 解析 HelloRequest 消息。
+func (m *helloRequestMsg) unmarshal(data []byte) bool {
+	msgType, bodyLen, messageSeq, fragmentOffset, fragmentLength, body, ok := dtlcpUnmarshalHeader(data)
+	if !ok || msgType != typeHelloRequest || bodyLen != 0 || len(body) != 0 {
+		return false
+	}
+	m.raw = data
+	m.messageSeq = messageSeq
+	m.fragmentOffset = fragmentOffset
+	m.fragmentLength = fragmentLength
+	return true
+}
+
+// messageType 返回握手消息类型。
+func (m *helloRequestMsg) messageType() uint8 {
+	return typeHelloRequest
+}
+
+// debug 输出调试信息。
+func (m *helloRequestMsg) debug() {
+	fmt.Printf(">>> Hello Request\n<<<\n")
+}
+
+// setMessageSeq 设置握手消息序号。
+func (m *helloRequestMsg) setMessageSeq(seq uint16) {
+	m.messageSeq = seq
+	m.raw = nil
+}
+
+// getMessageSeq 返回握手消息序号。
+func (m *helloRequestMsg) getMessageSeq() uint16 {
+	return m.messageSeq
+}
+
+// =============================================================================
 // helloVerifyRequestMsg — DTLCP 新增消息类型
 // =============================================================================
 
@@ -535,8 +594,8 @@ func (m *clientHelloMsg) getMessageSeq() uint16 {
 // 包含一个 cookie，客户端须在重发的 ClientHello 中携带此 cookie。
 type helloVerifyRequestMsg struct {
 	raw            []byte
-	serverVersion  uint16   // 0x0101
-	cookie         []byte   // cookie<0..255>
+	serverVersion  uint16 // 0x0101
+	cookie         []byte // cookie<0..255>
 	messageSeq     uint16
 	fragmentOffset uint24
 	fragmentLength uint24
@@ -613,10 +672,10 @@ type serverHelloMsg struct {
 	compressionMethod uint8
 
 	// GM/T 0024-2023 扩展字段
-	ocspStapling  bool    // 证书状态请求
-	ocspResponse  []byte  // OCSP应答内容DER
-	alpnProtocol  string  // 应用层协议
-	serverNameAck bool    // 服务器名称确认
+	ocspStapling  bool   // 证书状态请求
+	ocspResponse  []byte // OCSP应答内容DER
+	alpnProtocol  string // 应用层协议
+	serverNameAck bool   // 服务器名称确认
 
 	// DTLCP 分片字段
 	messageSeq     uint16
@@ -985,8 +1044,8 @@ func (m *serverKeyExchangeMsg) getMessageSeq() uint16 {
 type certificateRequestMsg struct {
 	raw []byte
 
-	certificateTypes        []byte
-	certificateAuthorities  [][]byte
+	certificateTypes       []byte
+	certificateAuthorities [][]byte
 
 	// DTLCP 分片字段
 	messageSeq     uint16
@@ -1006,10 +1065,10 @@ func (m *certificateRequestMsg) marshal() ([]byte, error) {
 	}
 	length += casLength
 
-fragLen := m.fragmentLength
-if fragLen == 0 {
-	fragLen = uint24(length)
-}
+	fragLen := m.fragmentLength
+	if fragLen == 0 {
+		fragLen = uint24(length)
+	}
 	x := make([]byte, dtlcpHeaderLen+length)
 	x[0] = typeCertificateRequest
 	x[1] = uint8(length >> 16)

@@ -35,8 +35,8 @@ func (l *lossyPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return l.inner.WriteTo(p, addr)
 }
 
-func (l *lossyPacketConn) Close() error              { return l.inner.Close() }
-func (l *lossyPacketConn) LocalAddr() net.Addr        { return l.inner.LocalAddr() }
+func (l *lossyPacketConn) Close() error                       { return l.inner.Close() }
+func (l *lossyPacketConn) LocalAddr() net.Addr                { return l.inner.LocalAddr() }
 func (l *lossyPacketConn) SetDeadline(t time.Time) error      { return l.inner.SetDeadline(t) }
 func (l *lossyPacketConn) SetReadDeadline(t time.Time) error  { return l.inner.SetReadDeadline(t) }
 func (l *lossyPacketConn) SetWriteDeadline(t time.Time) error { return l.inner.SetWriteDeadline(t) }
@@ -104,8 +104,10 @@ func TestDropFlight1ClientHello(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Fire 客户端重传定时器 (在 cookie 循环中)
-	if cli.retransmitTimer != nil && cli.retransmitTimer.handle != nil {
-		fireMockTimer(cli.retransmitTimer.handle)
+	if cli.retransmitTimer != nil {
+		if handle := cli.retransmitTimer.currentHandle(); handle != nil {
+			fireMockTimer(handle)
+		}
 	}
 
 	err := cli.Handshake()
@@ -181,12 +183,19 @@ func TestHandshakeTimeout(t *testing.T) {
 		done <- cli.Handshake()
 	}()
 
+	// 等待客户端进入等待态，确保重传定时器已创建，避免与握手 goroutine 竞争
+	deadline := time.Now().Add(time.Second)
+	for cli.hsState.Load() != int32(stateWaiting) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+
 	// 手动 fire 多次重传定时器模拟超时后关闭连接
-	time.Sleep(10 * time.Millisecond)
 	for i := 0; i < 10; i++ {
 		time.Sleep(5 * time.Millisecond)
-		if cli.retransmitTimer != nil && cli.retransmitTimer.handle != nil {
-			fireMockTimer(cli.retransmitTimer.handle)
+		if cli.retransmitTimer != nil {
+			if handle := cli.retransmitTimer.currentHandle(); handle != nil {
+				fireMockTimer(handle)
+			}
 		}
 	}
 	// 关闭连接迫使握手退出
@@ -277,8 +286,10 @@ func TestDropFlight4ServerHello(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Fire 客户端重传定时器
-	if cli.retransmitTimer != nil && cli.retransmitTimer.handle != nil {
-		fireMockTimer(cli.retransmitTimer.handle)
+	if cli.retransmitTimer != nil {
+		if handle := cli.retransmitTimer.currentHandle(); handle != nil {
+			fireMockTimer(handle)
+		}
 	}
 
 	err := cli.Handshake()

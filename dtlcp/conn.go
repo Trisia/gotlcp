@@ -76,6 +76,13 @@ type Conn struct {
 	// 分片重组
 	pendingFragments map[uint16]*fragmentBuffer
 
+	// 乱序握手消息缓存，键为 message_seq，用于保存序号大于 nextReceiveSeq 的消息
+	pendingHandshake map[uint16]*handshakeMsgCache
+	// 收到对端重传消息时置位，供等待方触发整轮重传
+	peerRetransmit bool
+	// 本端正在等待对端响应重握手，用于识别对端的拒绝告警
+	isRenegotiating bool
+
 	// 缓冲区
 	rawInputBuf []byte       // 单个 UDP 报文缓冲区
 	handBuf     bytes.Buffer // 握手数据
@@ -709,6 +716,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 
 		// 重放检查（解密成功后执行，RFC 6347 §4.1.2.6）
 		if epoch < c.readEpoch {
+
 			// 旧 epoch：静默丢弃，继续下一条记录
 			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+n:]
 			continue
@@ -757,6 +765,10 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			}
 			switch data[0] {
 			case alertLevelWarning:
+				// 对端拒绝重握手：终止当前等待，交由调用方按旧会话继续
+				if alert(data[1]) == alertNoRenegotiation && c.isRenegotiating {
+					return errRenegotiationRefused
+				}
 				c.rawInputBuf = nil
 				return c.retryReadRecord(expectChangeCipherSpec)
 			case alertLevelError:
@@ -831,6 +843,21 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 			}
 			if len(data) == 0 || expectChangeCipherSpec {
 				return c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+			}
+			// 握手完成态收到 HelloRequest：按需接受重握手（GM/T 0128—2023 6.4.5.3）。
+			// 须持有 c.in 锁与 c.handshakeMutex，由 ReadFrom/Read 在取锁与握手入口之后调用。
+			if handshakeComplete && data[0] == typeHelloRequest {
+				consumed, err := c.handleInboundHelloRequest(data)
+				if err != nil {
+					return err
+				}
+				if consumed {
+					// 拒绝或忽略时本条消息已消费，继续读循环等待后续记录
+					if len(c.rawInputBuf) > 0 {
+						continue
+					}
+					return nil
+				}
 			}
 			c.handBuf.Write(data)
 			// 如果还有未处理记录，继续循环处理
@@ -1084,6 +1111,11 @@ func (c *Conn) writeChangeCipherRecord() error {
 func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 	fragmentReads := 0
 	for {
+		// 优先取出此前因乱序而暂存、且当前序号已连续的消息
+		if cached, ok := c.nextCachedHandshake(); ok {
+			return c.finishHandshakeMessage(cached, transcript)
+		}
+
 		fragmentReads++
 		if fragmentReads > maxHandshakeFragments {
 			c.sendAlertLocked(alertUnexpectedMessage)
@@ -1160,51 +1192,200 @@ func (c *Conn) readHandshake(transcript transcriptHash) (interface{}, error) {
 			delete(c.pendingFragments, msgSeq)
 		}
 
-		var m handshakeMessage
-		switch data[0] {
-		case typeClientHello:
-			m = new(clientHelloMsg)
-		case typeHelloVerifyRequest:
-			m = new(helloVerifyRequestMsg)
-		case typeServerHello:
-			m = new(serverHelloMsg)
-		case typeCertificate:
-			// IBC 套件使用同类型的 IBC 变体 Certificate 消息，
-			// 报文结构与 X.509 版本不同，按已协商的密码套件区分。
-			if cipherSuiteIsIBC(c.cipherSuite) {
-				m = new(ibcCertificateMsg)
-			} else {
-				m = new(certificateMsg)
-			}
-		case typeServerKeyExchange:
-			m = new(serverKeyExchangeMsg)
-		case typeCertificateRequest:
-			m = new(certificateRequestMsg)
-		case typeServerHelloDone:
-			m = new(serverHelloDoneMsg)
-		case typeClientKeyExchange:
-			m = new(clientKeyExchangeMsg)
-		case typeCertificateVerify:
-			m = new(certificateVerifyMsg)
-		case typeFinished:
-			m = new(finishedMsg)
-		default:
-			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
-		}
-
 		data = append([]byte(nil), data...)
 
-		if !m.unmarshal(data) {
-			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+		// 按 next_receive_seq 校验握手消息顺序（GM/T 0128—2023 6.4.5.1）。
+		// 返回要处理的消息数据；序号尚不连续时 done 为 false，需继续读取。
+		seqData, done, seqErr := c.sequencedHandshakeData(data)
+		if seqErr != nil {
+			return nil, c.in.setErrorLocked(seqErr)
 		}
-		if transcript != nil {
-			transcript.Write(data)
+		if !done {
+			// 已缓存乱序消息：立即处理补齐后可连续取出的消息
+			if cached, ok := c.nextCachedHandshake(); ok {
+				return c.finishHandshakeMessage(cached, transcript)
+			}
+			// 收到对端重传：返回让等待方整轮重传，避免在此空等
+			if c.peerRetransmit {
+				return nil, errPeerRetransmit
+			}
+			continue
 		}
-		if c.config.EnableDebug {
-			m.debug()
-		}
-		return m, nil
+
+		return c.finishHandshakeMessage(seqData, transcript)
 	}
+}
+
+// finishHandshakeMessage 解析一条完整握手消息，并按需写入转录哈希。
+//
+// 参数：
+//   - data：完整握手消息（含 12 字节握手头）。
+//   - transcript：转录哈希，为 nil 时不记录该消息。
+//
+// 返回值：
+//   - interface{}：解析后的握手消息对象。
+//   - error：消息类型不支持或解析失败时返回错误。
+func (c *Conn) finishHandshakeMessage(data []byte, transcript transcriptHash) (interface{}, error) {
+	var m handshakeMessage
+	switch data[0] {
+	case typeHelloRequest:
+		m = new(helloRequestMsg)
+	case typeClientHello:
+		m = new(clientHelloMsg)
+	case typeHelloVerifyRequest:
+		m = new(helloVerifyRequestMsg)
+	case typeServerHello:
+		m = new(serverHelloMsg)
+	case typeCertificate:
+		// IBC 套件使用同类型的 IBC 变体 Certificate 消息，
+		// 报文结构与 X.509 版本不同，按已协商的密码套件区分。
+		if cipherSuiteIsIBC(c.cipherSuite) {
+			m = new(ibcCertificateMsg)
+		} else {
+			m = new(certificateMsg)
+		}
+	case typeServerKeyExchange:
+		m = new(serverKeyExchangeMsg)
+	case typeCertificateRequest:
+		m = new(certificateRequestMsg)
+	case typeServerHelloDone:
+		m = new(serverHelloDoneMsg)
+	case typeClientKeyExchange:
+		m = new(clientKeyExchangeMsg)
+	case typeCertificateVerify:
+		m = new(certificateVerifyMsg)
+	case typeFinished:
+		m = new(finishedMsg)
+	default:
+		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+
+	if !m.unmarshal(data) {
+		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+	if transcript != nil {
+		transcript.Write(data)
+	}
+	if c.config.EnableDebug {
+		m.debug()
+	}
+	return m, nil
+}
+
+// errPeerRetransmit 表示读取期间收到对端的重传消息，等待方应整轮重传已发送的消息
+// （GM/T 0128—2023 6.4.5.3 b)）。
+var errPeerRetransmit = errors.New("dtlcp: peer retransmitted handshake messages")
+
+// handshakeMsgCache 保存因乱序到达而暂存的完整握手消息。
+type handshakeMsgCache struct {
+	data       []byte    // 完整握手消息（含 12 字节握手头）
+	receivedAt time.Time // 暂存时间，用于清理过期缓存
+}
+
+// maxPendingHandshake 限制乱序握手消息缓存的消息数量，防止恶意对端占用内存。
+const maxPendingHandshake = 32
+
+// sequencedHandshakeData 按 next_receive_seq 校验并排序握手消息（GM/T 0128—2023 6.4.5.1）。
+//
+// 序号等于 next_receive_seq 的消息立即处理并把计数器加 1；序号小于该值的消息属于
+// 对端重传，通过 retransmit 通知等待方重发已发送的一轮消息；序号大于该值的消息
+// 暂存，待前序消息补齐后按序取出。
+//
+// 参数：
+//   - data：本端刚收到的完整握手消息（含 12 字节握手头）。
+//
+// 返回值：
+//   - []byte：本轮应交给上层解析的握手消息数据，序号不连续时为 nil。
+//   - bool：为 true 表示返回的数据可以立即处理；为 false 表示需要继续读取。
+//   - error：序号缓存溢出等异常情况时返回错误。
+func (c *Conn) sequencedHandshakeData(data []byte) ([]byte, bool, error) {
+	msgSeq := uint16(data[4])<<8 | uint16(data[5])
+
+	switch {
+	case msgSeq < c.nextReceiveSeq:
+		// 对端重传：本端先前发送的一轮消息可能丢失，交由等待方整轮重传
+		c.peerRetransmit = true
+		return nil, false, nil
+
+	case msgSeq > c.nextReceiveSeq:
+		// 乱序消息：暂存等待前序消息
+		c.cleanupStaleHandshakeCache()
+		if c.pendingHandshake == nil {
+			c.pendingHandshake = make(map[uint16]*handshakeMsgCache)
+		}
+		// 同一序号已缓存时覆盖，对端可能用更小分片重传
+		if _, exists := c.pendingHandshake[msgSeq]; !exists && len(c.pendingHandshake) >= maxPendingHandshake {
+			return nil, false, errors.New("dtlcp: too many pending out-of-order handshake messages")
+		}
+		c.pendingHandshake[msgSeq] = &handshakeMsgCache{data: data, receivedAt: time.Now()}
+		return nil, false, nil
+	}
+
+	// 序号连续：处理本条消息
+	c.nextReceiveSeq++
+	return data, true, nil
+}
+
+// takePeerRetransmit 读取并清除“收到对端重传”标记。
+//
+// 返回值：
+//   - bool：为 true 表示上次读取期间收到过对端的重传消息。
+func (c *Conn) takePeerRetransmit() bool {
+	if !c.peerRetransmit {
+		return false
+	}
+	c.peerRetransmit = false
+	return true
+}
+
+// cleanupStaleHandshakeCache 清理超过 fragmentTimeout 未补齐的乱序握手消息。
+func (c *Conn) cleanupStaleHandshakeCache() {
+	now := time.Now()
+	for seq, cache := range c.pendingHandshake {
+		if now.Sub(cache.receivedAt) > fragmentTimeout {
+			delete(c.pendingHandshake, seq)
+		}
+	}
+}
+
+// nextCachedHandshake 取出序号为 next_receive_seq 的已缓存握手消息。
+//
+// 返回值：
+//   - []byte：缓冲区中序号连续的握手消息数据。
+//   - bool：为 true 表示成功取出一条消息。
+func (c *Conn) nextCachedHandshake() ([]byte, bool) {
+	if c.pendingHandshake == nil {
+		return nil, false
+	}
+	cache, ok := c.pendingHandshake[c.nextReceiveSeq]
+	if !ok {
+		return nil, false
+	}
+	delete(c.pendingHandshake, c.nextReceiveSeq)
+	c.nextReceiveSeq++
+	return cache.data, true
+}
+
+// clearPendingHandshake 清空乱序握手消息缓存，握手完成时调用以释放内存。
+func (c *Conn) clearPendingHandshake() {
+	for k := range c.pendingHandshake {
+		delete(c.pendingHandshake, k)
+	}
+}
+
+// readUntilAppData 在持有 c.in 锁期间读取记录，直到 c.readBuf 中有可读的应用数据。
+//
+// 须由 Read 持有 c.in 锁调用；本函数内不得再取 c.in 锁。
+//
+// 返回值：
+//   - error：读取失败时返回非 nil；接受对端重握手请求时返回 errStartRenegotiation。
+func (c *Conn) readUntilAppData() error {
+	for len(c.readBuf) == 0 {
+		if err := c.readRecord(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // fragmentTimeout 是待重组分片的超时时间。
@@ -1245,7 +1426,10 @@ func (c *Conn) sendAlertLocked(err alert) error {
 	c.tmp[1] = byte(err)
 
 	_, writeErr := c.writeRecordLocked(recordTypeAlert, c.tmp[0:2])
-	if err == alertCloseNotify {
+	// warning 级告警不终止本端写入：close_notify 表示单向结束，
+	// no_renegotiation 仅拒绝重握手，旧会话仍可继续收发
+	switch err {
+	case alertCloseNotify, alertNoRenegotiation:
 		return writeErr
 	}
 
@@ -1366,13 +1550,23 @@ func (c *Conn) Read(b []byte) (int, error) {
 		return 0, nil
 	}
 
-	c.in.Lock()
-	defer c.in.Unlock()
+	for {
+		c.in.Lock()
+		err := c.readUntilAppData()
+		c.in.Unlock()
 
-	for len(c.readBuf) == 0 {
-		if err := c.readRecord(); err != nil {
+		// 已接受重握手请求：状态已重置并释放了 c.in 锁，
+		// 回到握手入口完成新一轮握手后继续读取
+		if errors.Is(err, errStartRenegotiation) {
+			if err := c.Handshake(); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		if err != nil {
 			return 0, err
 		}
+		break
 	}
 
 	n := copy(b, c.readBuf)
@@ -1452,7 +1646,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 // 返回值：
 //   - int：复制到 p 的明文字节数，可能小于该条记录的明文长度。
 //   - net.Addr：对端地址，即握手协商的对端地址，而非本条数据报的发送方地址。
-//   - error：读取失败时返回非 nil；连接已关闭时返回 net.ErrClosed；对端发送 close_notify 告警时返回 io.EOF；底层超时等错误原样返回；解密或 MAC 校验失败的记录不会返回错误，而是被静默丢弃并继续读取。
+//   - error：读取失败时返回非 nil；连接已关闭时返回 net.ErrClosed；对端发送 close_notify 告警时返回 io.EOF；底层超时等错误原样返回；解密或 MAC 校验失败的记录不会返回错误，而是被静默丢弃并继续读取；接受对端重握手请求时不返回错误，内部完成新一轮握手后继续读取。
 func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	for {
 		x := atomic.LoadInt32(&c.activeCall)
@@ -1465,20 +1659,47 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 	defer atomic.AddInt32(&c.activeCall, -2)
 
-	if err = c.Handshake(); err != nil {
-		return 0, nil, err
-	}
-
-	c.in.Lock()
-	defer c.in.Unlock()
-
 	for {
-		if err = c.readDatagram(); err != nil {
+		if err = c.Handshake(); err != nil {
 			return 0, nil, err
 		}
 
-		if len(c.rawInputBuf) < recordHeaderLen {
+		c.in.Lock()
+		n, addr, err = c.readFromLocked(p)
+		c.in.Unlock()
+
+		// 已接受重握手请求：状态已重置并释放了 c.in 锁，
+		// 回到握手入口完成新一轮握手后继续读取
+		if errors.Is(err, errStartRenegotiation) {
 			continue
+		}
+		return n, addr, err
+	}
+}
+
+// readFromLocked 在持有 c.in 锁期间读取一条应用数据记录。
+//
+// 须由 ReadFrom 持有 c.in 锁调用；本函数内不得再取 c.in 锁。
+//
+// 参数：
+//   - p：接收缓冲区。
+//
+// 返回值：
+//   - int：复制到 p 的明文字节数。
+//   - net.Addr：对端地址。
+//   - error：读取失败时返回非 nil；接受重握手请求时返回 errStartRenegotiation。
+func (c *Conn) readFromLocked(p []byte) (n int, addr net.Addr, err error) {
+	handshakeComplete := c.handshakeComplete()
+
+	for {
+		// 缓冲区中仍有多条记录时继续处理，仅在不足一条记录头时才读新数据报
+		if len(c.rawInputBuf) < recordHeaderLen {
+			if err = c.readDatagram(); err != nil {
+				return 0, nil, err
+			}
+			if len(c.rawInputBuf) < recordHeaderLen {
+				continue
+			}
 		}
 
 		hdr := c.rawInputBuf[:recordHeaderLen]
@@ -1489,6 +1710,8 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		recLen := int(hdr[11])<<8 | int(hdr[12])
 
 		if recordHeaderLen+recLen > len(c.rawInputBuf) {
+			// 记录不完整：丢弃整个数据报
+			c.rawInputBuf = nil
 			continue
 		}
 
@@ -1505,12 +1728,15 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		record := c.rawInputBuf[:recordHeaderLen+recLen]
 		plaintext, actualTyp, err := c.in.decrypt(record)
 		if err != nil {
+			// 解密失败：丢弃本条记录，继续处理后续记录
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+recLen:]
 			continue
 		}
 
 		// 重放检查（解密成功后执行，RFC 6347 §4.1.2.6）
 		if epoch < c.readEpoch {
 			// 旧 epoch：静默丢弃
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+recLen:]
 			continue
 		}
 		if epoch > c.readEpoch {
@@ -1524,22 +1750,37 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		}
 		if !c.replayWindow.check(seqNum) {
 			// 重放检测：静默丢弃
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+recLen:]
 			continue
 		}
 
 		if actualTyp != recordTypeApplicationData {
-			// 非应用数据由内部处理
+			// 非应用数据由内部处理；先消费本条记录，再继续处理后续记录
+			c.rawInputBuf = c.rawInputBuf[recordHeaderLen+recLen:]
 			switch actualTyp {
 			case recordTypeAlert:
 				if len(plaintext) == 2 && alert(plaintext[1]) == alertCloseNotify {
 					return 0, c.remoteAddr, io.EOF
 				}
 			case recordTypeHandshake:
+				// 握手完成态收到 HelloRequest：按需接受重握手。
+				// 接受时释放 c.in 锁并返回 errStartRenegotiation，由 ReadFrom 重新执行握手入口。
+				if handshakeComplete && len(plaintext) > 0 && plaintext[0] == typeHelloRequest {
+					consumed, hrErr := c.handleInboundHelloRequest(plaintext)
+					if hrErr != nil {
+						return 0, nil, hrErr
+					}
+					if consumed {
+						continue
+					}
+				}
 				c.handBuf.Write(plaintext)
 			}
 			continue
 		}
 
+		// 应用数据：消费本条记录后返回，后续记录保留在 rawInputBuf 中供下次读取
+		c.rawInputBuf = c.rawInputBuf[recordHeaderLen+recLen:]
 		addr = c.remoteAddr
 		n = copy(p, plaintext)
 		return n, addr, nil
@@ -1668,6 +1909,192 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 	}
 
 	return c.handshakeErr
+}
+
+// errRenegotiationRefused 表示对端以 no_renegotiation 告警拒绝了本次重握手。
+var errRenegotiationRefused = errors.New("dtlcp: peer refused renegotiation")
+
+// ErrRenegotiationUnsupported 表示当前连接不支持主动发起重握手，即本端为客户端。
+var ErrRenegotiationUnsupported = errors.New("dtlcp: renegotiation is not supported")
+
+// resetHandshakeState 重置握手相关状态，为重握手准备全新的一轮协商。
+//
+// 依据 GM/T 0128—2023 6.4.5.1，重握手时 message_seq 从 0 重新开始计数，
+// 记录层的 epoch 在每次密码规格变更时递增，因此重握手不清零 epoch。
+func (c *Conn) resetHandshakeState() {
+	c.handshakeErr = nil
+	c.hsState.Store(int32(statePreparing))
+
+	c.messageSeq = 0
+	c.nextReceiveSeq = 0
+	c.peerRetransmit = false
+	c.didResume = false
+	c.retryCount = 0
+
+	c.in.err = nil
+	c.out.err = nil
+	c.in.deferredCCS = false
+
+	c.handBuf.Reset()
+	c.readBuf = nil
+	c.rawInputBuf = nil
+	c.sendBuf = nil
+	c.buffering = false
+
+	c.clearPendingFragments()
+	c.clearPendingHandshake()
+	c.clearFlightBuffer()
+
+	c.dwellDeadline = time.Time{}
+	c.flightRetransmit = nil
+
+	c.peerCertificates = nil
+	c.verifiedChains = nil
+	c.activeCertHandles = nil
+	c.peerIBCIdentity = nil
+	c.peerIBCSysParams = nil
+	c.serverName = ""
+	c.clientProtocol = ""
+
+	setZero(c.workKey)
+	c.workKey = nil
+	c.clientFinished = [12]byte{}
+	c.serverFinished = [12]byte{}
+}
+
+// clearFlightBuffer 清空握手 flight 缓冲。
+func (c *Conn) clearFlightBuffer() {
+	for i := range c.flightBuffer {
+		c.flightBuffer[i] = nil
+	}
+	c.flightBuffer = nil
+}
+
+// handleInboundHelloRequest 处理握手完成态记录中的握手数据，判断其中是否含完整的 HelloRequest。
+//
+// 须持有 c.in 锁；握手完成态下 c.Handshake() 不取 c.handshakeMutex，因此此处自行取锁，
+// 与并发发起的握手和 Renegotiate 互斥。
+//
+// 参数：
+//   - data：当前握手记录的明文，首字节为握手消息类型。
+//
+// 返回值：
+//   - bool：为 true 表示数据整体就是一条已消费的 HelloRequest，调用方不应再写入 handBuf；
+//     为 false 表示不是 HelloRequest、尚未收全，或序号不连续，数据仍按原逻辑写入 handBuf。
+//   - error：序号校验失败时返回错误；接受重握手时返回 errStartRenegotiation，
+//     调用方须在释放 c.in 锁后重新执行握手入口。
+func (c *Conn) handleInboundHelloRequest(data []byte) (bool, error) {
+	// 单条记录内消息不完整，交回原有分片重组路径
+	if len(data) < dtlcpHeaderLen {
+		return false, nil
+	}
+	if int(uint32(data[1])<<16|uint32(data[2])<<8|uint32(data[3])) != len(data)-dtlcpHeaderLen {
+		return false, nil
+	}
+	fragmentLength := int(uint32(data[9])<<16 | uint32(data[10])<<8 | uint32(data[11]))
+	if fragmentLength != 0 && fragmentLength != len(data)-dtlcpHeaderLen {
+		return false, nil
+	}
+	// 序号不连续时不消费，保留原有乱序缓存语义
+	if data[0] != typeHelloRequest {
+		return false, nil
+	}
+	c.handshakeMutex.Lock()
+	defer c.handshakeMutex.Unlock()
+
+	// 期间状态可能已变化，复位后才可按序消费
+	if !c.handshakeComplete() {
+		return false, nil
+	}
+
+	// HelloRequest 是新一轮握手的起点，其 message_seq 为 0（GM/T 0128—2023 6.4.5.1），
+	// 不参与上一轮的 next_receive_seq 校验。
+	msgSeq := uint16(data[4])<<8 | uint16(data[5])
+	if msgSeq != 0 && msgSeq != c.nextReceiveSeq {
+		return false, nil
+	}
+
+	helloRequest := new(helloRequestMsg)
+	if !helloRequest.unmarshal(data) {
+		return false, nil
+	}
+	if err := c.handleHelloRequest(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// Renegotiate 由服务端主动发起一次重握手（GM/T 0128—2023 6.4.5.4.4）。
+//
+// 服务端发送 HelloRequest 后，客户端应重新发送 ClientHello 开始新一轮握手。
+// 调用前连接必须已完成首次握手。
+//
+// 返回值：
+//   - error：连接尚未完成握手、本端为客户端、或握手失败时返回非 nil。
+func (c *Conn) Renegotiate() error {
+	if !c.isClient {
+		return c.renegotiateServer()
+	}
+	return ErrRenegotiationUnsupported
+}
+
+// renegotiateServer 由服务端发送 HelloRequest 并发起重握手。
+//
+// 返回值：
+//   - error：握手未完成或重握手失败时返回非 nil。
+func (c *Conn) renegotiateServer() error {
+	c.handshakeMutex.Lock()
+	defer c.handshakeMutex.Unlock()
+
+	if !c.handshakeComplete() {
+		return errors.New("dtlcp: renegotiate called before initial handshake completed")
+	}
+
+	c.in.Lock()
+	defer c.in.Unlock()
+
+	if err := c.sendHelloRequest(); err != nil {
+		return err
+	}
+
+	// 对端可能拒绝重握手，此时须保留旧会话继续可用，因此完整握手状态
+	// 在收到新的 ClientHello 之后才重置（见 serverHandshake）。
+	c.isRenegotiating = true
+	c.hsState.Store(int32(stateWaiting))
+
+	handshakeErr := c.serverHandshake(context.Background())
+	if errors.Is(handshakeErr, errRenegotiationRefused) {
+		// 对端以 no_renegotiation 拒绝：旧会话状态保持不变，连接继续可用
+		c.isRenegotiating = false
+		c.hsState.Store(int32(stateFinished))
+		return nil
+	}
+	if handshakeErr == nil {
+		c.handshakes++
+		c.clearPendingFragments()
+		c.clearPendingHandshake()
+	}
+	c.isRenegotiating = false
+	c.handshakeErr = handshakeErr
+	return c.handshakeErr
+}
+
+// sendHelloRequest 发送 HelloRequest 消息，其 message_seq 为 0（GM/T 0128—2023 6.4.5.1）。
+//
+// 返回值：
+//   - error：写入失败时返回非 nil。
+func (c *Conn) sendHelloRequest() error {
+	// HelloRequest 是新一轮的第一个握手消息，message_seq 为 0（GM/T 0128—2023 6.4.5.1）
+	helloRequest := new(helloRequestMsg)
+	helloRequest.setMessageSeq(0)
+	c.messageSeq = 1
+
+	c.buffering = true
+	if _, err := c.writeHandshakeRecord(helloRequest, nil); err != nil {
+		return err
+	}
+	_, err := c.flush()
+	return err
 }
 
 // handshakeComplete 返回握手是否已完成。

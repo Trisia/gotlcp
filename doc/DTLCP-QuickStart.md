@@ -198,3 +198,4 @@ go run example/dtlcp/quickstart/client/main.go
 ### 文档
 
 - [DTLCP 配置详解](./DTLCP-Config.md) — 每个配置项的作用、默认值、取值范围
+- [DTLCP 重握手使用指南](./DTLCP-Renegotiation.md) — 服务端 `Renegotiate()`、客户端 `OnRenegotiation` 回调、拒绝与错误处理

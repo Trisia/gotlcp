@@ -45,21 +45,21 @@ import (
 // serverHandshakeState 服务端握手上下文，包含了握手过程中需要的上下文参数。
 // 握手结束后该上下文应被弃用。
 type serverHandshakeState struct {
-	c                *Conn               // 连接对象
-	ctx              context.Context     // 上下文
-	clientHello      *clientHelloMsg     // 客户端 Hello 消息（已通过 cookie 验证）
-	hello            *serverHelloMsg     // 服务端 Hello 消息
-	suite            *cipherSuite        // 密码套件实现
-	ecdheOk          bool                // 支持 ECDHE 密钥交换
-	ecSignOk         bool                // 支持 SM2 签名
-	ecDecryptOk      bool                // 支持 SM2 解密
-	rsaDecryptOk     bool                // 支持 RSA 解密
-	rsaSignOk        bool                // 支持 RSA 签名
-	sessionState     *SessionState       // 会话状态（用于会话重用）
-	finishedHash     finishedHash        // 结束验证消息哈希
-	masterSecret     []byte              // 主密钥
-	sigCert          *Certificate        // 签名证书
-	encCert          *Certificate        // 加密证书
+	c                *Conn                 // 连接对象
+	ctx              context.Context       // 上下文
+	clientHello      *clientHelloMsg       // 客户端 Hello 消息（已通过 cookie 验证）
+	hello            *serverHelloMsg       // 服务端 Hello 消息
+	suite            *cipherSuite          // 密码套件实现
+	ecdheOk          bool                  // 支持 ECDHE 密钥交换
+	ecSignOk         bool                  // 支持 SM2 签名
+	ecDecryptOk      bool                  // 支持 SM2 解密
+	rsaDecryptOk     bool                  // 支持 RSA 解密
+	rsaSignOk        bool                  // 支持 RSA 签名
+	sessionState     *SessionState         // 会话状态（用于会话重用）
+	finishedHash     finishedHash          // 结束验证消息哈希
+	masterSecret     []byte                // 主密钥
+	sigCert          *Certificate          // 签名证书
+	encCert          *Certificate          // 加密证书
 	peerCertificates []*smx509.Certificate // 客户端证书，可能为空
 
 	// hasX509Cert 表示本端是否具备 X.509 双证书能力（由配置静态判定），
@@ -83,20 +83,46 @@ type serverHandshakeState struct {
 
 // serverHandshake 执行 DTLCP 服务端握手协议。
 // 状态机流程：
-//   Phase 1: 读取 ClientHello，cookie 交换
-//   Phase 2: 发送 Flight 4（ServerHello + Certificate + ... + ServerHelloDone）
-//   Phase 3: 接收 Flight 5（客户端消息 + CCS + Finished）
-//   Phase 4: 发送 Flight 6（CCS + Finished）
+//
+//	Phase 1: 读取 ClientHello，cookie 交换
+//	Phase 2: 发送 Flight 4（ServerHello + Certificate + ... + ServerHelloDone）
+//	Phase 3: 接收 Flight 5（客户端消息 + CCS + Finished）
+//	Phase 4: 发送 Flight 6（CCS + Finished）
 //
 // 参数:
-//   ctx - 握手上下文，用于取消握手
+//
+//	ctx - 握手上下文，用于取消握手
+//
 // 返回:
-//   error - 握手过程中的错误
+//
+//	error - 握手过程中的错误
 func (c *Conn) serverHandshake(ctx context.Context) error {
+	// 重握手：先归零握手消息序号，使新 ClientHello 的 message_seq=0 能通过
+	// next_receive_seq 校验（GM/T 0128—2023 6.4.5.1）。
+	// 旧会话的记录层状态保留，以便对端拒绝重握手时继续可用。
+	if c.isRenegotiating {
+		c.messageSeq = 0
+		c.nextReceiveSeq = 0
+		c.peerRetransmit = false
+		c.clearPendingHandshake()
+	}
+
 	// 第一阶段：读取 ClientHello 并进行 cookie 验证交换
 	clientHello, err := c.readClientHello(ctx)
 	if err != nil {
 		return err
+	}
+
+	// 已收到新的 ClientHello，此后对端不会再回退到旧会话，重置上一轮握手状态。
+	// 消息序号已在读取前归零，此处保留，避免 Cookie 交换中已分配的序号被清除。
+	if c.isRenegotiating {
+		messageSeq := c.messageSeq
+		nextReceiveSeq := c.nextReceiveSeq
+		c.resetHandshakeState()
+		c.messageSeq = messageSeq
+		c.nextReceiveSeq = nextReceiveSeq
+		c.isRenegotiating = true
+		c.hsState.Store(int32(stateWaiting))
 	}
 
 	// Cookie 验证交换循环
@@ -106,6 +132,11 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 	//   2. 服务端生成并返回 HelloVerifyRequest（含 cookie）
 	//   3. 客户端重发含 cookie 的 ClientHello
 	//   4. 服务端验证 cookie 后继续握手
+	// HelloVerifyRequest 在同一轮 Cookie 交换中重发时沿用首次分配的 message_seq
+	// （GM/T 0128—2023 6.4.5.1）。
+	hvrSeq := c.messageSeq
+	c.messageSeq++
+
 	for {
 		params := clientHello.marshalForCookie()
 		secret := c.effectiveCookieSecret()
@@ -117,8 +148,7 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 				serverVersion: VersionTLCP,
 				cookie:        cookie,
 			}
-			hvr.setMessageSeq(c.messageSeq)
-			c.messageSeq++
+			hvr.setMessageSeq(hvrSeq)
 
 			c.hsState.Store(int32(stateSending))
 			if _, err := c.writeHandshakeRecord(hvr, nil); err != nil {
@@ -129,11 +159,19 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 				return err
 			}
 
-			// 读取下一个 ClientHello（含 cookie），带超时重传处理
-			clientHello, err = c.readNextClientHello(ctx)
+			// 读取下一个 ClientHello（含 cookie），带超时重传处理。
+			// 若客户端重传了无 cookie 的 ClientHello，readNextClientHello 以重传信号返回，
+			// 本端重发 HelloVerifyRequest。
+			next, err := c.readNextClientHello(ctx)
+			if errors.Is(err, errPeerRetransmit) {
+				// 客户端重传了无 cookie 的 ClientHello，保留原有 ClientHello 并重发 HVR
+				c.takePeerRetransmit()
+				continue
+			}
 			if err != nil {
 				return err
 			}
+			clientHello = next
 			continue
 		}
 
@@ -674,10 +712,12 @@ func (hs *serverHandshakeState) doResumeHandshake() error {
 // doFullHandshake 执行完整握手流程（非会话重用），发送 Flight 4 并接收 Flight 5。
 //
 // Flight 4（服务端发送）:
-//   ServerHello + Certificate + ServerKeyExchange* + CertificateRequest* + ServerHelloDone
+//
+//	ServerHello + Certificate + ServerKeyExchange* + CertificateRequest* + ServerHelloDone
 //
 // Flight 5（客户端发送）:
-//   Certificate* + ClientKeyExchange + CertificateVerify* + CCS + Finished
+//
+//	Certificate* + ClientKeyExchange + CertificateVerify* + CCS + Finished
 func (hs *serverHandshakeState) doFullHandshake() error {
 	c := hs.c
 
@@ -958,15 +998,18 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 
 // readNextFlightMsg 读取下一条握手消息，支持重传处理。
 // 在发送 Flight 4 后等待 Flight 5 时使用，处理以下情况：
-//   1. 重传定时器超时：重发当前飞行数据
-//   2. 收到 ClientHello：对端重传，重发当前飞行数据
-//   3. 收到有效消息：正常处理
+//  1. 重传定时器超时：重发当前飞行数据
+//  2. 收到 ClientHello：对端重传，重发当前飞行数据
+//  3. 收到有效消息：正常处理
 //
 // 参数:
-//   flightData - 当前飞行（Flight 4）的原始字节数据，用于重传
+//
+//	flightData - 当前飞行（Flight 4）的原始字节数据，用于重传
+//
 // 返回:
-//   interface{} - 握手消息对象（非 ClientHello）
-//   error - 错误信息
+//
+//	interface{} - 握手消息对象（非 ClientHello）
+//	error - 错误信息
 func (c *Conn) readNextFlightMsg(flightData []byte) (interface{}, error) {
 	for {
 		// 检查重传定时器
@@ -1343,11 +1386,14 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 // negotiateALPN 按照服务端优先级从客户端的 ALPN 列表中选择一个双方都支持的协议。
 //
 // 参数:
-//   serverProtos - 服务端支持的协议列表（按优先级顺序）
-//   clientProtos - 客户端支持的协议列表
+//
+//	serverProtos - 服务端支持的协议列表（按优先级顺序）
+//	clientProtos - 客户端支持的协议列表
+//
 // 返回:
-//   string - 协商出的协议，若双方都不支持 ALPN 则返回空字符串
-//   error  - 若客户端请求的协议都不被服务端支持则返回错误
+//
+//	string - 协商出的协议，若双方都不支持 ALPN 则返回空字符串
+//	error  - 若客户端请求的协议都不被服务端支持则返回错误
 func negotiateALPN(serverProtos, clientProtos []string) (string, error) {
 	if len(serverProtos) == 0 || len(clientProtos) == 0 {
 		return "", nil
@@ -1375,10 +1421,12 @@ func negotiateALPN(serverProtos, clientProtos []string) (string, error) {
 
 // marshalForCookie 将 ClientHello 的字段（不含 cookie）序列化为字节序列，
 // 用于 cookie 的生成和验证。序列化顺序：
-//   version(2) + random(32) + sessionId(1+len) + cipherSuites(2+len*2) + compression(1+len)
+//
+//	version(2) + random(32) + sessionId(1+len) + cipherSuites(2+len*2) + compression(1+len)
 //
 // 返回:
-//   []byte - 序列化后的字节序列
+//
+//	[]byte - 序列化后的字节序列
 func (m *clientHelloMsg) marshalForCookie() []byte {
 	total := 2 + 32 + 1 + len(m.sessionId) + 2 + len(m.cipherSuites)*2 + 1 + len(m.compressionMethods)
 	b := make([]byte, 0, total)

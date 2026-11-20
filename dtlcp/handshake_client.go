@@ -31,21 +31,21 @@ import (
 // clientHandshakeState 客户端握手上下文参数
 // 包含了客户端在握手过程需要的上下文，在握手结束该参数应该被舍弃。
 type clientHandshakeState struct {
-	c                *Conn               // 连接对象
-	ctx              context.Context     // 上下文
-	serverHello      *serverHelloMsg     // 服务端 Hello消息
-	hello            *clientHelloMsg     // 客户端 Hello消息
-	suite            *cipherSuite        // 密码套件实现
-	finishedHash     finishedHash        // 生成结束验证消息
-	masterSecret     []byte              // 主密钥
-	session          *SessionState       // 会话状态
-	authCert         *Certificate        // 客户端认证密钥对
-	encCert          *Certificate        // 客户端加密证书
+	c                *Conn                 // 连接对象
+	ctx              context.Context       // 上下文
+	serverHello      *serverHelloMsg       // 服务端 Hello消息
+	hello            *clientHelloMsg       // 客户端 Hello消息
+	suite            *cipherSuite          // 密码套件实现
+	finishedHash     finishedHash          // 生成结束验证消息
+	masterSecret     []byte                // 主密钥
+	session          *SessionState         // 会话状态
+	authCert         *Certificate          // 客户端认证密钥对
+	encCert          *Certificate          // 客户端加密证书
 	peerCertificates []*smx509.Certificate // 服务端证书，依次为签名证书、加密证书
 	// DTLCP 特有字段
-	cookie       []byte           // 从 HelloVerifyRequest 收到的 cookie
-	initialHello *clientHelloMsg  // 保存初始 ClientHello（cookie 为空时），用于重传
-	flightData   []byte           // Flight 5 原始字节缓存，用于超时重传
+	cookie       []byte          // 从 HelloVerifyRequest 收到的 cookie
+	initialHello *clientHelloMsg // 保存初始 ClientHello（cookie 为空时），用于重传
+	flightData   []byte          // Flight 5 原始字节缓存，用于超时重传
 
 	// IBC 相关上下文，仅 IBC/IBSDH 套件下使用。
 	ibcIdentity        *IBCIdentity  // 本端 IBC 配置
@@ -194,6 +194,50 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, error) {
 }
 
 // =============================================================================
+// handleHelloRequest — 客户端响应服务端发起重握手
+// =============================================================================
+
+// errStartRenegotiation 表示读取过程中已接受服务端重握手请求，
+// 调用方须在释放输入锁后重新执行握手入口。
+var errStartRenegotiation = errors.New("dtlcp: start renegotiation")
+
+// handleHelloRequest 处理握手完成态收到的 HelloRequest（GM/T 0128—2023 6.4.5.3）。
+//
+// 须持有 c.in 锁与 c.handshakeMutex 调用。调用方同意重握手时重置握手状态，
+// 并返回 errStartRenegotiation，由持有输入锁的读取方解锁后重新执行握手入口。
+//
+// 调用方须已按 next_receive_seq 校验并递增 HelloRequest 的序号。
+//
+// 返回值：
+//   - error：同意重握手时返回 errStartRenegotiation，调用方须解锁后重新执行握手入口；
+//     拒绝重握手时已发送 no_renegotiation 告警并返回 nil，旧会话继续可用；
+//     握手进行中收到 HelloRequest 时忽略该消息并返回 nil。
+func (c *Conn) handleHelloRequest() error {
+	// 已接受过重握手、等待握手入口取锁时重复到达的 HelloRequest 直接忽略
+	if !c.handshakeComplete() {
+		c.sendAlert(alertNoRenegotiation)
+		return nil
+	}
+
+	offer := &RenegotiationOffer{
+		Conn:           c,
+		HandshakeCount: c.handshakes,
+		PreviousState:  c.connectionStateLocked(),
+	}
+	onRenegotiation := c.config.OnRenegotiation
+	if onRenegotiation == nil || !onRenegotiation(offer) {
+		c.sendAlert(alertNoRenegotiation)
+		return nil
+	}
+
+	// 重置到 statePreparing 时连接不再处于握手完成态，
+	// 等待握手入口取锁的并发调用会阻塞在 c.handshakeMutex 上
+	c.resetHandshakeState()
+	c.hsState.Store(int32(statePreparing))
+	return errStartRenegotiation
+}
+
+// =============================================================================
 // clientHandshake — DTLCP 客户端握手入口（四态状态机 + Cookie 交换）
 // =============================================================================
 
@@ -210,98 +254,29 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	}
 	c.serverName = c.config.ServerName
 
+	// 复用会话缓存仅适用于首次握手；重握手须重新完成完整协商以更新密钥
+	var sessionId string
+	var session *SessionState
 	dst := c.remoteAddr.String()
-	// 加载会话
-	sessionId, session := c.loadSession(dst, hello)
-	defer func() {
-		if session != nil && err != nil {
-			c.config.SessionCache.Put(dst, nil)
-			c.config.SessionCache.Put(sessionId, nil)
-		}
-	}()
+	if c.handshakes == 0 {
+		sessionId, session = c.loadSession(dst, hello)
+		defer func() {
+			if session != nil && err != nil {
+				c.config.SessionCache.Put(dst, nil)
+				c.config.SessionCache.Put(sessionId, nil)
+			}
+		}()
+	}
 
-		// 保存初始 ClientHello 引用（用于重传）
+	// 保存初始 ClientHello 引用（用于重传）
 	initialHello := &clientHelloMsg{}
 	*initialHello = *hello
 	initialHello.raw = nil
 
-	// ===== Cookie 交换阶段 (Flight 1 ↔ Flight 2 ↔ Flight 3) =====
-	//
-	// 首次发送 ClientHello（cookie=""），收到 HelloVerifyRequest 后保存 cookie 并重发。
-	var serverHello *serverHelloMsg
-
-	for {
-		c.hsState.Store(int32(stateSending))
-		hello.setMessageSeq(c.messageSeq)
-		c.messageSeq++
-
-		// 写入 ClientHello，不加入 transcript
-		if _, err = c.writeHandshakeRecord(hello, nil); err != nil {
-			return err
-		}
-		if _, err = c.flush(); err != nil {
-			return err
-		}
-
-		c.hsState.Store(int32(stateWaiting))
-		c.retransmitTimer.reset()
-
-		// 读循环：接收响应，处理超时和对端重传
-		for {
-			// 设置读取超时
-			c.pconn.SetReadDeadline(time.Now().Add(c.retransmitTimer.current))
-
-			msg, readErr := c.readHandshake(nil)
-			if readErr != nil {
-				if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
-					// 超时：指数退避并重传
-					c.retransmitTimer.backoff()
-					c.hsState.Store(int32(stateSending))
-					break
-				}
-				return readErr
-			}
-
-			switch m := msg.(type) {
-			case *helloVerifyRequestMsg:
-				// 检查是否已设置 cookie（对端重传检测）
-				if len(hello.cookie) > 0 {
-					// 对端重传了 HelloVerifyRequest，我们重传 ClientHello
-					c.hsState.Store(int32(stateSending))
-					break
-				}
-
-				// 正常 cookie 交换：保存 cookie
-				hello.cookie = append([]byte(nil), m.cookie...)
-				hello.raw = nil // 强制重新 marshaling
-				c.handBuf.Reset()
-				c.hsState.Store(int32(stateSending))
-				break
-
-			case *serverHelloMsg:
-				// Cookie 交换完成
-				serverHello = m
-				c.retransmitTimer.stop()
-				c.pconn.SetReadDeadline(time.Time{})
-				break
-
-			default:
-				_ = c.sendAlert(alertUnexpectedMessage)
-				return unexpectedMessageError(serverHello, msg)
-			}
-
-			if serverHello != nil {
-				break
-			}
-		}
-
-		if serverHello != nil {
-			break
-		}
+	serverHello, err := c.exchangeClientHello(hello, initialHello)
+	if err != nil {
+		return err
 	}
-
-	// 清除读取超时
-	c.pconn.SetReadDeadline(time.Time{})
 
 	// 协议版本协商
 	if err = c.pickProtocolVersion(serverHello); err != nil {
@@ -324,6 +299,113 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	}
 
 	return nil
+}
+
+// =============================================================================
+// exchangeClientHello — Cookie 交换阶段（Flight 1 ↔ Flight 2 ↔ Flight 3）
+// =============================================================================
+
+// exchangeClientHello 发送 ClientHello 并完成 Cookie 交换，直到收到 ServerHello。
+//
+// 首次发送 ClientHello（cookie 为空），收到 HelloVerifyRequest 后保存 cookie 并重发。
+// 携带 cookie 的 ClientHello 是新消息，占用新的 message_seq；超时或对端重传
+// 触发的重发沿用原序号（GM/T 0128—2023 6.4.5.1）。
+//
+// 参数：
+//   - hello：待发送的 ClientHello 消息，函数内会更新其 cookie 与 message_seq。
+//   - initialHello：不含 cookie 的初始 ClientHello 副本，供重传复用。
+//
+// 返回值：
+//   - *serverHelloMsg：对端返回的 ServerHello 消息。
+//   - error：发送失败、收到非预期消息或对端错误时返回非 nil。
+func (c *Conn) exchangeClientHello(hello, initialHello *clientHelloMsg) (*serverHelloMsg, error) {
+	var serverHello *serverHelloMsg
+	helloSeq := c.messageSeq
+	c.messageSeq++
+
+	for {
+		c.hsState.Store(int32(stateSending))
+		hello.setMessageSeq(helloSeq)
+
+		// 写入 ClientHello，不加入 transcript
+		if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
+			return nil, err
+		}
+		if _, err := c.flush(); err != nil {
+			return nil, err
+		}
+
+		c.hsState.Store(int32(stateWaiting))
+		c.retransmitTimer.reset()
+
+		// 读循环：接收响应，处理超时和对端重传
+		for {
+			// 设置读取超时
+			c.pconn.SetReadDeadline(time.Now().Add(c.retransmitTimer.current))
+
+			msg, readErr := c.readHandshake(nil)
+			if readErr != nil {
+				// 收到对端重传消息：整轮重传并重置定时器（GM/T 0128—2023 6.4.5.3 b)
+				if errors.Is(readErr, errPeerRetransmit) {
+					c.takePeerRetransmit()
+					c.retransmitTimer.reset()
+					c.hsState.Store(int32(stateSending))
+					break
+				}
+				if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
+					// 超时：指数退避并重传
+					c.retransmitTimer.backoff()
+					c.hsState.Store(int32(stateSending))
+					break
+				}
+				return nil, readErr
+			}
+
+			switch m := msg.(type) {
+			case *helloVerifyRequestMsg:
+				// 检查是否已设置 cookie（对端重传检测）
+				if len(hello.cookie) > 0 {
+					// 对端重传了 HelloVerifyRequest，我们重传 ClientHello
+					c.hsState.Store(int32(stateSending))
+					break
+				}
+
+				// 正常 cookie 交换：保存 cookie
+				hello.cookie = append([]byte(nil), m.cookie...)
+				hello.raw = nil // 强制重新 marshaling
+				c.handBuf.Reset()
+				// 携带 cookie 的 ClientHello 为新消息，分配新的 message_seq
+				helloSeq = c.messageSeq
+				c.messageSeq++
+				c.hsState.Store(int32(stateSending))
+				break
+
+			case *serverHelloMsg:
+				// Cookie 交换完成
+				serverHello = m
+				c.retransmitTimer.stop()
+				c.pconn.SetReadDeadline(time.Time{})
+				break
+
+			default:
+				_ = c.sendAlert(alertUnexpectedMessage)
+				return nil, unexpectedMessageError(serverHello, msg)
+			}
+
+			if serverHello != nil {
+				break
+			}
+		}
+
+		if serverHello != nil {
+			break
+		}
+	}
+
+	// 清除读取超时
+	c.pconn.SetReadDeadline(time.Time{})
+
+	return serverHello, nil
 }
 
 // =============================================================================
@@ -528,15 +610,15 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 			return err
 		}
 
-		if c.handshakes == 0 {
-			if err = c.verifyServerCertificate(certMsg.certificates); err != nil {
-				return err
-			}
-		} else {
-			if !bytes.Equal(c.peerCertificates[0].Raw, certMsg.certificates[0]) {
-				_ = c.sendAlert(alertBadCertificate)
-				return errors.New("dtlcp: server's identity changed during renegotiation")
-			}
+		// 重握手须确认服务端身份未变化；peerCertificates 已由 resetHandshakeState 清空，
+		// 因此先完整验证本轮证书链，再与上一轮叶子证书比对
+		prevCertificates := c.peerCertificates
+		if err = c.verifyServerCertificate(certMsg.certificates); err != nil {
+			return err
+		}
+		if len(prevCertificates) > 0 && !bytes.Equal(prevCertificates[0].Raw, certMsg.certificates[0]) {
+			_ = c.sendAlert(alertBadCertificate)
+			return errors.New("dtlcp: server's identity changed during renegotiation")
 		}
 		hs.peerCertificates = c.peerCertificates
 	}

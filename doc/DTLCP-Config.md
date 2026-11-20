@@ -31,6 +31,7 @@
 | `NextProtos` | `[]string` | `nil` | 支持的应用层协议（ALPN），如 `["h2", "http/1.1"]` |
 | `ServerName` | `string` | `""` | 服务端名称（SNI），客户端用于校验证书中的主机名 |
 | `OnAlert` | `func(code uint8, conn *Conn)` | `nil` | 告警回调。收到对端 alert 时触发，回调内不要执行耗时操作 |
+| `OnRenegotiation` | `func(*RenegotiationOffer) bool` | `nil` | 客户端收到服务端 `hello_request` 时的决策回调。返回 `true` 接受重握手，`false` 拒绝并发送 `no_renegotiation` 告警。为 `nil` 时**默认拒绝**（§4.8） |
 | `EnableDebug` | `bool` | `false` | 开启调试日志 |
 | `ClientECDHEParamsAsVector` | `bool` | `false` | ECDHE 兼容性开关。若与其他 TLCP 实现的 ECDHE 集成测试失败，可尝试设为 `true` |
 | `TrustedCAIndications` | `[]TrustedAuthority` | `nil` | 客户端指定信任的 CA 列表，服务端需配合 `GetCertificate`/`GetKECertificate` 使用 |
@@ -426,6 +427,49 @@ DTLCP 特有说明：
 - **状态读取**：握手完成后 `ConnectionState().PeerIBCIdentity` / `PeerIBCSysParams` 给出对端标识与公共参数。
 
 > 完整配置项、信任池与安全模型见 **[IBC 配置与使用指南](./IBC-Config.md)**；可运行示例：[example/dtlcp/ibc/](../example/dtlcp/ibc/)。
+
+### 4.8 重握手
+
+重握手是服务端在首次握手完成后发起的第二轮及以后的握手，用于证书轮换、密钥更新与定期安全刷新。**只能由服务端发起**，客户端通过 `OnRenegotiation` 决定是否接受。
+
+**服务端发起**：
+
+```go
+if err := conn.Renegotiate(); err != nil {
+    // 重握手失败后连接已不可用，需关闭并重建
+    conn.Close()
+}
+```
+
+**客户端决策**：
+
+```go
+config := &dtlcp.Config{
+    RootCAs: pool,
+    OnRenegotiation: func(offer *dtlcp.RenegotiationOffer) bool {
+        // HandshakeCount：本连接已完成的握手次数；PreviousState：重握手前的连接状态快照
+        if offer.HandshakeCount >= 8 {
+            return false // 拒绝，客户端发送 no_renegotiation，旧会话继续可用
+        }
+        return true // 接受，此后重握手失败即关闭连接
+    },
+}
+```
+
+- **默认拒绝**：不配置 `OnRenegotiation` 时收到重握手请求一律拒绝，连接不受影响；
+- **拒绝可回退**：发送 `no_renegotiation`（告警码 `100`）后，旧会话密钥继续使用，`Read`/`Write` 不受影响，服务端可稍后重试；
+- **接受后不可回退**：回调返回 `true` 后若握手失败，不会恢复旧会话，连接直接关闭；
+- **阻塞性**：`Renegotiate()` 同步阻塞至本轮结束；重握手期间同连接的 `Read`/`Write` 阻塞，完成或失败后返回。
+
+`RenegotiationOffer` 字段：
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `Conn` | `*Conn` | 收到重握手请求的连接 |
+| `HandshakeCount` | `int` | 本连接已完成的握手轮数（首次握手后为 `1`，不含本次被提议的握手） |
+| `PreviousState` | `ConnectionState` | 重握手生效前的连接状态快照 |
+
+> 完整说明、并发约束、错误处理与标准条款对应见 **[DTLCP 重握手使用指南](./DTLCP-Renegotiation.md)**。
 
 ---
 
